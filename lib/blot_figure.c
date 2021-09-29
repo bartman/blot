@@ -4,6 +4,8 @@
 #include "blot_error.h"
 #include "blot_color.h"
 #include "blot_layer.h"
+#include "blot_canvas.h"
+#include "blot_screen.h"
 #include "blot_terminal.h"
 
 /* create/delete */
@@ -67,8 +69,8 @@ bool blot_figure_set_x_limits(blot_figure *fig,
 		      "x_min >= x_max");
 
 	fig->x_limits_set = true;
-	fig->x_min = x_min;
-	fig->x_max = x_max;
+	fig->lim.x_min = x_min;
+	fig->lim.x_max = x_max;
 	return true;
 }
 
@@ -80,8 +82,8 @@ bool blot_figure_set_y_limits(blot_figure *fig,
 		      "y_min >= y_max");
 
 	fig->y_limits_set = true;
-	fig->y_min = y_min;
-	fig->y_max = y_max;
+	fig->lim.y_min = y_min;
+	fig->lim.y_max = y_max;
 	return true;
 }
 
@@ -105,36 +107,98 @@ bool blot_figure_scatter(blot_figure *fig, blot_data_type data_type,
 					 error);
 	RETURN_IF(lay==NULL,false);
 
+	blot_layer **layers = g_realloc_n(fig->layers,
+					 fig->layer_count + 1,
+					 sizeof(blot_layer*));
+	RETURN_ERROR(!layers, NULL, error,
+		     "realloc *blot_layers x %u", fig->layer_count + 1);
+
+	fig->layers = layers;
+	fig->layers[fig->layer_count] = lay;
+	fig->layer_count ++;
+
 	return true;
 }
 
 
 /* render */
 
-char * blot_figure_render(blot_figure *fig, enum blot_figure_render_flags flags,
-				 gsize *txt_size, GError **error)
+static blot_xy_limits blot_figure_auto_limits(blot_figure *fig)
+{
+	if (fig->x_limits_set && fig->y_limits_set)
+		return fig->lim;
+
+	blot_xy_limits lim = {0,};
+
+	/* TODO: walk each layer and figure out the data bounding box */
+
+	g_error("%s:%u TODO", __func__, __LINE__);
+	return lim;
+}
+
+static inline void __free_canvases_array(blot_canvas **cans, unsigned count)
+{
+	for (int ci=0; ci<count; ci++) {
+		if (!cans[ci])
+			continue;
+		blot_canvas_delete(cans[ci]);
+		cans[ci] = NULL;
+	}
+}
+
+blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
+				 GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, NULL, error);
+	RETURN_EINVAL_IF(fig->layer_count==0, NULL, error);
+	RETURN_EINVAL_IF(fig->layers==NULL, NULL, error);
 
 	if (!fig->screen_size_set) {
 		bool ok = blot_terminal_get_size(&fig->columns, &fig->rows, error);
 		RETURN_IF(!ok, NULL);
 	}
 
-	RETURN_EINVAL_IF(fig->columns<BLOT_MIN_COLUMNS, false, error);
-	RETURN_EINVAL_IF(fig->rows<BLOT_MIN_ROWS, false, error);
+	RETURN_EINVAL_IF(fig->columns<BLOT_MIN_COLUMNS, NULL, error);
+	RETURN_EINVAL_IF(fig->rows<BLOT_MIN_ROWS, NULL, error);
 
+	blot_xy_limits lim = blot_figure_auto_limits(fig);
 
+	g_autofree blot_canvas **cans = g_new0(blot_canvas*, fig->layer_count);
+	RETURN_ERROR(!cans, NULL, error, "new *canvas x %u", fig->layer_count);
 
+	for (int li=0; li<fig->layer_count; li++) {
+		blot_layer *lay = fig->layers[li];
 
+		cans[li] = blot_layer_render(lay, &lim,
+					     fig->columns, fig->rows,
+					     flags, error);
+		if (cans[li])
+			continue;
 
-	blot_set_error_unix(error, EINVAL, "TODO");
-	return NULL;
+		/* error: unwind the canvases we allocated */
+		for (--li; li>=0; li--)
+			blot_canvas_delete(cans[--li]);
+		return NULL;
+	}
+
+	blot_screen *scr = blot_screen_new(fig->columns, fig->rows,
+					   flags, error);
+	if (!scr) {
+		__free_canvases_array(cans, fig->layer_count);
+		return NULL;
+	}
+
+	bool merge_ok = blot_screen_merge(scr, fig->layer_count, cans, error);
+
+	/* we no longer need the canvases */
+	__free_canvases_array(cans, fig->layer_count);
+
+	/* if merge to screen failed, we return */
+	if (!merge_ok) {
+		blot_screen_delete(scr);
+		return NULL;
+	}
+
+	return scr;
 }
-
-void blot_figure_render_free(blot_figure *fig, char *txt)
-{
-	g_free(txt);
-}
-
 

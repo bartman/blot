@@ -9,11 +9,11 @@ typedef struct blot_layer {
 
 	blot_plot_type plot_type;
 	blot_data_type data_type;
-	size_t data_count;
-	const void *data_xs;
-	const void *data_ys;
-	blot_color data_color;
-	const char *data_label;
+	size_t count;
+	const void *xs;
+	const void *ys;
+	blot_color color;
+	const char *label;
 
 } blot_layer;
 
@@ -30,4 +30,13 @@ extern blot_layer * blot_layer_new(blot_plot_type plot_type,
 extern void blot_layer_delete(blot_layer *fig);
 
 /* configure */
+
+/* render */
+
+extern struct blot_canvas * blot_layer_render(blot_layer *lay,
+					      const blot_xy_limits *lim,
+					      unsigned columns, unsigned rows,
+					      blot_render_flags flags,
+					      GError **);
+
 

@@ -37,7 +37,8 @@ enum {
 #define COL_FG_FMT "\e[38;5;%dm"
 #define COL_BG_FMT "\e[48;5;%dm"
 #define COL_RESET  "\e[0m"
-//static const char *color_reset = COL_RESET;
+//#define CLR_SCR    "\033c"    // this one also drops scrollback in tmux
+#define CLR_SCR    "\033[2J\033[H"
 
 extern bool show_colour;
 

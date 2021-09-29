@@ -59,3 +59,5 @@
 #define likely(x)       (x)
 #define unlikely(x)     (x)
 #endif
+
+#define __aligned64 __attribute__((aligned(64)))

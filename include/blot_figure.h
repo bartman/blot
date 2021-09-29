@@ -16,14 +16,12 @@ typedef struct blot_figure {
 	unsigned columns, rows;
 
 	bool x_limits_set;
-	double x_min, x_max;
-
 	bool y_limits_set;
-	double y_min, y_max;
+	blot_xy_limits lim;
 
 	/* layers */
 	gsize layer_count;
-	struct blot_layer *layers;
+	struct blot_layer **layers;
 
 } blot_figure;
 
@@ -54,11 +52,7 @@ extern bool blot_figure_scatter(blot_figure *fig, blot_data_type data_type,
 
 /* render */
 
-enum blot_figure_render_flags {
-	BLOT_FIGURE_RENDER_NONE = 0
-};
-
-extern char * blot_figure_render(blot_figure *fig, enum blot_figure_render_flags flags,
-				 gsize *txt_size, GError **);
-extern void blot_figure_render_free(blot_figure *fig, char *txt);
+extern struct blot_screen * blot_figure_render(blot_figure *fig,
+					       blot_render_flags flags,
+					       GError **);
 
