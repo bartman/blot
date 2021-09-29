@@ -25,3 +25,6 @@ extern void blot_screen_delete(blot_screen *scr);
 extern bool blot_screen_merge(blot_screen *scr, unsigned count,
 			      struct blot_canvas *const*cans,
 			      GError **);
+
+extern const char * blot_screen_get_text(const blot_screen *scr,
+					 gsize *txt_size, GError**);

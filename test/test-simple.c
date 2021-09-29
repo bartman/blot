@@ -44,19 +44,14 @@ int main(void)
 	blot_screen *scr = blot_figure_render(fig, flags, &error);
 	FATAL_ERROR(error);
 
-#if 0
-	g_print("scr->flags = %08x\n", scr->flags);
-	g_print("scr->columns = %u\n", scr->columns);
-	g_print("scr->rows = %u\n", scr->rows);
-	g_print("scr->data_size = %zu\n", scr->data_size);
-	g_print("scr->data_used = %zu\n", scr->data_used);
-#endif
+	gsize txt_size = 0;
+	const char *txt = blot_screen_get_text(scr, &txt_size, &error);
+	FATAL_ERROR(error);
 
-	gsize txt_size = scr->data_used;
-	char *txt = scr->data;
-
-	//g_print("txt_size=%zu\n", txt_size);
+	g_print("txt_size=%zu\n", txt_size);
+	g_print("------------------------------------------------------------\n");
 	write(0, txt, txt_size);
+	g_print("------------------------------------------------------------\n");
 
 	blot_screen_delete(scr);
 

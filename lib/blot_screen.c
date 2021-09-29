@@ -89,3 +89,12 @@ bool blot_screen_merge(blot_screen *scr, unsigned count,
 	scr->data_used = p - scr->data;
 	return true;
 }
+
+const char * blot_screen_get_text(const blot_screen *scr,
+				  gsize *txt_size, GError **error)
+{
+	RETURN_EFAULT_IF(scr==NULL, NULL, error);
+
+	*txt_size = scr->data_used;
+	return scr->data;
+}
