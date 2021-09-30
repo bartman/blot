@@ -41,9 +41,9 @@ void blot_screen_delete(blot_screen *scr)
 
 /* merge/render */
 
-static bool blot_screen_merge_braille(blot_screen *scr, unsigned count,
-				      struct blot_canvas *const*cans,
-				      GError **error)
+static bool blot_screen_merge_cans(blot_screen *scr, unsigned count,
+				   struct blot_canvas *const*cans,
+				   GError **error)
 {
 	gunichar *p = scr->data + scr->data_used,
 		 *end = scr->data + scr->data_size;
@@ -51,18 +51,19 @@ static bool blot_screen_merge_braille(blot_screen *scr, unsigned count,
 	for (unsigned iy=0; iy<scr->rows; iy++) {
 
 		/* y-axis is inverted on the screen */
-		unsigned y = scr->rows - 1 - iy;
+		unsigned y = (scr->flags & BLOT_RENDER_DONT_INVERT_Y_AXIS)
+			? iy : scr->rows - 1 - iy;
 
 		wchar_t wch;
 		for (unsigned x=0; x<scr->cols; x++) {
 
-			unsigned char top_cell = 0;
+			gunichar top_cell = 0;
 			blot_color top_col = 0;
 
 			for (int ci=0; ci<count; ci++) {
 				const struct blot_canvas *can = cans[ci];
 
-				unsigned char cell = blot_canvas_get_cell(can, x, y);
+				gunichar cell = blot_canvas_get_cell(can, x, y);
 				if (!cell)
 					continue;
 
@@ -74,7 +75,7 @@ static bool blot_screen_merge_braille(blot_screen *scr, unsigned count,
 			if (top_cell) {
 				// TODO: apply color
 				(void)top_col;
-				wch = BRAILLE_GLYPH_BASE + top_cell;
+				wch = top_cell;
 				//wch = 0x2605;
 			}
 			*(p++) = wch;
@@ -83,53 +84,6 @@ static bool blot_screen_merge_braille(blot_screen *scr, unsigned count,
 
 		*(p++) = L'\n';
 
-		g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
-	}
-
-	*p = 0;
-	scr->data_used = p - scr->data;
-	return true;
-}
-
-static bool blot_screen_merge_text(blot_screen *scr, unsigned count,
-				   struct blot_canvas *const*cans,
-				   GError **error)
-{
-	gunichar *p = scr->data + scr->data_used,
-		 *end = scr->data + scr->data_size;
-
-	for (unsigned iy=0; iy<scr->rows; iy++) {
-
-		/* y-axis is inverted on the screen */
-		unsigned y = scr->rows - 1 - iy;
-
-		for (unsigned x=0; x<scr->cols; x++) {
-
-			bool is_set = 0;
-			blot_color top_col = 0;
-
-			for (int ci=0; ci<count; ci++) {
-				const struct blot_canvas *can = cans[ci];
-
-				if (!blot_canvas_get(can, x, y))
-					continue;
-
-				is_set = true;
-				top_col = can->color;
-			}
-
-			if (is_set) {
-				// TODO: apply color
-				(void)top_col;
-				*(p++) = '*';
-			} else {
-				*(p++) = ' ';
-			}
-
-			g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
-		}
-
-		*(p++) = '\n';
 		g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
 	}
 
@@ -151,10 +105,7 @@ bool blot_screen_merge(blot_screen *scr, unsigned count,
 		scr->data_used = len;
 	}
 
-	if (scr->flags & BLOT_RENDER_BRAILLE)
-		return blot_screen_merge_braille(scr, count, cans, error);
-	else
-		return blot_screen_merge_text(scr, count, cans, error);
+	return blot_screen_merge_cans(scr, count, cans, error);
 }
 
 const gunichar * blot_screen_get_text(const blot_screen *scr,

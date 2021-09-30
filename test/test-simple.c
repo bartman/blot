@@ -93,6 +93,8 @@ again:
 	blot_render_flags flags = 0;
 	//flags |= BLOT_RENDER_CLEAR;
 	flags |= BLOT_RENDER_BRAILLE;
+	flags |= BLOT_RENDER_DONT_INVERT_Y_AXIS;
+	//flags |= BLOT_RENDER_NO_UNICODE;
 
 	blot_screen *scr = blot_figure_render(fig, flags, &error);
 	FATAL_ERROR(error);

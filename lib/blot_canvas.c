@@ -14,9 +14,13 @@ blot_canvas * blot_canvas_new(unsigned _cols, unsigned _rows,
 	unsigned rows = _rows;
 
 	if (flags & BLOT_RENDER_BRAILLE) {
+		/* when using braille, we must be allowed to use unicode */
+		RETURN_ERROR(flags & BLOT_RENDER_NO_UNICODE, NULL, error,
+			     "flags BLOT_RENDER_NO_UNICODE and "
+			     "BLOT_RENDER_NO_UNICODE are exclusive");
+
 		/* the font can handle higher density,
 		 * that we will store in the bitmap */
-
 		cols *= BRAILLE_GLYPH_COLS;
 		rows *= BRAILLE_GLYPH_ROWS;
 	}
@@ -35,6 +39,15 @@ blot_canvas * blot_canvas_new(unsigned _cols, unsigned _rows,
 	can->color        = color;
 	can->bitmap_size  = bitmap_size;
 	can->bitmap_bytes = bitmap_bytes;
+
+	if (flags & BLOT_RENDER_BRAILLE) {
+		can->braille.masks = (flags & BLOT_RENDER_DONT_INVERT_Y_AXIS)
+			? braille_masks : braille_upsidedown_masks;
+
+	} else {
+		can->no_braille.plot_char = (flags & BLOT_RENDER_NO_UNICODE)
+			?  L'*' : L'•';
+	}
 
 	memset(can->bitmap, 0, bitmap_bytes);
 

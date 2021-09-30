@@ -26,9 +26,11 @@ typedef enum blot_data_type {
 typedef guint8 blot_color;
 
 typedef enum blot_render_flags {
-	BLOT_RENDER_NONE      = 0,
-	BLOT_RENDER_CLEAR     = 1,
-	BLOT_RENDER_BRAILLE   = 2,
+	BLOT_RENDER_NONE                 = 0x00000000,
+	BLOT_RENDER_CLEAR                = 0x00000001,  // insert screen reset character
+	BLOT_RENDER_BRAILLE              = 0x00000002,  // default is to plot with '•' or '*'
+	BLOT_RENDER_DONT_INVERT_Y_AXIS   = 0x00000004,  // default is to put origin on the bottom left
+	BLOT_RENDER_NO_UNICODE           = 0x00000008,  // no unicode -- use '*'
 } blot_render_flags;
 
 typedef struct blot_xy_limits {

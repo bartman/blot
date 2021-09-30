@@ -12,6 +12,17 @@ typedef struct blot_canvas {
 	blot_render_flags flags;
 	blot_color color;
 
+	union {
+		struct {
+			// only when braille is on
+			guint8 *masks;          // braille_masks or braille_upsidedown_masks
+		} braille;
+		struct {
+			// only when braille is off
+			gunichar plot_char;
+		} no_braille;
+	};
+
 	gsize bitmap_size;              // number of bits available
 	gsize bitmap_bytes;             // byte size of bitmap array
 	guint8 bitmap[] __aligned64;    // must be at end of structure
@@ -42,7 +53,7 @@ static inline bool blot_canvas_set(blot_canvas *can, unsigned col, unsigned row,
 
 		unsigned byte = ((row/4) * (can->cols/2)) + (col/2);
 		unsigned bit = ((row%4)*2) + (col%2);
-		guint8   mask = braille_upsidedown_masks[bit];
+		guint8   mask = can->braille.masks[bit];
 
 		g_assert_cmpuint(byte, <, can->bitmap_bytes);
 
@@ -96,7 +107,7 @@ static inline bool blot_canvas_get(const blot_canvas *can, unsigned col, unsigne
 
 		unsigned byte = ((row/4) * (can->cols/2)) + (col/2);
 		unsigned bit = ((row%4)*2) + (col%2);
-		guint8   mask = braille_upsidedown_masks[bit];
+		guint8   mask = can->braille.masks[bit];
 
 		g_assert_cmpuint(byte, <, can->bitmap_bytes);
 
@@ -135,24 +146,36 @@ static inline bool blot_canvas_get(const blot_canvas *can, unsigned col, unsigne
 	}
 }
 
-static inline char blot_canvas_get_cell(const blot_canvas *can,
-					unsigned cell_col, unsigned cell_row)
+static inline gunichar blot_canvas_get_cell(const blot_canvas *can,
+					    unsigned cell_col, unsigned cell_row)
 {
 	g_assert_nonnull(can);
 
-	unsigned max_cell_cols = can->cols/BRAILLE_GLYPH_COLS;
-	unsigned max_cell_rows = can->rows/BRAILLE_GLYPH_ROWS;
+	if (can->flags & BLOT_RENDER_BRAILLE) {
+		unsigned max_cell_cols = can->cols/BRAILLE_GLYPH_COLS;
+		unsigned max_cell_rows = can->rows/BRAILLE_GLYPH_ROWS;
 
-	if (cell_col >= max_cell_cols)
-		return 0;
+		if (cell_col >= max_cell_cols)
+			return 0;
 
-	if (cell_row >= max_cell_rows)
-		return 0;
+		if (cell_row >= max_cell_rows)
+			return 0;
 
-	unsigned idx = (cell_row * max_cell_cols) + cell_col;
+		unsigned idx = (cell_row * max_cell_cols) + cell_col;
 
-	g_assert_cmpuint(idx, <, can->bitmap_bytes);
+		g_assert_cmpuint(idx, <, can->bitmap_bytes);
 
-	return can->bitmap[idx];
+		unsigned char val = can->bitmap[idx];
+		if (likely (!val))
+			return 0;
+
+		gunichar wch = BRAILLE_GLYPH_BASE + can->bitmap[idx];
+		return wch;
+
+	} else {
+		bool val = blot_canvas_get(can, cell_col, cell_row);
+
+		return val ? can->no_braille.plot_char : 0;
+	}
 }
 
