@@ -1,6 +1,6 @@
 # blot
 
-Blot is a plotting library written in C, that plots data onto the console.
+Blot is a plotting library written in C, that plots data onto the console.  No images, just text -- see examples below.
 
 ## Noteworthy features:
 
@@ -16,7 +16,7 @@ Blot is a plotting library written in C, that plots data onto the console.
 
 blot was only tested on Debian Linux. It is built using standard tools.
 
-        apt install make ninja cmake libglib2.0-dev
+        sudo apt install make ninja-build cmake libglib2.0-dev
 
 ## Building:
 
@@ -44,15 +44,15 @@ Generated from [test-trig.c](test/test-trig.c)
 
 ## Missing features:
 
-  * different plotting modes like lines and bar and histograms (currenlty only plots scatter)
+  * different plotting modes like lines, bar, and histograms (currenlty only supports scatter plots)
   * draw axis lines, numbers and labels
 
 ### Ideas:
 
-  * allow for swapping data from layer to allow for even faster plotting (allow blot to reuse existing allocated structures)
-        * create a figure
-        * all `blot_figure_scatter` multiple times, have it return the `blot_layer`
-        * call `blot_figure_render` and `blot_screen_get_text`
-        * then use `blot_layer_new_data` to swap the data
-        * repeat with `blot_figure_render` and `blot_screen_get_text`
+Allow for swapping data from layer to allow for even faster plotting (allow blot to reuse existing allocated structures)
+  1. create a figure
+  2. all `blot_figure_scatter` multiple times, have it return the `blot_layer`
+  3. call `blot_figure_render` and `blot_screen_get_text`
+  4. then use `blot_layer_new_data` to swap the data
+  5. repeat from step (3)
 
