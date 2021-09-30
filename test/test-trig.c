@@ -5,9 +5,9 @@
 #include "blot.h"
 
 #define DATA_COUNT 100000
-static gint64 data_xs[DATA_COUNT];
-static gint64 sin_ys[DATA_COUNT];
-static gint64 cos_ys[DATA_COUNT];
+static gint32 data_xs[DATA_COUNT];
+static double sin_ys[DATA_COUNT];
+static gint32 cos_ys[DATA_COUNT];
 static gint64 tan_ys[DATA_COUNT];
 
 #define DATA_X_MAX 100000
@@ -70,21 +70,21 @@ again:
 
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_LAYER_INT64,
+	blot_figure_scatter(fig, BLOT_DATA_(INT32,DOUBLE),
 			    DATA_COUNT, data_xs, sin_ys,
 			    data_color, "sin", &error);
 	FATAL_ERROR(error);
 
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_LAYER_INT64,
+	blot_figure_scatter(fig, BLOT_DATA_INT32,
 			    DATA_COUNT, data_xs, cos_ys,
 			    data_color+1, "cos", &error);
 	FATAL_ERROR(error);
 
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_LAYER_INT64,
+	blot_figure_scatter(fig, BLOT_DATA_(INT32,INT64),
 			    DATA_COUNT, data_xs, tan_ys,
 			    data_color+2, "tan", &error);
 	FATAL_ERROR(error);

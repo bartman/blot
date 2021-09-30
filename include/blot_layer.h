@@ -4,6 +4,7 @@
 
 #include <glib.h>
 #include "blot_types.h"
+#include "blot_error.h"
 
 typedef struct blot_layer {
 
@@ -31,8 +32,69 @@ extern void blot_layer_delete(blot_layer *fig);
 
 /* data */
 
-extern bool blot_layer_get_double(blot_layer *lay, unsigned index,
-				  double *x, double *y, GError **);
+static inline bool blot_layer_get_double(const blot_layer *lay, unsigned index,
+					 double *x, double *y, GError **error)
+{
+	RETURN_ERRORx(!lay->ys, false, error, ENOENT, "Y-data is NULL");
+	RETURN_ERRORx(index > lay->count, false, error, ERANGE,
+		      "index %u is out of range %u", index, lay->count);
+	RETURN_ERRORx(lay->data_type >= BLOT_DATA_TYPE_MAX, false, error, EINVAL,
+		      "data_type==%u > MAX (%u)", lay->data_type, BLOT_DATA_TYPE_MAX);
+
+	if (unlikely (!lay->xs)) {
+		/* X data can be NULL, that means we
+		 * are plotting the index as X */
+		*x = index;
+		goto get_y_value;
+	}
+
+	switch (lay->data_type & BLOT_DATA_X_MASK) {
+	case BLOT_DATA_X_INT16:
+		*x = ((const gint16 *)lay->xs)[index];
+		break;
+	case BLOT_DATA_X_INT32:
+		*x = ((const gint32 *)lay->xs)[index];
+		break;
+	case BLOT_DATA_X_INT64:
+		*x = ((const gint64 *)lay->xs)[index];
+		break;
+	case BLOT_DATA_X_FLOAT:
+		*x = ((const float *)lay->xs)[index];
+		break;
+	case BLOT_DATA_X_DOUBLE:
+		*x = ((const double *)lay->xs)[index];
+		break;
+	default:
+		g_error("unexpected X of lay data_type == %02x", lay->data_type);
+		return false;
+	}
+
+get_y_value:
+
+	switch (lay->data_type & BLOT_DATA_Y_MASK) {
+	case BLOT_DATA_Y_INT16:
+		*x = ((const gint16 *)lay->ys)[index];
+		break;
+	case BLOT_DATA_Y_INT32:
+		*y = ((const gint32 *)lay->ys)[index];
+		break;
+	case BLOT_DATA_Y_INT64:
+		*y = ((const gint64 *)lay->ys)[index];
+		break;
+	case BLOT_DATA_Y_FLOAT:
+		*y = ((const float *)lay->ys)[index];
+		break;
+	case BLOT_DATA_Y_DOUBLE:
+		*y = ((const double *)lay->ys)[index];
+		break;
+	default:
+		g_error("unexpected Y of lay data_type == %02x", lay->data_type);
+		return false;
+	}
+
+	return true;
+}
+
 
 /* render */
 

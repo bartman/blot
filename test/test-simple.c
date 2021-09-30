@@ -4,8 +4,7 @@
 #include "blot.h"
 
 #define DATA_COUNT 10000
-static gint64 data_xs[DATA_COUNT];
-static gint64 data_ys[DATA_COUNT];
+static gint64 data[DATA_COUNT];
 
 #define DATA_X_MAX 10000
 #define DATA_Y_MAX 10000
@@ -27,8 +26,7 @@ int main(void)
 	/* build a dummy dataset */
 
 	for (int i=0; i<DATA_COUNT; i++) {
-		data_xs[i] = i;
-		data_ys[i] = i;
+		data[i] = i;
 	}
 
 	/* configure the figure */
@@ -40,8 +38,8 @@ int main(void)
 
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_LAYER_INT64,
-			    DATA_COUNT, data_xs, data_ys,
+	blot_figure_scatter(fig, BLOT_DATA_INT64,
+			    DATA_COUNT, NULL, data,
 			    9, "data", &error);
 	FATAL_ERROR(error);
 

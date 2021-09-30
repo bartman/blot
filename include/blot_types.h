@@ -16,11 +16,28 @@ typedef enum blot_plot_type {
 } blot_plot_type;
 
 typedef enum blot_data_type {
-	BLOT_LAYER_INT32,
-	BLOT_LAYER_INT64,
-	BLOT_LAYER_FLOAT,
-	BLOT_LAYER_DOUBLE,
-	BLOT_DATA_TYPE_MAX
+	BLOT_DATA_X_MASK                = 0x000F,
+	BLOT_DATA_X_INT16               = 0x0000,
+	BLOT_DATA_X_INT32               = 0x0001,
+	BLOT_DATA_X_INT64               = 0x0002,
+	BLOT_DATA_X_FLOAT               = 0x0003,
+	BLOT_DATA_X_DOUBLE              = 0x0004,
+
+	BLOT_DATA_Y_MASK                = 0x00F0,
+	BLOT_DATA_Y_INT16               = 0x0000,
+	BLOT_DATA_Y_INT32               = 0x0010,
+	BLOT_DATA_Y_INT64               = 0x0020,
+	BLOT_DATA_Y_FLOAT               = 0x0030,
+	BLOT_DATA_Y_DOUBLE              = 0x0040,
+
+#define BLOT_DATA_(X,Y) (BLOT_DATA_X_##X  | BLOT_DATA_Y_##Y)
+
+	BLOT_DATA_INT32                 = BLOT_DATA_(INT32,  INT32),
+	BLOT_DATA_INT64                 = BLOT_DATA_(INT64,  INT64),
+	BLOT_DATA_FLOAT                 = BLOT_DATA_(FLOAT,  FLOAT),
+	BLOT_DATA_DOUBLE                = BLOT_DATA_(DOUBLE, DOUBLE),
+
+	BLOT_DATA_TYPE_MAX              = 0x00FF
 } blot_data_type;
 
 typedef guint8 blot_color;
