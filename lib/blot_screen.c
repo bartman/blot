@@ -1,5 +1,6 @@
 /* blot: screen represents the final render object */
 /* vim: set noet sw=8 ts=8 tw=80: */
+#include <wchar.h>
 #include "blot_screen.h"
 #include "blot_error.h"
 #include "blot_canvas.h"
@@ -99,8 +100,8 @@ bool blot_screen_merge(blot_screen *scr, unsigned count,
 
 	scr->data_used = 0;
 	if (scr->flags & BLOT_RENDER_CLEAR) {
-		gsize len = strlen(CLR_SCR);
-		memcpy(scr->data, L_CLR_SCR, len*sizeof(gunichar));
+		gsize len = wcslen(L(CLR_SCR));
+		memcpy(scr->data, L(CLR_SCR), len*sizeof(gunichar));
 		scr->data_used = len;
 	}
 

@@ -61,3 +61,10 @@
 #endif
 
 #define __aligned64 __attribute__((aligned(64)))
+
+#if __SIZEOF_WCHAR_T__ != 4
+#error expecting sizeof(wchar_t) == 4
+#endif
+#define _L(x) L ## x
+#define L(x) _L(x)
+
