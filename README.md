@@ -30,13 +30,13 @@ simplify the build process (it invokes cmake in the `build` subdirectory).
 blot is being used in other projects as a library, but it comes with some
 examples.
 
-Generated from (test-simple.c)[test/test-simple.c]
+Generated from [test-simple.c](test/test-simple.c)
 
         ./build/test/test-simple
 
 ![simple example](examples/simple.png)
 
-Generated from (test-trig.c)[test/test-trig.c]
+Generated from [test-trig.c](test/test-trig.c)
 
         ./build/test/test-trig
 
@@ -50,9 +50,9 @@ Generated from (test-trig.c)[test/test-trig.c]
 ### Ideas:
 
   * allow for swapping data from layer to allow for even faster plotting (allow blot to reuse existing allocated structures)
-        # create a figure
-        # all `blot_figure_scatter` multiple times, have it return the `blot_layer`
-        # call `blot_figure_render` and `blot_screen_get_text`
-        # then use `blot_layer_new_data` to swap the data
-        # goto step 3
+        * create a figure
+        * all `blot_figure_scatter` multiple times, have it return the `blot_layer`
+        * call `blot_figure_render` and `blot_screen_get_text`
+        * then use `blot_layer_new_data` to swap the data
+        * repeat with `blot_figure_render` and `blot_screen_get_text`
 
