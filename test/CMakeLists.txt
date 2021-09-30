@@ -8,4 +8,5 @@ ADD_EXECUTABLE(test-simple
 
 TARGET_LINK_LIBRARIES(test-simple
         blot
+        -lm
 )

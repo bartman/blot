@@ -50,12 +50,12 @@ bool blot_figure_set_axis_color(blot_figure *fig, blot_color color, GError **err
 
 
 bool blot_figure_set_screen_size(blot_figure *fig,
-					unsigned columns, unsigned rows, GError **error)
+					unsigned cols, unsigned rows, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
 
 	fig->screen_size_set = true;
-	fig->columns = columns;
+	fig->cols = cols;
 	fig->rows = rows;
 	return true;
 }
@@ -154,11 +154,16 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 	RETURN_EINVAL_IF(fig->layers==NULL, NULL, error);
 
 	if (!fig->screen_size_set) {
-		bool ok = blot_terminal_get_size(&fig->columns, &fig->rows, error);
+		int term_cols, term_rows;
+		bool ok = blot_terminal_get_size(&term_cols, &term_rows, error);
 		RETURN_IF(!ok, NULL);
+
+		/* use the entire terminal screen, w/o the border */
+		fig->cols = max_t(unsigned, term_cols-5, BLOT_MIN_COLS);
+		fig->rows = max_t(unsigned, term_rows-5, BLOT_MIN_ROWS);
 	}
 
-	RETURN_EINVAL_IF(fig->columns<BLOT_MIN_COLUMNS, NULL, error);
+	RETURN_EINVAL_IF(fig->cols<BLOT_MIN_COLS, NULL, error);
 	RETURN_EINVAL_IF(fig->rows<BLOT_MIN_ROWS, NULL, error);
 
 	blot_xy_limits lim = blot_figure_auto_limits(fig);
@@ -170,7 +175,7 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 		blot_layer *lay = fig->layers[li];
 
 		cans[li] = blot_layer_render(lay, &lim,
-					     fig->columns, fig->rows,
+					     fig->cols, fig->rows,
 					     flags, error);
 		if (cans[li])
 			continue;
@@ -181,7 +186,7 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 		return NULL;
 	}
 
-	blot_screen *scr = blot_screen_new(fig->columns, fig->rows,
+	blot_screen *scr = blot_screen_new(fig->cols, fig->rows,
 					   flags, error);
 	if (!scr) {
 		__free_canvases_array(cans, fig->layer_count);

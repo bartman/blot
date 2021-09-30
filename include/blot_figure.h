@@ -5,7 +5,7 @@
 #include <glib.h>
 #include "blot_types.h"
 
-#define BLOT_MIN_COLUMNS 10
+#define BLOT_MIN_COLS 10
 #define BLOT_MIN_ROWS 10
 
 typedef struct blot_figure {
@@ -13,7 +13,7 @@ typedef struct blot_figure {
 	blot_color axis_color;
 
 	bool screen_size_set;
-	unsigned columns, rows;
+	unsigned cols, rows;
 
 	bool x_limits_set;
 	bool y_limits_set;
@@ -36,7 +36,7 @@ extern void blot_figure_delete(blot_figure *fig);
 extern bool blot_figure_set_axis_color(blot_figure *fig, blot_color, GError **);
 
 extern bool blot_figure_set_screen_size(blot_figure *fig,
-					unsigned columns, unsigned rows, GError **);
+					unsigned cols, unsigned rows, GError **);
 
 extern bool blot_figure_set_x_limits(blot_figure *fig,
 				     double x_min, double x_max, GError **);

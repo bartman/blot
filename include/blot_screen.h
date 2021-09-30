@@ -8,15 +8,15 @@
 
 typedef struct blot_screen {
 	blot_render_flags flags;
-	unsigned columns, rows;
-	gsize data_size, data_used;
+	unsigned cols, rows;
+	gsize data_size, data_used;     // in number of gunichar
 
-	char data[] __aligned64; // must be at end of structure
+	gunichar data[] __aligned64;    // must be at end of structure
 } blot_screen;
 
 /* create/delete */
 
-extern blot_screen * blot_screen_new(unsigned columns, unsigned rows,
+extern blot_screen * blot_screen_new(unsigned cols, unsigned rows,
 				     blot_render_flags flags, GError **);
 extern void blot_screen_delete(blot_screen *scr);
 
@@ -26,5 +26,5 @@ extern bool blot_screen_merge(blot_screen *scr, unsigned count,
 			      struct blot_canvas *const*cans,
 			      GError **);
 
-extern const char * blot_screen_get_text(const blot_screen *scr,
-					 gsize *txt_size, GError**);
+extern const gunichar * blot_screen_get_text(const blot_screen *scr,
+					     gsize *txt_size, GError**);

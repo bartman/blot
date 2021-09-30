@@ -5,5 +5,5 @@
 #include <glib.h>
 #include "blot_types.h"
 
-extern bool blot_terminal_get_size(unsigned *columns, unsigned *rows, GError **);
+extern bool blot_terminal_get_size(int *cols, int *rows, GError **);
 

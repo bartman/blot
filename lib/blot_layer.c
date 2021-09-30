@@ -53,13 +53,13 @@ static layer_to_canvas_fn blot_layer_to_canvas_fns[BLOT_PLOT_TYPE_MAX] = {
 
 struct blot_canvas * blot_layer_render(blot_layer *lay,
 				       const blot_xy_limits *lim,
-				       unsigned columns, unsigned rows,
+				       unsigned cols, unsigned rows,
 				       blot_render_flags flags,
 				       GError **error)
 {
 	RETURN_EFAULT_IF(lay==NULL, NULL, error);
 
-	blot_canvas *can = blot_canvas_new(columns, rows, flags, lay->color, error);
+	blot_canvas *can = blot_canvas_new(cols, rows, flags, lay->color, error);
 	RETURN_IF(!can, NULL);
 
 	layer_to_canvas_fn fn = blot_layer_to_canvas_fns[lay->plot_type];
@@ -85,22 +85,19 @@ static bool blot_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 
 	for (int di=0; di<lay->count; di++) {
 		// compute location
-		double dx = (double)(xs[di] - lim->x_min) * can->columns / x_range;
-		double dy = (double)(ys[di] - lim->y_min) * can->rows    / y_range;
+		double dx = (double)(xs[di] - lim->x_min) * can->cols / x_range;
+		double dy = (double)(ys[di] - lim->y_min) * can->rows / y_range;
 
 		// convert to integer
 		unsigned ux = dx;
 		unsigned uy = dy;
 
 		// out of bounds
-		if (ux >= can->columns || uy >= can->rows)
+		if (ux >= can->cols || uy >= can->rows)
 			continue;
 
-		// y axis is inverted on the screen
-		uy = can->rows - uy - 1;
-
 		// and finally plot the point
-		blot_canvas_set(can, ux, uy, '*');
+		blot_canvas_set(can, ux, uy, 1);
 	}
 
 	return true;

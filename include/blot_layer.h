@@ -35,7 +35,7 @@ extern void blot_layer_delete(blot_layer *fig);
 
 extern struct blot_canvas * blot_layer_render(blot_layer *lay,
 					      const blot_xy_limits *lim,
-					      unsigned columns, unsigned rows,
+					      unsigned cols, unsigned rows,
 					      blot_render_flags flags,
 					      GError **);
 

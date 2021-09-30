@@ -5,56 +5,154 @@
 #include <glib.h>
 #include "blot_types.h"
 #include "blot_utils.h"
+#include "blot_braille.h"
 
 typedef struct blot_canvas {
-	unsigned columns, rows;
+	unsigned cols, rows;
 	blot_render_flags flags;
 	blot_color color;
-	gsize data_size;
 
-	char data[] __aligned64; // must be at end of structure
+	gsize bitmap_size;              // number of bits available
+	gsize bitmap_bytes;             // byte size of bitmap array
+	guint8 bitmap[] __aligned64;    // must be at end of structure
 } blot_canvas;
+
+#define BLOT_CANVAS_BITMAP_CELL_SIZE 8
 
 /* create/delete */
 
-extern blot_canvas * blot_canvas_new(unsigned columns, unsigned rows,
+extern blot_canvas * blot_canvas_new(unsigned cols, unsigned rows,
 				     blot_render_flags flags, blot_color color,
 				     GError **);
 extern void blot_canvas_delete(blot_canvas *fig);
 
 /* render */
 
-static inline bool blot_canvas_set(blot_canvas *can, unsigned col, unsigned row, char ch)
+static inline bool blot_canvas_set(blot_canvas *can, unsigned col, unsigned row, bool val)
 {
 	g_assert_nonnull(can);
 
-	if (col >= can->columns)
+	if (col >= can->cols)
 		return false;
 
 	if (row >= can->rows)
 		return false;
 
-	unsigned idx = (row * can->columns) + col;
+	if (can->flags & BLOT_RENDER_BRAILLE) {
 
-	g_assert_cmpuint(idx, <, can->data_size);
+		unsigned byte = ((row/4) * (can->cols/2)) + (col/2);
+		unsigned bit = ((row%4)*2) + (col%2);
+		guint8   mask = braile_masks[bit];
 
-	can->data[idx] = ch;
+		g_assert_cmpuint(byte, <, can->bitmap_bytes);
+
+#if 0
+		gunichar wch = BRAILLE_GLYPH_BASE + mask;
+		g_print("%s[%u,%u] = %u, bitmap[%u] & 0x%02x (%u) -> %lc\n",
+			__func__, col, row, val, byte, mask, bit, wch);
+#endif
+
+		if (val)
+			can->bitmap[byte] |= mask;
+		else
+			can->bitmap[byte] &= ~(mask);
+
+	} else {
+		unsigned idx = (row * can->cols) + col;
+
+		g_assert_cmpuint(idx, <, can->bitmap_size);
+
+		unsigned byte = idx / BLOT_CANVAS_BITMAP_CELL_SIZE;
+		unsigned bit  = idx % BLOT_CANVAS_BITMAP_CELL_SIZE;
+		guint8   mask = 1<<bit;
+
+		g_assert_cmpuint(byte, <, can->bitmap_bytes);
+
+#if 0
+		g_print("%s[%u,%u] = %u, idx=%u, bitmap[%u] & 0x%02x (%u)\n",
+			__func__, col, row, val, idx, byte, mask, bit);
+#endif
+
+		if (val)
+			can->bitmap[byte] |= mask;
+		else
+			can->bitmap[byte] &= ~(mask);
+	}
+
 	return true;
 }
 
-static inline char blot_canvas_get(const blot_canvas *can, unsigned col, unsigned row)
+static inline bool blot_canvas_get(const blot_canvas *can, unsigned col, unsigned row)
 {
 	g_assert_nonnull(can);
 
-	if (col >= can->columns)
+	if (col >= can->cols)
 		return 0;
 
 	if (row >= can->rows)
 		return 0;
 
-	unsigned idx = (row * can->columns) + col;
+	if (can->flags & BLOT_RENDER_BRAILLE) {
 
-	g_assert_cmpuint(idx, <, can->data_size);
+		unsigned byte = ((row/4) * (can->cols/2)) + (col/2);
+		unsigned bit = ((row%4)*2) + (col%2);
+		guint8   mask = braile_masks[bit];
 
-	return can->data[idx];
+		g_assert_cmpuint(byte, <, can->bitmap_bytes);
+
+		bool val = !!(can->bitmap[byte] & (mask));
+
+#if 0
+		if (val) {
+			gunichar wch = BRAILLE_GLYPH_BASE + mask;
+			g_print("%s[%u,%u] = %u, bitmap[%u] & 0x%02x (%u) -> %lc\n",
+				__func__, col, row, val, byte, mask, bit, wch);
+		}
+#endif
+
+		return val;
+
+	} else {
+		unsigned idx = (row * can->cols) + col;
+
+		g_assert_cmpuint(idx, <, can->bitmap_size);
+
+		unsigned byte = idx / BLOT_CANVAS_BITMAP_CELL_SIZE;
+		unsigned bit  = idx % BLOT_CANVAS_BITMAP_CELL_SIZE;
+		unsigned mask = 1<<bit;
+
+		g_assert_cmpuint(byte, <, can->bitmap_bytes);
+
+		bool val = !!(can->bitmap[byte] & (mask));
+
+#if 0
+		if (val)
+			g_print("%s[%u,%u] = %u, idx=%u, bitmap[%u] & 0x%02x (%u)\n",
+				__func__, col, row, val, idx, byte, mask, bit);
+#endif
+
+		return val;
+	}
 }
+
+static inline char blot_canvas_get_cell(const blot_canvas *can,
+					unsigned cell_col, unsigned cell_row)
+{
+	g_assert_nonnull(can);
+
+	unsigned max_cell_cols = can->cols/BRAILLE_GLYPH_COLS;
+	unsigned max_cell_rows = can->rows/BRAILLE_GLYPH_ROWS;
+
+	if (cell_col >= max_cell_cols)
+		return 0;
+
+	if (cell_row >= max_cell_rows)
+		return 0;
+
+	unsigned idx = (cell_row * max_cell_cols) + cell_col;
+
+	g_assert_cmpuint(idx, <, can->bitmap_bytes);
+
+	return can->bitmap[idx];
+}
+
