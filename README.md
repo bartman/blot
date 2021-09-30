@@ -32,6 +32,11 @@ examples.
 
         ./build/test/test-simple
 
+![simple example](examples/simple.png)
+
+        ./build/test/test-simple
+
+![trig example](examples/trig.png)
 
 ## Missing features:
 
