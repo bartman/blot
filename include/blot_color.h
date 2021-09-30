@@ -39,6 +39,7 @@ enum {
 #define COL_RESET  "\e[0m"
 //#define CLR_SCR    "\033c"    // this one also drops scrollback in tmux
 #define CLR_SCR    "\033[2J\033[H"
+#define L_CLR_SCR    L"\033[2J\033[H"
 
 extern bool show_colour;
 

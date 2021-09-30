@@ -76,7 +76,6 @@ static bool blot_screen_merge_cans(blot_screen *scr, unsigned count,
 				// TODO: apply color
 				(void)top_col;
 				wch = top_cell;
-				//wch = 0x2605;
 			}
 			*(p++) = wch;
 			g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
@@ -101,7 +100,7 @@ bool blot_screen_merge(blot_screen *scr, unsigned count,
 	scr->data_used = 0;
 	if (scr->flags & BLOT_RENDER_CLEAR) {
 		gsize len = strlen(CLR_SCR);
-		memcpy(scr->data, CLR_SCR, len);
+		memcpy(scr->data, L_CLR_SCR, len*sizeof(gunichar));
 		scr->data_used = len;
 	}
 

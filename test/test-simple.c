@@ -91,7 +91,7 @@ again:
 	/* render the plots */
 
 	blot_render_flags flags = 0;
-	//flags |= BLOT_RENDER_CLEAR;
+	flags |= BLOT_RENDER_CLEAR;
 	flags |= BLOT_RENDER_BRAILLE;
 	flags |= BLOT_RENDER_DONT_INVERT_Y_AXIS;
 	//flags |= BLOT_RENDER_NO_UNICODE;
@@ -107,7 +107,7 @@ again:
 
 	double t_render = blot_double_time();
 
-	g_print("%s%ls", CLR_SCR, txt);
+	g_print("%ls", txt);
 
 	blot_screen_delete(scr);
 
@@ -115,7 +115,7 @@ again:
 
 	double t_end = blot_double_time();
 
-	g_print("time: render=%.6f show=%.6f",
+	g_print("time: render=%.6f show=%.6f\n",
 		t_render-t_start, t_end-t_render);
 	usleep(50000);
 
