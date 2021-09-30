@@ -4,10 +4,11 @@
 #include "blot.h"
 
 #define DATA_COUNT 10000
-static gint64 data[DATA_COUNT];
 
 #define DATA_X_MAX 10000
 #define DATA_Y_MAX 10000
+
+#define LINE_COUNT 2
 
 #define SCREEN_WIDTH  80
 #define SCREEN_HEIGHT 25
@@ -25,9 +26,14 @@ int main(void)
 
 	/* build a dummy dataset */
 
+	static gint64 data[DATA_COUNT];
+
 	for (int i=0; i<DATA_COUNT; i++) {
 		data[i] = i;
 	}
+
+	static gint32 line_x[LINE_COUNT] = { 0, DATA_Y_MAX };
+	static gint32 line_y[LINE_COUNT] = { DATA_X_MAX, 0 };
 
 	/* configure the figure */
 
@@ -40,7 +46,14 @@ int main(void)
 
 	blot_figure_scatter(fig, BLOT_DATA_INT64,
 			    DATA_COUNT, NULL, data,
-			    9, "data", &error);
+			    9, "scatter", &error);
+	FATAL_ERROR(error);
+
+	/* add a line plot */
+
+	blot_figure_line(fig, BLOT_DATA_INT32,
+			    LINE_COUNT, line_x, line_y,
+			    10, "line", &error);
 	FATAL_ERROR(error);
 
 	/* render the plots */
