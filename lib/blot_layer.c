@@ -116,32 +116,42 @@ static inline void blot_layer_draw_line(blot_canvas *can,
 	double ax = abs_t(double,dx);
 	double ay = abs_t(double,dy);
 
+	g_assert_cmpuint(ax, >=, 0);
+	g_assert_cmpuint(ay, >=, 0);
+
 	if (ax<=1 && ay<=1) {
 		blot_canvas_set(can, x0, y0, 1);
 		return;
 	}
 
-	if (ax < ay ) {
-		double m = dx/dy;
-		double n = dy==ay ? 1 : -1;
+	if (ax > ay) {
+		if (x0 < x1) {
+			double m = dy/dx;
+			double x, y;
 
-		double x=x0, y=y0;
-		for (int i=0; i<=ay; i++) {
-			blot_canvas_set(can, x, y, 1);
+			for (x=x0, y=y0; x<=x1; x++, y+=m)
+				blot_canvas_set(can, x, y, 1);
+		} else {
+			double m = dy/dx;
+			double x, y;
 
-			x += m;
-			y += n;
+			for (x=x0, y=y0; x>=x1; x--, y-=m)
+				blot_canvas_set(can, x, y, 1);
 		}
-	} else {
-		double m = dx==ax ? 1 : -1;
-		double n = dy/dx;
 
-		double x=x0, y=y0;
-		for (int i=0; i<=ax; i++) {
-			blot_canvas_set(can, x, y, 1);
+	} else /* ax < ay */ {
+		if (y0 < y1) {
+			double m = dx/dy;
+			double x, y;
 
-			x += m;
-			y += n;
+			for (x=x0, y=y0; y<=y1; y++, x+=m)
+				blot_canvas_set(can, x, y, 1);
+		} else {
+			double m = dx/dy;
+			double x, y;
+
+			for (x=x0, y=y0; y>=y1; y--, x-=m)
+				blot_canvas_set(can, x, y, 1);
 		}
 	}
 }
