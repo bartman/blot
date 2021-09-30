@@ -4,14 +4,14 @@
 
 #include <time.h>
 
-#define MSEC_PER_SEC 1000ull
-#define USEC_PER_SEC 1000000ull
-#define NSEC_PER_SEC 1000000000ull
+#define BLOT_MSEC_PER_SEC 1000ull
+#define BLOT_USEC_PER_SEC 1000000ull
+#define BLOT_NSEC_PER_SEC 1000000000ull
 
-#define USEC_PER_MSEC 1000ull
-#define NSEC_PER_MSEC 1000000ull
+#define BLOT_USEC_PER_MSEC 1000ull
+#define BLOT_NSEC_PER_MSEC 1000000ull
 
-#define NSEC_PER_USEC 1000ull
+#define BLOT_NSEC_PER_USEC 1000ull
 
 static inline double blot_double_time(void)
 {
@@ -21,7 +21,7 @@ static inline double blot_double_time(void)
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	sec = (double)ts.tv_sec
-	    + (double)ts.tv_nsec / NSEC_PER_SEC;
+	    + (double)ts.tv_nsec / BLOT_NSEC_PER_SEC;
 
 	return sec;
 }
