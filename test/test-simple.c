@@ -25,10 +25,14 @@ int main(void)
 
 	setlocale(LC_CTYPE, "");
 
+	unsigned offset = 0;
+again:
+
 	/* build a dummy dataset */
 
 	for (int i=0; i<DATA_COUNT; i++) {
-		double x = (double)i * 2 * M_PI / DATA_COUNT;
+		double x = (double)(i+offset) * 2 * M_PI / DATA_COUNT;
+
 		double y = 1 + sin(x);
 
 		data_xs[i] = i * DATA_X_MAX / DATA_COUNT;
@@ -85,16 +89,15 @@ int main(void)
 	const gunichar *txt = blot_screen_get_text(scr, &txt_size, &error);
 	FATAL_ERROR(error);
 
-	g_print("txt_size=%zu\n", txt_size);
-	g_print("------------------------------------------------------------\n");
-	//g_print("%.*ls\n", (unsigned)txt_size, txt);
-	g_print("%ls", txt);
-	//write(0, txt, txt_size);
-	g_print("------------------------------------------------------------\n");
+	g_print("%s%ls", CLR_SCR, txt);
+	usleep(10000);
 
 	blot_screen_delete(scr);
 
 	blot_figure_delete(fig);
+
+	offset ++;
+	goto again;
 
 	return 0;
 }
