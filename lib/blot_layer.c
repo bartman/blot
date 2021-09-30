@@ -90,8 +90,8 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 static bool blot_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 			 blot_canvas *can, GError **error)
 {
-	double x_range = lim->x_max - lim->x_min;
-	double y_range = lim->y_max - lim->y_min;
+	double x_range = lim->x_max - lim->x_min + 1;
+	double y_range = lim->y_max - lim->y_min + 1;
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location
@@ -130,8 +130,8 @@ static bool blot_scatter_int64(const blot_layer *lay, const blot_xy_limits *lim,
 
 	RETURN_ERRORx(!lay->ys, false, error, ENOENT, "Y-data is NULL");
 
-	double x_range = lim->x_max - lim->x_min;
-	double y_range = lim->y_max - lim->y_min;
+	double x_range = lim->x_max - lim->x_min + 1;
+	double y_range = lim->y_max - lim->y_min + 1;
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location
