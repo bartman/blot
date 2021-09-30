@@ -42,7 +42,7 @@ static inline bool blot_canvas_set(blot_canvas *can, unsigned col, unsigned row,
 
 		unsigned byte = ((row/4) * (can->cols/2)) + (col/2);
 		unsigned bit = ((row%4)*2) + (col%2);
-		guint8   mask = braile_masks[bit];
+		guint8   mask = braille_upsidedown_masks[bit];
 
 		g_assert_cmpuint(byte, <, can->bitmap_bytes);
 
@@ -96,7 +96,7 @@ static inline bool blot_canvas_get(const blot_canvas *can, unsigned col, unsigne
 
 		unsigned byte = ((row/4) * (can->cols/2)) + (col/2);
 		unsigned bit = ((row%4)*2) + (col%2);
-		guint8   mask = braile_masks[bit];
+		guint8   mask = braille_upsidedown_masks[bit];
 
 		g_assert_cmpuint(byte, <, can->bitmap_bytes);
 
