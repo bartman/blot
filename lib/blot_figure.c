@@ -193,13 +193,13 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 		return NULL;
 	}
 
-	bool merge_ok = blot_screen_merge(scr, fig->layer_count, cans, error);
+	bool render_ok = blot_screen_render(scr, fig->layer_count, cans, error);
 
 	/* we no longer need the canvases */
 	__free_canvases_array(cans, fig->layer_count);
 
-	/* if merge to screen failed, we return */
-	if (!merge_ok) {
+	/* if render to screen failed, we return */
+	if (!render_ok) {
 		blot_screen_delete(scr);
 		return NULL;
 	}

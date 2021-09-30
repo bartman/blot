@@ -92,9 +92,9 @@ static bool blot_screen_merge_cans(blot_screen *scr, unsigned count,
 	return true;
 }
 
-bool blot_screen_merge(blot_screen *scr, unsigned count,
-		       struct blot_canvas *const*cans,
-		       GError **error)
+bool blot_screen_render(blot_screen *scr, unsigned count,
+			struct blot_canvas *const*cans,
+			GError **error)
 {
 	RETURN_EFAULT_IF(scr==NULL, NULL, error);
 

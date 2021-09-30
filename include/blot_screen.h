@@ -20,9 +20,9 @@ extern blot_screen * blot_screen_new(unsigned cols, unsigned rows,
 				     blot_render_flags flags, GError **);
 extern void blot_screen_delete(blot_screen *scr);
 
-/* merge/render */
+/* render */
 
-extern bool blot_screen_merge(blot_screen *scr, unsigned count,
+extern bool blot_screen_render(blot_screen *scr, unsigned count,
 			      struct blot_canvas *const*cans,
 			      GError **);
 
