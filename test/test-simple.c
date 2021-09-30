@@ -48,7 +48,6 @@ int main(void)
 	/* render the plots */
 
 	blot_render_flags flags = 0;
-	flags |= BLOT_RENDER_CLEAR;
 	flags |= BLOT_RENDER_BRAILLE;
 	flags |= BLOT_RENDER_LEGEND_BELOW;
 
