@@ -53,6 +53,9 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 		const struct blot_layer *lay = lays[ci];
 		const char *colstr = fg(lay->color);
 
+		if (!lay->label)
+			continue;
+
 		wchar_t star = 0x2605;
 		int len = swprintf(p, end-p, L"%s%lc %s %s\n",
 				   colstr, star, COL_RESET,
