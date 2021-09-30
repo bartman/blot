@@ -3,6 +3,7 @@
 #pragma once
 
 #include <glib.h>
+#include <wchar.h>
 #include "blot_types.h"
 
 enum {
@@ -34,34 +35,34 @@ enum {
 	BRIGHT_WHITE   = 8 + WHITE,
 };
 #define COL_BUF_LEN 16
-#define COL_FG_FMT "\e[38;5;%dm"
-#define COL_BG_FMT "\e[48;5;%dm"
-#define COL_RESET  "\e[0m"
+#define COL_FG_FMT "\033[38;5;%dm"
+#define COL_BG_FMT "\033[48;5;%dm"
+
+#define COL_RESET  "\033[0m"
 //#define CLR_SCR    "\033c"    // this one also drops scrollback in tmux
 #define CLR_SCR    "\033[2J\033[H"
 
-extern bool show_colour;
+extern bool have_color_support;
 
-static inline const char *mkcol(char *buf, const char *fmt, int col, bool bright)
+/* macros to build char colors */
+
+static inline const char *mkcol(char *buf, const char *fmt, int col)
 {
-	if (bright)
-		col += 8;
 	g_snprintf(buf, COL_BUF_LEN, fmt, col);
 	return buf;
 }
-#define fg(col,bright) ({ \
+#define fg(col) ({ \
 	char _buf[COL_BUF_LEN] = {0,}; \
 	const char *res = ""; \
-	if (show_colour) \
-		res = mkcol(_buf, COL_FG_FMT, col, bright); \
+	if (have_color_support) \
+		res = mkcol(_buf, COL_FG_FMT, col); \
 	res; \
 })
-#define bg(col,bright) ({ \
+#define bg(col) ({ \
 	char _buf[COL_BUF_LEN] = {0,}; \
 	const char *res = ""; \
-	if (show_colour) \
-		res = mkcol(_buf, COL_BG_FMT, col, bright); \
+	if (have_color_support) \
+		res = mkcol(_buf, COL_BG_FMT, col); \
 	res; \
 })
-
 

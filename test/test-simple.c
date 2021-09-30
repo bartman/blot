@@ -1,4 +1,5 @@
 #include <glib.h>
+#include <stdio.h>
 #include <locale.h>
 #include <math.h>
 #include "blot.h"
@@ -95,6 +96,7 @@ again:
 	flags |= BLOT_RENDER_BRAILLE;
 	flags |= BLOT_RENDER_DONT_INVERT_Y_AXIS;
 	//flags |= BLOT_RENDER_NO_UNICODE;
+	//flags |= BLOT_RENDER_NO_COLOR;
 
 	blot_screen *scr = blot_figure_render(fig, flags, &error);
 	FATAL_ERROR(error);
@@ -102,12 +104,12 @@ again:
 	/* print it to screen */
 
 	gsize txt_size = 0;
-	const gunichar *txt = blot_screen_get_text(scr, &txt_size, &error);
+	const wchar_t *txt = blot_screen_get_text(scr, &txt_size, &error);
 	FATAL_ERROR(error);
 
 	double t_render = blot_double_time();
 
-	g_print("%ls", txt);
+	printf("%ls\n", txt);
 
 	blot_screen_delete(scr);
 
@@ -115,7 +117,7 @@ again:
 
 	double t_end = blot_double_time();
 
-	g_print("time: render=%.6f show=%.6f\n",
+	printf("time: render=%.6f show=%.6f\n",
 		t_render-t_start, t_end-t_render);
 	usleep(50000);
 

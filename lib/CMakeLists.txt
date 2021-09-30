@@ -1,6 +1,7 @@
 SET(LIBBLOT_SRCS
         blot_braille.c
         blot_canvas.c
+        blot_color.c
         blot_figure.c
         blot_layer.c
         blot_screen.c

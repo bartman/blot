@@ -31,6 +31,7 @@ typedef enum blot_render_flags {
 	BLOT_RENDER_BRAILLE              = 0x00000002,  // default is to plot with '•' or '*'
 	BLOT_RENDER_DONT_INVERT_Y_AXIS   = 0x00000004,  // default is to put origin on the bottom left
 	BLOT_RENDER_NO_UNICODE           = 0x00000008,  // no unicode -- use '*'
+	BLOT_RENDER_NO_COLOR             = 0x00000010,  // no color
 } blot_render_flags;
 
 typedef struct blot_xy_limits {

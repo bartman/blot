@@ -3,6 +3,7 @@
 #pragma once
 
 #include <glib.h>
+#include <wchar.h>
 #include "blot_types.h"
 #include "blot_utils.h"
 
@@ -11,7 +12,7 @@ typedef struct blot_screen {
 	unsigned cols, rows;
 	gsize data_size, data_used;     // in number of gunichar
 
-	gunichar data[] __aligned64;    // must be at end of structure
+	wchar_t data[] __aligned64;    // must be at end of structure
 } blot_screen;
 
 /* create/delete */
@@ -26,5 +27,5 @@ extern bool blot_screen_render(blot_screen *scr, unsigned count,
 			      struct blot_canvas *const*cans,
 			      GError **);
 
-extern const gunichar * blot_screen_get_text(const blot_screen *scr,
+extern const wchar_t * blot_screen_get_text(const blot_screen *scr,
 					     gsize *txt_size, GError**);

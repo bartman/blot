@@ -19,7 +19,7 @@ typedef struct blot_canvas {
 		} braille;
 		struct {
 			// only when braille is off
-			gunichar plot_char;
+			wchar_t plot_char;
 		} no_braille;
 	};
 
@@ -58,7 +58,7 @@ static inline bool blot_canvas_set(blot_canvas *can, unsigned col, unsigned row,
 		g_assert_cmpuint(byte, <, can->bitmap_bytes);
 
 #if 0
-		gunichar wch = BRAILLE_GLYPH_BASE + mask;
+		wchar_t wch = BRAILLE_GLYPH_BASE + mask;
 		g_print("%s[%u,%u] = %u, bitmap[%u] & 0x%02x (%u) -> %lc\n",
 			__func__, col, row, val, byte, mask, bit, wch);
 #endif
@@ -115,7 +115,7 @@ static inline bool blot_canvas_get(const blot_canvas *can, unsigned col, unsigne
 
 #if 0
 		if (val) {
-			gunichar wch = BRAILLE_GLYPH_BASE + mask;
+			wchar_t wch = BRAILLE_GLYPH_BASE + mask;
 			g_print("%s[%u,%u] = %u, bitmap[%u] & 0x%02x (%u) -> %lc\n",
 				__func__, col, row, val, byte, mask, bit, wch);
 		}
@@ -146,7 +146,7 @@ static inline bool blot_canvas_get(const blot_canvas *can, unsigned col, unsigne
 	}
 }
 
-static inline gunichar blot_canvas_get_cell(const blot_canvas *can,
+static inline wchar_t blot_canvas_get_cell(const blot_canvas *can,
 					    unsigned cell_col, unsigned cell_row)
 {
 	g_assert_nonnull(can);
@@ -169,7 +169,7 @@ static inline gunichar blot_canvas_get_cell(const blot_canvas *can,
 		if (likely (!val))
 			return 0;
 
-		gunichar wch = BRAILLE_GLYPH_BASE + can->bitmap[idx];
+		wchar_t wch = BRAILLE_GLYPH_BASE + can->bitmap[idx];
 		return wch;
 
 	} else {

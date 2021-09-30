@@ -1,6 +1,5 @@
 /* blot: screen represents the final render object */
 /* vim: set noet sw=8 ts=8 tw=80: */
-#include <wchar.h>
 #include "blot_screen.h"
 #include "blot_error.h"
 #include "blot_canvas.h"
@@ -21,7 +20,7 @@ blot_screen * blot_screen_new(unsigned cols, unsigned rows,
 	// assume every character is escaped (overkill)
 	char_len *= 16;
 
-	gsize data_bytes = char_len * sizeof(gunichar);
+	gsize data_bytes = char_len * sizeof(wchar_t);
 	gsize total_size = sizeof(blot_screen) + data_bytes;
 	blot_screen *scr = g_malloc(total_size);
 	RETURN_ERROR(!scr, NULL, error, "new blot_screen [%zu]", char_len);
@@ -46,7 +45,8 @@ static bool blot_screen_merge_cans(blot_screen *scr, unsigned count,
 				   struct blot_canvas *const*cans,
 				   GError **error)
 {
-	gunichar *p = scr->data + scr->data_used,
+	bool reset_after = false;
+	wchar_t *p = scr->data + scr->data_used,
 		 *end = scr->data + scr->data_size;
 
 	for (unsigned iy=0; iy<scr->rows; iy++) {
@@ -58,13 +58,14 @@ static bool blot_screen_merge_cans(blot_screen *scr, unsigned count,
 		wchar_t wch;
 		for (unsigned x=0; x<scr->cols; x++) {
 
-			gunichar top_cell = 0;
+			wchar_t top_cell = 0;
 			blot_color top_col = 0;
+			(void)top_col;
 
 			for (int ci=0; ci<count; ci++) {
 				const struct blot_canvas *can = cans[ci];
 
-				gunichar cell = blot_canvas_get_cell(can, x, y);
+				wchar_t cell = blot_canvas_get_cell(can, x, y);
 				if (!cell)
 					continue;
 
@@ -74,16 +75,27 @@ static bool blot_screen_merge_cans(blot_screen *scr, unsigned count,
 
 			wch = L' ';
 			if (top_cell) {
-				// TODO: apply color
-				(void)top_col;
+				if (!(scr->flags & BLOT_RENDER_NO_COLOR)) {
+					const char *colstr = fg(top_col);
+					int len = swprintf(p, end-p, L"%s", colstr);
+					p += len;
+					reset_after = true;
+				}
 				wch = top_cell;
 			}
+
 			*(p++) = wch;
 			g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
 		}
 
-		*(p++) = L'\n';
 
+		if (reset_after) {
+			int len = swprintf(p, end-p, L"%s", COL_RESET);
+			p += len;
+			reset_after = false;
+		}
+
+		*(p++) = L'\n';
 		g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
 	}
 
@@ -100,15 +112,14 @@ bool blot_screen_render(blot_screen *scr, unsigned count,
 
 	scr->data_used = 0;
 	if (scr->flags & BLOT_RENDER_CLEAR) {
-		gsize len = wcslen(L(CLR_SCR));
-		memcpy(scr->data, L(CLR_SCR), len*sizeof(gunichar));
+		int len = swprintf(scr->data, scr->data_size, L"%s", CLR_SCR);
 		scr->data_used = len;
 	}
 
 	return blot_screen_merge_cans(scr, count, cans, error);
 }
 
-const gunichar * blot_screen_get_text(const blot_screen *scr,
+const wchar_t * blot_screen_get_text(const blot_screen *scr,
 				  gsize *txt_size, GError **error)
 {
 	RETURN_EFAULT_IF(scr==NULL, NULL, error);
