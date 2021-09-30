@@ -97,6 +97,8 @@ again:
 	flags |= BLOT_RENDER_DONT_INVERT_Y_AXIS;
 	//flags |= BLOT_RENDER_NO_UNICODE;
 	//flags |= BLOT_RENDER_NO_COLOR;
+	flags |= BLOT_RENDER_LEGEND_ABOVE;
+	//flags |= BLOT_RENDER_LEGEND_BELOW;
 
 	blot_screen *scr = blot_figure_render(fig, flags, &error);
 	FATAL_ERROR(error);

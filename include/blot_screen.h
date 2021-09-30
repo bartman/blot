@@ -24,8 +24,9 @@ extern void blot_screen_delete(blot_screen *scr);
 /* render */
 
 extern bool blot_screen_render(blot_screen *scr, unsigned count,
-			      struct blot_canvas *const*cans,
-			      GError **);
+			       struct blot_layer *const*lays,
+			       struct blot_canvas *const*cans,
+			       GError **);
 
 extern const wchar_t * blot_screen_get_text(const blot_screen *scr,
 					     gsize *txt_size, GError**);

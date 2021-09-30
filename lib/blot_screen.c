@@ -3,6 +3,7 @@
 #include "blot_screen.h"
 #include "blot_error.h"
 #include "blot_canvas.h"
+#include "blot_layer.h"
 #include "blot_color.h"
 #include "blot_braille.h"
 
@@ -39,9 +40,34 @@ void blot_screen_delete(blot_screen *scr)
 	g_free(scr);
 }
 
-/* merge/render */
+/* render */
 
-static bool blot_screen_merge_cans(blot_screen *scr, unsigned count,
+static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
+				   struct blot_layer *const*lays,
+				   GError **error)
+{
+	wchar_t *p = scr->data + scr->data_used,
+		 *end = scr->data + scr->data_size;
+
+	for (int ci=0; ci<count; ci++) {
+		const struct blot_layer *lay = lays[ci];
+		const char *colstr = fg(lay->color);
+
+		wchar_t star = 0x2605;
+		int len = swprintf(p, end-p, L"%s%lc %s %s\n",
+				   colstr, star, COL_RESET,
+				   lay->label);
+		RETURN_IF(len<0, false);
+		p += len;
+	}
+
+	*p = 0;
+	scr->data_used = p - scr->data;
+	return true;
+}
+
+
+static bool blot_screen_plot_cans(blot_screen *scr, unsigned count,
 				   struct blot_canvas *const*cans,
 				   GError **error)
 {
@@ -60,7 +86,6 @@ static bool blot_screen_merge_cans(blot_screen *scr, unsigned count,
 
 			wchar_t top_cell = 0;
 			blot_color top_col = 0;
-			(void)top_col;
 
 			for (int ci=0; ci<count; ci++) {
 				const struct blot_canvas *can = cans[ci];
@@ -105,6 +130,7 @@ static bool blot_screen_merge_cans(blot_screen *scr, unsigned count,
 }
 
 bool blot_screen_render(blot_screen *scr, unsigned count,
+			struct blot_layer *const*lays,
 			struct blot_canvas *const*cans,
 			GError **error)
 {
@@ -116,7 +142,22 @@ bool blot_screen_render(blot_screen *scr, unsigned count,
 		scr->data_used = len;
 	}
 
-	return blot_screen_merge_cans(scr, count, cans, error);
+	gboolean ok;
+
+	if (scr->flags & BLOT_RENDER_LEGEND_ABOVE) {
+		ok = blot_screen_can_legend(scr, count, lays, error);
+		RETURN_IF(!ok, false);
+	}
+
+	ok = blot_screen_plot_cans(scr, count, cans, error);
+	RETURN_IF(!ok, false);
+
+	if (scr->flags & BLOT_RENDER_LEGEND_BELOW) {
+		ok = blot_screen_can_legend(scr, count, lays, error);
+		RETURN_IF(!ok, false);
+	}
+
+	return true;
 }
 
 const wchar_t * blot_screen_get_text(const blot_screen *scr,

@@ -193,7 +193,8 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 		return NULL;
 	}
 
-	bool render_ok = blot_screen_render(scr, fig->layer_count, cans, error);
+	bool render_ok = blot_screen_render(scr, fig->layer_count,
+					    fig->layers, cans, error);
 
 	/* we no longer need the canvases */
 	__free_canvases_array(cans, fig->layer_count);
