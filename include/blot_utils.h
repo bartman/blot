@@ -44,6 +44,11 @@
 	(_a > _b) ? _a : _b;                                    \
 	})
 
+#define abs_t(type,a) ({                                        \
+	type _a = (a);                                          \
+	(_a > 0) ? _a : -_a;                                    \
+	})
+
 #define ALIGN_SIZE_UP(size, bytes) (((size_t)(size) + (bytes) - 1) & ~(bytes - 1))
 #define ALIGN_PTR_UP(ptr, bytes) ((void *)(((uintptr_t)(ptr) + (bytes) - 1) & ~(bytes - 1)))
 

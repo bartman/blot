@@ -42,20 +42,23 @@ void blot_layer_delete(blot_layer *lay)
 
 /* render */
 
-static bool blot_scatter(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 			 blot_canvas *can, GError **);
-static bool blot_scatter_int64(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits *lim,
 			       blot_canvas *can, GError **);
+static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
+		      blot_canvas *can, GError **);
 
 typedef bool (*layer_to_canvas_fn)(const blot_layer *lay, const blot_xy_limits *lim,
 				   blot_canvas *can, GError **);
 static layer_to_canvas_fn blot_layer_to_canvas_type_fns[BLOT_PLOT_TYPE_MAX][BLOT_DATA_TYPE_MAX] = {
 	[BLOT_SCATTER] = {
-		[BLOT_DATA_INT64] = blot_scatter_int64,
+		[BLOT_DATA_INT64] = blot_layer_scatter_int64,
 	}
 };
 static layer_to_canvas_fn blot_layer_to_canvas_fns[BLOT_PLOT_TYPE_MAX] = {
-	[BLOT_SCATTER] = blot_scatter,
+	[BLOT_SCATTER] = blot_layer_scatter,
+	[BLOT_LINE] = blot_layer_line,
 };
 
 struct blot_canvas * blot_layer_render(blot_layer *lay,
@@ -87,7 +90,65 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 	return can;
 }
 
-static bool blot_scatter(const blot_layer *lay, const blot_xy_limits *lim,
+/* helpers */
+
+static inline void blot_layer_draw_point(blot_canvas *can, double x, double y)
+{
+	// convert to integer
+	unsigned ux = x;
+	unsigned uy = y;
+
+	// out of bounds
+	if (unlikely (ux >= can->cols || uy >= can->rows))
+		return;
+
+	// and finally plot the point
+	blot_canvas_set(can, ux, uy, 1);
+}
+
+static inline void blot_layer_draw_line(blot_canvas *can,
+					double x0, double y0,
+					double x1, double y1)
+{
+	double dx = x1 - x0;
+	double dy = y1 - y0;
+
+	double ax = abs_t(double,dx);
+	double ay = abs_t(double,dy);
+
+	if (ax<=1 && ay<=1) {
+		blot_canvas_set(can, x0, y0, 1);
+		return;
+	}
+
+	if (ax < ay ) {
+		double m = dx/dy;
+		double n = dy==ay ? 1 : -1;
+
+		double x=x0, y=y0;
+		for (int i=0; i<=ay; i++) {
+			blot_canvas_set(can, x, y, 1);
+
+			x += m;
+			y += n;
+		}
+	} else {
+		double m = dx==ax ? 1 : -1;
+		double n = dy/dx;
+
+		double x=x0, y=y0;
+		for (int i=0; i<=ax; i++) {
+			blot_canvas_set(can, x, y, 1);
+
+			x += m;
+			y += n;
+		}
+	}
+}
+
+/* scatter */
+
+static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 			 blot_canvas *can, GError **error)
 {
 	double x_range = lim->x_max - lim->x_min + 1;
@@ -105,21 +166,13 @@ static bool blot_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 		double dx = (double)(rx - lim->x_min) * can->cols / x_range;
 		double dy = (double)(ry - lim->y_min) * can->rows / y_range;
 
-		// convert to integer
-		unsigned ux = dx;
-		unsigned uy = dy;
-
-		// out of bounds
-		if (unlikely (ux >= can->cols || uy >= can->rows))
-			continue;
-
-		// and finally plot the point
-		blot_canvas_set(can, ux, uy, 1);
+		// plot it
+		blot_layer_draw_point(can, dx, dy);
 	}
 	return true;
 }
 
-static bool blot_scatter_int64(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits *lim,
 			       blot_canvas *can, GError **error)
 {
 	/* this function should never be called with any other data type */
@@ -144,16 +197,41 @@ static bool blot_scatter_int64(const blot_layer *lay, const blot_xy_limits *lim,
 		double dx = (double)(rx - lim->x_min) * can->cols / x_range;
 		double dy = (double)(ry - lim->y_min) * can->rows / y_range;
 
-		// convert to integer
-		unsigned ux = dx;
-		unsigned uy = dy;
+		// plot it
+		blot_layer_draw_point(can, dx, dy);
+	}
+	return true;
+}
 
-		// out of bounds
-		if (unlikely (ux >= can->cols || uy >= can->rows))
-			continue;
+static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
+		      blot_canvas *can, GError **error)
+{
+	double x_range = lim->x_max - lim->x_min + 1;
+	double y_range = lim->y_max - lim->y_min + 1;
 
-		// and finally plot the point
-		blot_canvas_set(can, ux, uy, 1);
+	bool visible = false;
+	double px, py;
+
+	for (int di=0; di<lay->count; di++) {
+		// read the location
+		double rx, ry;
+
+		gboolean ok = blot_layer_get_double(lay, di, &rx, &ry, error);
+		if (unlikely (!ok))
+			return false;
+
+		// compute location
+		double dx = (double)(rx - lim->x_min) * can->cols / x_range;
+		double dy = (double)(ry - lim->y_min) * can->rows / y_range;
+
+		// plot it
+		if (likely (visible))
+			blot_layer_draw_line(can, px, py, dx, dy);
+
+		// remember current point for next line
+		px = dx;
+		py = dy;
+		visible = true;
 	}
 	return true;
 }

@@ -12,6 +12,7 @@ struct blot_screen;
 
 typedef enum blot_plot_type {
 	BLOT_SCATTER,
+	BLOT_LINE,
 	BLOT_PLOT_TYPE_MAX
 } blot_plot_type;
 

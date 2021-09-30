@@ -90,14 +90,15 @@ bool blot_figure_set_y_limits(blot_figure *fig,
 
 /* add layers */
 
-bool blot_figure_scatter(blot_figure *fig, blot_data_type data_type,
-				size_t data_count, const void *data_xs, const void *data_ys,
-				blot_color data_color, const char *data_label,
-				GError **error)
+bool blot_figure_plot(blot_figure *fig,
+		      blot_plot_type plot_type, blot_data_type data_type,
+		      size_t data_count, const void *data_xs, const void *data_ys,
+		      blot_color data_color, const char *data_label,
+		      GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
 
-	blot_layer *lay = blot_layer_new(BLOT_SCATTER,
+	blot_layer *lay = blot_layer_new(plot_type,
 					 data_type,
 					 data_count,
 					 data_xs,

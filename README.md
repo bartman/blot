@@ -44,7 +44,7 @@ Generated from [test-trig.c](test/test-trig.c)
 
 ## Missing features:
 
-  * different plotting modes like lines and bar and histograms (currenlty only plots scatter)
+  * different plotting modes like bar and histograms (currenlty only plots line/scatter)
   * draw axis lines, numbers and labels
 
 ### Ideas:
