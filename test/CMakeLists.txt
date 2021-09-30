@@ -1,22 +1,20 @@
 enable_testing()
 
-# --- simple test
-
-ADD_EXECUTABLE(test-simple
-        test-simple.c
+SET(TEST_EXECUTABLES
+        test-simple
+        test-line-spin
+        test-trig
 )
 
-TARGET_LINK_LIBRARIES(test-simple
-        blot
-)
+foreach(test ${TEST_EXECUTABLES})
 
-# --- animation test
+        ADD_EXECUTABLE(${test}
+                ${test}.c
+        )
 
-ADD_EXECUTABLE(test-trig
-        test-trig.c
-)
+        TARGET_LINK_LIBRARIES(${test}
+                blot
+                -lm
+        )
 
-TARGET_LINK_LIBRARIES(test-trig
-        blot
-        -lm
-)
+endforeach(test)
