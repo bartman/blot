@@ -123,16 +123,44 @@ bool blot_figure_scatter(blot_figure *fig, blot_data_type data_type,
 
 /* render */
 
-static blot_xy_limits blot_figure_auto_limits(blot_figure *fig)
+static blot_xy_limits blot_figure_auto_limits(blot_figure *fig, GError **error)
 {
 	if (fig->x_limits_set && fig->y_limits_set)
 		return fig->lim;
 
-	blot_xy_limits lim = {0,};
+	blot_xy_limits lim = {0,0,0,0};
+	bool something_set = false;
 
-	/* TODO: walk each layer and figure out the data bounding box */
+	for (int li=0; li<fig->layer_count; li++) {
+		blot_layer *lay = fig->layers[li];
 
-	g_error("%s:%u TODO", __func__, __LINE__);
+		if (unlikely (!something_set && lay->count)) {
+			double x, y;
+			bool ok = blot_layer_get_double(lay, 0, &x, &y, error);
+			RETURN_IF(!ok, lim);
+
+			lim.x_min = lim.x_max = x;
+			lim.y_min = lim.y_max = y;
+			something_set = true;
+		}
+
+		for (int di=0; di<lay->count; di++) {
+			double x, y;
+			bool ok = blot_layer_get_double(lay, di, &x, &y, error);
+			RETURN_IF(!ok, lim);
+
+			lim.x_min = min_t(double, lim.x_min, x);
+			lim.x_max = max_t(double, lim.x_max, x);
+
+			lim.y_min = min_t(double, lim.y_min, y);
+			lim.y_max = max_t(double, lim.y_max, y);
+		}
+	}
+
+	if (unlikely (!something_set))
+		blot_set_error_unix(error, ENOENT,
+				    "could not determine limits automatically, since there is no data");
+
 	return lim;
 }
 
@@ -166,7 +194,8 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 	RETURN_EINVAL_IF(fig->cols<BLOT_MIN_COLS, NULL, error);
 	RETURN_EINVAL_IF(fig->rows<BLOT_MIN_ROWS, NULL, error);
 
-	blot_xy_limits lim = blot_figure_auto_limits(fig);
+	blot_xy_limits lim = blot_figure_auto_limits(fig, error);
+	RETURN_IF(*error, NULL);
 
 	g_autofree blot_canvas **cans = g_new0(blot_canvas*, fig->layer_count);
 	RETURN_ERROR(!cans, NULL, error, "new *canvas x %u", fig->layer_count);

@@ -29,7 +29,10 @@ extern blot_layer * blot_layer_new(blot_plot_type plot_type,
 				   GError **);
 extern void blot_layer_delete(blot_layer *fig);
 
-/* configure */
+/* data */
+
+extern bool blot_layer_get_double(blot_layer *lay, unsigned index,
+				  double *x, double *y, GError **);
 
 /* render */
 

@@ -42,6 +42,21 @@ void blot_layer_delete(blot_layer *lay)
 
 /* render */
 
+bool blot_layer_get_double(blot_layer *lay, unsigned index,
+				  double *x, double *y, GError **error)
+{
+	/* current limitation, we only support INT64 data */
+	g_assert(lay->data_type == BLOT_LAYER_INT64);
+	const gint64 *xs = lay->xs;
+	const gint64 *ys = lay->ys;
+
+	*x = xs[index];
+	*y = ys[index];
+	return true;
+}
+
+/* render */
+
 static bool blot_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 			 blot_canvas *can, GError **);
 
