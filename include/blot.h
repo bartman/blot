@@ -8,6 +8,7 @@
 #include "blot_layer.h"
 #include "blot_screen.h"
 #include "blot_terminal.h"
+#include "blot_time.h"
 #include "blot_types.h"
 #include "blot_utils.h"
 

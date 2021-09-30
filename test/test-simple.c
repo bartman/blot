@@ -3,13 +3,13 @@
 #include <math.h>
 #include "blot.h"
 
-#define DATA_COUNT 100
+#define DATA_COUNT 100000
 static gint64 data_xs[DATA_COUNT];
 static gint64 sin_ys[DATA_COUNT];
 static gint64 cos_ys[DATA_COUNT];
 
-#define DATA_X_MAX 1000
-#define DATA_Y_MAX 1000
+#define DATA_X_MAX 100000
+#define DATA_Y_MAX 100000
 
 blot_color data_color = 9;
 const char *data_label = "data";
@@ -42,6 +42,10 @@ again:
 		cos_ys[i] = y * DATA_Y_MAX / 2;
 	}
 
+	/* start the time */
+
+	double t_start = blot_double_time();
+
 	/* configure the figure */
 
 	blot_figure *fig;
@@ -52,7 +56,7 @@ again:
 	blot_figure_set_axis_color(fig, 8, &error);
 	FATAL_ERROR(error);
 
-	blot_figure_set_screen_size(fig, 40, 20, &error);
+	blot_figure_set_screen_size(fig, 80, 20, &error);
 	FATAL_ERROR(error);
 
 	blot_figure_set_x_limits(fig, 0.0, DATA_X_MAX, &error);
@@ -89,14 +93,21 @@ again:
 	const gunichar *txt = blot_screen_get_text(scr, &txt_size, &error);
 	FATAL_ERROR(error);
 
+	double t_render = blot_double_time();
+
 	g_print("%s%ls", CLR_SCR, txt);
-	usleep(10000);
 
 	blot_screen_delete(scr);
 
 	blot_figure_delete(fig);
 
-	offset ++;
+	double t_end = blot_double_time();
+
+	g_print("time: render=%.6f show=%.6f",
+		t_render-t_start, t_end-t_render);
+	usleep(50000);
+
+	offset += DATA_COUNT/100;
 	goto again;
 
 	return 0;
