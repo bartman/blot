@@ -162,7 +162,7 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 
 		if (invert_y_axis) {
 			/* y-axis is inverted on the screen */
-			c_y = dsp_hgt - (s_y - dsp_top);
+			c_y = dsp_hgt - (s_y - dsp_top) - 1;
 
 		} else {
 			/* y-axis is not inverted on the screen */
