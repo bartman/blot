@@ -12,8 +12,8 @@ typedef struct blot_figure {
 	/* config */
 	blot_color axis_color;
 
-	bool screen_size_set;
-	unsigned cols, rows;
+	bool screen_dimensions_set;
+	blot_dimensions dim;
 
 	bool x_limits_set;
 	bool y_limits_set;

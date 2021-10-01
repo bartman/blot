@@ -8,7 +8,7 @@
 #include "blot_braille.h"
 
 typedef struct blot_canvas {
-	unsigned cols, rows;
+	blot_dimensions dim;
 	blot_render_flags flags;
 	blot_color color;
 
@@ -43,15 +43,15 @@ static inline bool blot_canvas_set(blot_canvas *can, unsigned col, unsigned row,
 {
 	g_assert_nonnull(can);
 
-	if (col >= can->cols)
+	if (col >= can->dim.cols)
 		return false;
 
-	if (row >= can->rows)
+	if (row >= can->dim.rows)
 		return false;
 
 	if (can->flags & BLOT_RENDER_BRAILLE) {
 
-		unsigned byte = ((row/4) * (can->cols/2)) + (col/2);
+		unsigned byte = ((row/4) * (can->dim.cols/2)) + (col/2);
 		unsigned bit = ((row%4)*2) + (col%2);
 		guint8   mask = can->braille.masks[bit];
 
@@ -69,7 +69,7 @@ static inline bool blot_canvas_set(blot_canvas *can, unsigned col, unsigned row,
 			can->bitmap[byte] &= ~(mask);
 
 	} else {
-		unsigned idx = (row * can->cols) + col;
+		unsigned idx = (row * can->dim.cols) + col;
 
 		g_assert_cmpuint(idx, <, can->bitmap_size);
 
@@ -97,15 +97,15 @@ static inline bool blot_canvas_get(const blot_canvas *can, unsigned col, unsigne
 {
 	g_assert_nonnull(can);
 
-	if (col >= can->cols)
+	if (col >= can->dim.cols)
 		return 0;
 
-	if (row >= can->rows)
+	if (row >= can->dim.rows)
 		return 0;
 
 	if (can->flags & BLOT_RENDER_BRAILLE) {
 
-		unsigned byte = ((row/4) * (can->cols/2)) + (col/2);
+		unsigned byte = ((row/4) * (can->dim.cols/2)) + (col/2);
 		unsigned bit = ((row%4)*2) + (col%2);
 		guint8   mask = can->braille.masks[bit];
 
@@ -124,7 +124,7 @@ static inline bool blot_canvas_get(const blot_canvas *can, unsigned col, unsigne
 		return val;
 
 	} else {
-		unsigned idx = (row * can->cols) + col;
+		unsigned idx = (row * can->dim.cols) + col;
 
 		g_assert_cmpuint(idx, <, can->bitmap_size);
 
@@ -152,8 +152,8 @@ static inline wchar_t blot_canvas_get_cell(const blot_canvas *can,
 	g_assert_nonnull(can);
 
 	if (can->flags & BLOT_RENDER_BRAILLE) {
-		unsigned max_cell_cols = can->cols/BRAILLE_GLYPH_COLS;
-		unsigned max_cell_rows = can->rows/BRAILLE_GLYPH_ROWS;
+		unsigned max_cell_cols = can->dim.cols/BRAILLE_GLYPH_COLS;
+		unsigned max_cell_rows = can->dim.rows/BRAILLE_GLYPH_ROWS;
 
 		if (cell_col >= max_cell_cols)
 			return 0;

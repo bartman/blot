@@ -60,3 +60,12 @@ typedef struct blot_xy_limits {
 	double x_min, x_max;
 	double y_min, y_max;
 } blot_xy_limits;
+
+typedef struct blot_margins {
+	unsigned left, right;
+	unsigned top, bottom;
+} blot_margins;
+
+typedef struct blot_dimensions {
+	unsigned cols, rows;
+} blot_dimensions;

@@ -63,7 +63,7 @@ static layer_to_canvas_fn blot_layer_to_canvas_fns[BLOT_PLOT_TYPE_MAX] = {
 
 struct blot_canvas * blot_layer_render(blot_layer *lay,
 				       const blot_xy_limits *lim,
-				       unsigned cols, unsigned rows,
+				       const blot_dimensions *dim,
 				       blot_render_flags flags,
 				       GError **error)
 {
@@ -71,7 +71,7 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 	RETURN_EINVAL_IF(lay->plot_type>BLOT_PLOT_TYPE_MAX, NULL, error);
 	RETURN_EINVAL_IF(lay->data_type>BLOT_DATA_TYPE_MAX, NULL, error);
 
-	blot_canvas *can = blot_canvas_new(cols, rows, flags, lay->color, error);
+	blot_canvas *can = blot_canvas_new(dim->cols, dim->rows, flags, lay->color, error);
 	RETURN_IF(!can, NULL);
 
 	layer_to_canvas_fn fn;
@@ -99,7 +99,7 @@ static inline void blot_layer_draw_point(blot_canvas *can, double x, double y)
 	unsigned uy = y;
 
 	// out of bounds
-	if (unlikely (ux >= can->cols || uy >= can->rows))
+	if (unlikely (ux >= can->dim.cols || uy >= can->dim.rows))
 		return;
 
 	// and finally plot the point
@@ -161,8 +161,8 @@ static inline void blot_layer_draw_line(blot_canvas *can,
 static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 			 blot_canvas *can, GError **error)
 {
-	double x_range = lim->x_max - lim->x_min + 1;
-	double y_range = lim->y_max - lim->y_min + 1;
+	double x_range = lim->x_max - lim->x_min;
+	double y_range = lim->y_max - lim->y_min;
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location
@@ -173,8 +173,8 @@ static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 			return false;
 
 		// compute location
-		double dx = (double)(rx - lim->x_min) * can->cols / x_range;
-		double dy = (double)(ry - lim->y_min) * can->rows / y_range;
+		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
+		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
 
 		// plot it
 		blot_layer_draw_point(can, dx, dy);
@@ -193,8 +193,8 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 
 	RETURN_ERRORx(!lay->ys, false, error, ENOENT, "Y-data is NULL");
 
-	double x_range = lim->x_max - lim->x_min + 1;
-	double y_range = lim->y_max - lim->y_min + 1;
+	double x_range = lim->x_max - lim->x_min;
+	double y_range = lim->y_max - lim->y_min;
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location
@@ -204,8 +204,8 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 		ry = ys[di];
 
 		// compute location
-		double dx = (double)(rx - lim->x_min) * can->cols / x_range;
-		double dy = (double)(ry - lim->y_min) * can->rows / y_range;
+		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
+		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
 
 		// plot it
 		blot_layer_draw_point(can, dx, dy);
@@ -216,8 +216,8 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **error)
 {
-	double x_range = lim->x_max - lim->x_min + 1;
-	double y_range = lim->y_max - lim->y_min + 1;
+	double x_range = lim->x_max - lim->x_min;
+	double y_range = lim->y_max - lim->y_min;
 
 	bool visible = false;
 	double px, py;
@@ -231,12 +231,13 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 			return false;
 
 		// compute location
-		double dx = (double)(rx - lim->x_min) * can->cols / x_range;
-		double dy = (double)(ry - lim->y_min) * can->rows / y_range;
+		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
+		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
 
 		// plot it
-		if (likely (visible))
+		if (likely (visible)) {
 			blot_layer_draw_line(can, px, py, dx, dy);
+		}
 
 		// remember current point for next line
 		px = dx;

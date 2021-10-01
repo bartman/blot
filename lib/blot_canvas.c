@@ -34,8 +34,8 @@ blot_canvas * blot_canvas_new(unsigned _cols, unsigned _rows,
 	blot_canvas *can = g_malloc(total_size);
 	RETURN_ERROR(!can, NULL, error, "new blot_canvas [%zu]", bitmap_size);
 
-	can->cols         = cols;
-	can->rows         = rows;
+	can->dim.cols     = cols;
+	can->dim.rows     = rows;
 	can->flags        = flags;
 	can->color        = color;
 	can->bitmap_size  = bitmap_size;

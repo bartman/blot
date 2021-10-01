@@ -1,6 +1,7 @@
 /* blot: figure represents the top level object */
 /* vim: set noet sw=8 ts=8 tw=80: */
 #include <string.h>
+#include <math.h>
 #include "blot_figure.h"
 #include "blot_error.h"
 #include "blot_color.h"
@@ -51,19 +52,21 @@ bool blot_figure_set_axis_color(blot_figure *fig, blot_color color, GError **err
 
 
 bool blot_figure_set_screen_size(blot_figure *fig,
-					unsigned cols, unsigned rows, GError **error)
+				 unsigned cols, unsigned rows, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
+	RETURN_EINVAL_IF(cols<BLOT_MIN_COLS, false, error);
+	RETURN_EINVAL_IF(rows<BLOT_MIN_ROWS, false, error);
 
-	fig->screen_size_set = true;
-	fig->cols = cols;
-	fig->rows = rows;
+	fig->screen_dimensions_set = true;
+	fig->dim.cols = cols;
+	fig->dim.rows = rows;
 	return true;
 }
 
 
 bool blot_figure_set_x_limits(blot_figure *fig,
-				     double x_min, double x_max, GError **error)
+			      double x_min, double x_max, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
 	RETURN_ERRORx(x_min >= x_max, false, error, EINVAL,
@@ -76,7 +79,7 @@ bool blot_figure_set_x_limits(blot_figure *fig,
 }
 
 bool blot_figure_set_y_limits(blot_figure *fig,
-				     double y_min, double y_max, GError **error)
+			      double y_min, double y_max, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
 	RETURN_ERRORx(y_min >= y_max, false, error, EINVAL,
@@ -125,7 +128,30 @@ bool blot_figure_plot(blot_figure *fig,
 
 /* render */
 
-static blot_xy_limits blot_figure_auto_limits(blot_figure *fig, GError **error)
+static blot_dimensions blot_figure_finalize_dimensions(const blot_figure *fig,
+						       GError **error)
+{
+	if (fig->screen_dimensions_set)
+		return fig->dim;
+
+	blot_dimensions dim = {0,};
+
+	int term_cols, term_rows;
+	bool ok = blot_terminal_get_size(&term_cols, &term_rows, error);
+	RETURN_IF(!ok, dim);
+
+	/* use the entire terminal screen, w/o the border */
+	dim.cols = max_t(unsigned, term_cols-2, BLOT_MIN_COLS);
+	dim.rows = max_t(unsigned, term_rows-2, BLOT_MIN_ROWS);
+
+	RETURN_EINVAL_IF(dim.cols<BLOT_MIN_COLS, dim, error);
+	RETURN_EINVAL_IF(dim.rows<BLOT_MIN_ROWS, dim, error);
+
+	return dim;
+}
+
+static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
+						  GError **error)
 {
 	if (fig->x_limits_set && fig->y_limits_set)
 		return fig->lim;
@@ -166,7 +192,73 @@ static blot_xy_limits blot_figure_auto_limits(blot_figure *fig, GError **error)
 	return lim;
 }
 
-static inline void __free_canvases_array(blot_canvas **cans, unsigned count)
+static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
+						 blot_render_flags flags,
+						 const blot_xy_limits *lim,
+						 const blot_dimensions *dim,
+						 GError **error)
+{
+	blot_margins mrg = {0,};
+
+	if (!(flags & BLOT_RENDER_NO_X_AXIS)) {
+		/* we will draw an X-axis */
+		mrg.bottom += 3;
+
+		/* we always reserve 1 line for text */
+		mrg.bottom += 1;
+	}
+
+	if (!(flags & BLOT_RENDER_NO_Y_AXIS)) {
+		/* we will draw an Y-axis */
+		mrg.left += 3;
+
+		/* how big are the numbers? */
+		double amin = ceil(abs_t(double, lim->y_min));
+		double wmin = ceil(log10(amin));
+		if (lim->y_min < 0) wmin ++;
+
+		double amax = ceil(abs_t(double, lim->y_max));
+		double wmax = ceil(log10(amax));
+		if (lim->y_max < 0) wmax ++;
+
+		/* worst case we need this many columns for text */
+		mrg.left += max_t(unsigned, wmin, wmax);
+
+		/* add 3 digits of precision */
+		mrg.left += 4;
+	}
+
+#if 1
+	/* for testing only */
+	mrg.right += 1;
+	mrg.top += 1;
+#endif
+
+	return mrg;
+}
+
+static blot_dimensions blot_figure_finalize_usable(const blot_figure *fig,
+						   const blot_dimensions *dim,
+						   const blot_margins *mrg,
+						   GError **error)
+{
+	blot_dimensions use = {0,};
+	unsigned mrg_cols = mrg->left + mrg->right;
+	unsigned mrg_rows = mrg->top + mrg->bottom;
+
+	RETURN_EFAULT_IF(mrg_cols>dim->cols, use, error);
+	RETURN_EFAULT_IF(mrg_rows>dim->rows, use, error);
+
+	use.cols = dim->cols - mrg_cols;
+	use.rows = dim->rows - mrg_rows;
+
+	RETURN_EINVAL_IF(use.cols<BLOT_MIN_COLS, use, error);
+	RETURN_EINVAL_IF(use.rows<BLOT_MIN_ROWS, use, error);
+
+	return use;
+}
+
+static void __free_canvases_array(blot_canvas **cans, unsigned count)
 {
 	for (int ci=0; ci<count; ci++) {
 		if (!cans[ci])
@@ -183,21 +275,29 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 	RETURN_EINVAL_IF(fig->layer_count==0, NULL, error);
 	RETURN_EINVAL_IF(fig->layers==NULL, NULL, error);
 
-	if (!fig->screen_size_set) {
-		int term_cols, term_rows;
-		bool ok = blot_terminal_get_size(&term_cols, &term_rows, error);
-		RETURN_IF(!ok, NULL);
+	/* finalize the screen dimensions */
 
-		/* use the entire terminal screen, w/o the border */
-		fig->cols = max_t(unsigned, term_cols-5, BLOT_MIN_COLS);
-		fig->rows = max_t(unsigned, term_rows-5, BLOT_MIN_ROWS);
-	}
-
-	RETURN_EINVAL_IF(fig->cols<BLOT_MIN_COLS, NULL, error);
-	RETURN_EINVAL_IF(fig->rows<BLOT_MIN_ROWS, NULL, error);
-
-	blot_xy_limits lim = blot_figure_auto_limits(fig, error);
+	blot_dimensions dim = blot_figure_finalize_dimensions(fig, error);
 	RETURN_IF(*error, NULL);
+
+	/* finalize X/Y limits */
+
+	blot_xy_limits lim = blot_figure_finalize_limits(fig, error);
+	RETURN_IF(*error, NULL);
+
+	/* finalize the portion of the screen that is used for plotting */
+
+	blot_margins mrg = blot_figure_finalize_margins(fig, flags,
+							&lim, &dim, error);
+	RETURN_IF(*error, NULL);
+
+	/* finalize the usable screen available */
+
+	blot_dimensions use = blot_figure_finalize_usable(fig, &dim, &mrg,
+							  error);
+	RETURN_IF(*error, NULL);
+
+	/* generate the canvases */
 
 	g_autofree blot_canvas **cans = g_new0(blot_canvas*, fig->layer_count);
 	RETURN_ERROR(!cans, NULL, error, "new *canvas x %u", fig->layer_count);
@@ -205,8 +305,7 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 	for (int li=0; li<fig->layer_count; li++) {
 		blot_layer *lay = fig->layers[li];
 
-		cans[li] = blot_layer_render(lay, &lim,
-					     fig->cols, fig->rows,
+		cans[li] = blot_layer_render(lay, &lim, &use,
 					     flags, error);
 		if (cans[li])
 			continue;
@@ -217,14 +316,15 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 		return NULL;
 	}
 
-	blot_screen *scr = blot_screen_new(fig->cols, fig->rows,
-					   flags, error);
+	/* merge canvases to screen */
+
+	blot_screen *scr = blot_screen_new(&dim, &mrg, flags, error);
 	if (!scr) {
 		__free_canvases_array(cans, fig->layer_count);
 		return NULL;
 	}
 
-	bool render_ok = blot_screen_render(scr, fig->layer_count,
+	bool render_ok = blot_screen_render(scr, fig->axis_color, &lim, fig->layer_count,
 					    fig->layers, cans, error);
 
 	/* we no longer need the canvases */

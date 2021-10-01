@@ -9,7 +9,8 @@
 
 typedef struct blot_screen {
 	blot_render_flags flags;
-	unsigned cols, rows;
+	blot_dimensions dim;
+	blot_margins mrg;
 	gsize data_size, data_used;     // in number of gunichar
 
 	wchar_t data[] __aligned64;    // must be at end of structure
@@ -17,13 +18,16 @@ typedef struct blot_screen {
 
 /* create/delete */
 
-extern blot_screen * blot_screen_new(unsigned cols, unsigned rows,
+extern blot_screen * blot_screen_new(const blot_dimensions *dim,
+				     const blot_margins *mrg,
 				     blot_render_flags flags, GError **);
 extern void blot_screen_delete(blot_screen *scr);
 
 /* render */
 
-extern bool blot_screen_render(blot_screen *scr, unsigned count,
+extern bool blot_screen_render(blot_screen *scr, blot_color axis_color,
+			       const blot_xy_limits *lim,
+			       unsigned count,
 			       struct blot_layer *const*lays,
 			       struct blot_canvas *const*cans,
 			       GError **);

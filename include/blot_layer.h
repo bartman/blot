@@ -100,7 +100,7 @@ get_y_value:
 
 extern struct blot_canvas * blot_layer_render(blot_layer *lay,
 					      const blot_xy_limits *lim,
-					      unsigned cols, unsigned rows,
+					      const blot_dimensions *dim,
 					      blot_render_flags flags,
 					      GError **);
 
