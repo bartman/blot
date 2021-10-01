@@ -4,6 +4,7 @@ SET(TEST_EXECUTABLES
         test-simple
         test-line-spin
         test-trig
+        test-trig-loop
 )
 
 foreach(test ${TEST_EXECUTABLES})

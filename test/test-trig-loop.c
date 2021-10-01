@@ -7,8 +7,11 @@
 #define DATA_COUNT 100000
 static gint32 data_xs[DATA_COUNT];
 static double sin_ys[DATA_COUNT];
-static double cos_ys[DATA_COUNT];
-static double tan_ys[DATA_COUNT];
+static gint32 cos_ys[DATA_COUNT];
+static gint64 tan_ys[DATA_COUNT];
+
+#define DATA_X_MAX 100000
+#define DATA_Y_MAX 100000
 
 blot_color data_color = 9;
 
@@ -23,25 +26,29 @@ int main(void)
 
 	setlocale(LC_CTYPE, "");
 
+	unsigned offset = 0;
+again:
+
 	/* build a dummy dataset */
 
 	for (int i=0; i<DATA_COUNT; i++) {
-		double x, y;
+		double x = (double)(i+offset) * 2 * M_PI / DATA_COUNT;
 
-		x = (double)(i-(DATA_COUNT/2));
-		x = x * 8 * M_PI / DATA_COUNT;
-		data_xs[i] = x;
+		double y = 1 + sin(x);
 
-		y = sin(x);
-		sin_ys[i] = y;
+		data_xs[i] = i * DATA_X_MAX / DATA_COUNT;
+		sin_ys[i] = y * DATA_Y_MAX / 2;
 
-		y = cos(x);
-		cos_ys[i] = y;
+		y = 1 + cos(x);
+		cos_ys[i] = y * DATA_Y_MAX / 2;
 
-		y = tan(x);
-		tan_ys[i] = y;
-
+		y = 1 + tan(x);
+		tan_ys[i] = y * DATA_Y_MAX / 2;
 	}
+
+	/* start the time */
+
+	double t_start = blot_double_time();
 
 	/* configure the figure */
 
@@ -56,11 +63,9 @@ int main(void)
 	blot_figure_set_screen_size(fig, 80, 20, &error);
 	FATAL_ERROR(error);
 
-#if 0
-	blot_figure_set_x_limits(fig, -10, 10, &error);
+	blot_figure_set_x_limits(fig, 0.0, DATA_X_MAX, &error);
 	FATAL_ERROR(error);
-#endif
-	blot_figure_set_y_limits(fig, -2, 2, &error);
+	blot_figure_set_y_limits(fig, 0.0, DATA_Y_MAX, &error);
 	FATAL_ERROR(error);
 
 	/* add a scatter plot */
@@ -72,28 +77,30 @@ int main(void)
 
 	/* add a scatter plot */
 
-#if 0
-	blot_figure_scatter(fig, BLOT_DATA_(INT32,DOUBLE),
+	blot_figure_scatter(fig, BLOT_DATA_INT32,
 			    DATA_COUNT, data_xs, cos_ys,
 			    data_color+1, "cos", &error);
 	FATAL_ERROR(error);
-#endif
 
 	/* add a scatter plot */
 
-#if 0
-	blot_figure_scatter(fig, BLOT_DATA_(INT32,DOUBLE),
+	blot_figure_scatter(fig, BLOT_DATA_(INT32,INT64),
 			    DATA_COUNT, data_xs, tan_ys,
 			    data_color+2, "tan", &error);
 	FATAL_ERROR(error);
-#endif
 
 	/* render the plots */
 
 	blot_render_flags flags = 0;
+	flags |= BLOT_RENDER_CLEAR;
 	flags |= BLOT_RENDER_BRAILLE;
 	flags |= BLOT_RENDER_DONT_INVERT_Y_AXIS;
+	//flags |= BLOT_RENDER_NO_UNICODE;
+	//flags |= BLOT_RENDER_NO_COLOR;
 	flags |= BLOT_RENDER_LEGEND_ABOVE;
+	//flags |= BLOT_RENDER_LEGEND_BELOW;
+	flags |= BLOT_RENDER_NO_X_AXIS;
+	flags |= BLOT_RENDER_NO_Y_AXIS;
 
 	blot_screen *scr = blot_figure_render(fig, flags, &error);
 	FATAL_ERROR(error);
@@ -104,11 +111,22 @@ int main(void)
 	const wchar_t *txt = blot_screen_get_text(scr, &txt_size, &error);
 	FATAL_ERROR(error);
 
+	double t_render = blot_double_time();
+
 	printf("%ls\n", txt);
 
 	blot_screen_delete(scr);
 
 	blot_figure_delete(fig);
+
+	double t_end = blot_double_time();
+
+	printf("time: render=%.6f show=%.6f\n",
+		t_render-t_start, t_end-t_render);
+	usleep(50000);
+
+	offset += DATA_COUNT/100;
+	goto again;
 
 	return 0;
 }

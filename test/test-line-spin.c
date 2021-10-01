@@ -134,6 +134,8 @@ again:
 	flags |= BLOT_RENDER_BRAILLE;
 	flags |= BLOT_RENDER_LEGEND_BELOW;
 	flags |= BLOT_RENDER_CLEAR;
+	flags |= BLOT_RENDER_NO_X_AXIS;
+	flags |= BLOT_RENDER_NO_Y_AXIS;
 
 	blot_screen *scr = blot_figure_render(fig, flags, &error);
 	FATAL_ERROR(error);

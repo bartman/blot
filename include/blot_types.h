@@ -52,6 +52,8 @@ typedef enum blot_render_flags {
 	BLOT_RENDER_NO_COLOR            = 0x00000010,   // no color
 	BLOT_RENDER_LEGEND_ABOVE        = 0x00000020,
 	BLOT_RENDER_LEGEND_BELOW        = 0x00000040,
+	BLOT_RENDER_NO_X_AXIS           = 0x00000080,
+	BLOT_RENDER_NO_Y_AXIS           = 0x00000100,
 } blot_render_flags;
 
 typedef struct blot_xy_limits {
