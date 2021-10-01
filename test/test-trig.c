@@ -4,7 +4,7 @@
 #include <math.h>
 #include "blot.h"
 
-#define DATA_COUNT 100
+#define DATA_COUNT 1000
 static double data_xs[DATA_COUNT];
 static double sin_ys[DATA_COUNT];
 static double cos_ys[DATA_COUNT];
@@ -28,8 +28,11 @@ int main(void)
 	for (int i=0; i<DATA_COUNT; i++) {
 		double x, y;
 
-		x = (double)(i-(DATA_COUNT/2));
-		x = x * 8 * M_PI / DATA_COUNT;
+		/* number between -1 and 1 */
+		x = (double)(i-(DATA_COUNT/2)) / (DATA_COUNT/2);
+
+		/* number between -2π and 2π */
+		x = x * 2 * M_PI;
 		data_xs[i] = x;
 
 		y = sin(x);
@@ -56,12 +59,34 @@ int main(void)
 	blot_figure_set_screen_size(fig, 80, 40, &error);
 	FATAL_ERROR(error);
 
-#if 0
-	blot_figure_set_x_limits(fig, -10, 10, &error);
+	blot_figure_set_x_limits(fig, -7, 7, &error);
 	FATAL_ERROR(error);
-#endif
 	blot_figure_set_y_limits(fig, -2, 2, &error);
 	FATAL_ERROR(error);
+
+#if 1
+	/* hack for now to add origin lines */
+
+	/* plot X-axis origin */
+
+	gint32 xax[2] = { -7, 7 };
+	gint32 xay[2] = { 0, 0 };
+
+	blot_figure_line(fig, BLOT_DATA_INT32,
+			 2, xax, xay,
+			 8, NULL, &error);
+	FATAL_ERROR(error);
+
+	/* plot Y-axis origin */
+
+	gint32 yax[2] = { 0, 0 };
+	gint32 yay[2] = { -2, 2 };
+
+	blot_figure_line(fig, BLOT_DATA_INT32,
+			 2, yax, yay,
+			 8, NULL, &error);
+	FATAL_ERROR(error);
+#endif
 
 	/* add a scatter plot */
 
@@ -72,8 +97,8 @@ int main(void)
 
 	/* add a scatter plot */
 
-#if 0
-	blot_figure_scatter(fig, BLOT_DATA_(INT32,DOUBLE),
+#if 1
+	blot_figure_scatter(fig, BLOT_DATA_DOUBLE,
 			    DATA_COUNT, data_xs, cos_ys,
 			    data_color+1, "cos", &error);
 	FATAL_ERROR(error);
@@ -81,8 +106,8 @@ int main(void)
 
 	/* add a scatter plot */
 
-#if 0
-	blot_figure_scatter(fig, BLOT_DATA_(INT32,DOUBLE),
+#if 1
+	blot_figure_scatter(fig, BLOT_DATA_DOUBLE,
 			    DATA_COUNT, data_xs, tan_ys,
 			    data_color+2, "tan", &error);
 	FATAL_ERROR(error);
@@ -92,7 +117,6 @@ int main(void)
 
 	blot_render_flags flags = 0;
 	flags |= BLOT_RENDER_BRAILLE;
-	flags |= BLOT_RENDER_DONT_INVERT_Y_AXIS;
 	flags |= BLOT_RENDER_LEGEND_ABOVE;
 
 	blot_screen *scr = blot_figure_render(fig, flags, &error);
