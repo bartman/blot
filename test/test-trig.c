@@ -4,8 +4,8 @@
 #include <math.h>
 #include "blot.h"
 
-#define DATA_COUNT 100000
-static gint32 data_xs[DATA_COUNT];
+#define DATA_COUNT 100
+static double data_xs[DATA_COUNT];
 static double sin_ys[DATA_COUNT];
 static double cos_ys[DATA_COUNT];
 static double tan_ys[DATA_COUNT];
@@ -53,7 +53,7 @@ int main(void)
 	blot_figure_set_axis_color(fig, 8, &error);
 	FATAL_ERROR(error);
 
-	blot_figure_set_screen_size(fig, 80, 20, &error);
+	blot_figure_set_screen_size(fig, 80, 40, &error);
 	FATAL_ERROR(error);
 
 #if 0
@@ -65,7 +65,7 @@ int main(void)
 
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_DATA_(INT32,DOUBLE),
+	blot_figure_scatter(fig, BLOT_DATA_DOUBLE,
 			    DATA_COUNT, data_xs, sin_ys,
 			    data_color, "sin", &error);
 	FATAL_ERROR(error);

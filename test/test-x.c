@@ -3,15 +3,11 @@
 #include <locale.h>
 #include "blot.h"
 
-#define DATA_X_MIN -100
-#define DATA_X_MAX 100
-#define DATA_X_RANGE (DATA_X_MAX - DATA_X_MIN)
+#define DATA_COUNT 10000
 
-#define DATA_Y_MIN -100
-#define DATA_Y_MAX 100
-#define DATA_Y_RANGE (DATA_Y_MAX - DATA_Y_MIN)
+#define DATA_X_MAX 10000
+#define DATA_Y_MAX 10000
 
-#define SCAT_COUNT 1000
 #define LINE_COUNT 2
 
 #define SCREEN_WIDTH  80
@@ -30,16 +26,14 @@ int main(void)
 
 	/* build a dummy dataset */
 
-	static gint32 scat_x[SCAT_COUNT];
-	static gint32 scat_y[SCAT_COUNT];
+	static gint64 data[DATA_COUNT];
 
-	for (int i=0; i<SCAT_COUNT; i++) {
-		scat_x[i] = DATA_X_MIN + ((double)i * DATA_X_RANGE / SCAT_COUNT);
-		scat_y[i] = DATA_Y_MIN + ((double)i * DATA_Y_RANGE / SCAT_COUNT);
+	for (int i=0; i<DATA_COUNT; i++) {
+		data[i] = i;
 	}
 
-	static gint32 line_x[LINE_COUNT] = { DATA_X_MIN, DATA_Y_MAX };
-	static gint32 line_y[LINE_COUNT] = { DATA_Y_MAX, DATA_Y_MIN };
+	static gint32 line_x[LINE_COUNT] = { 0, DATA_Y_MAX };
+	static gint32 line_y[LINE_COUNT] = { DATA_X_MAX, 0 };
 
 	/* configure the figure */
 
@@ -48,21 +42,10 @@ int main(void)
 	fig = blot_figure_new(&error);
 	FATAL_ERROR(error);
 
-	blot_figure_set_axis_color(fig, 8, &error);
-	FATAL_ERROR(error);
-
-	blot_figure_set_screen_size(fig, 80, 40, &error);
-	FATAL_ERROR(error);
-
-	blot_figure_set_x_limits(fig, DATA_X_MIN*2, DATA_X_MAX*2, &error);
-	FATAL_ERROR(error);
-	blot_figure_set_y_limits(fig, DATA_Y_MIN*2, DATA_Y_MAX*2, &error);
-	FATAL_ERROR(error);
-
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_DATA_INT32,
-			    SCAT_COUNT, scat_x, scat_y,
+	blot_figure_scatter(fig, BLOT_DATA_INT64,
+			    DATA_COUNT, NULL, data,
 			    9, "scatter", &error);
 	FATAL_ERROR(error);
 
@@ -78,7 +61,8 @@ int main(void)
 	blot_render_flags flags = 0;
 	flags |= BLOT_RENDER_BRAILLE;
 	flags |= BLOT_RENDER_LEGEND_BELOW;
-	flags |= BLOT_RENDER_DONT_INVERT_Y_AXIS;
+	flags |= BLOT_RENDER_NO_X_AXIS;
+	flags |= BLOT_RENDER_NO_Y_AXIS;
 
 	blot_screen *scr = blot_figure_render(fig, flags, &error);
 	FATAL_ERROR(error);

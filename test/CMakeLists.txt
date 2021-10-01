@@ -1,10 +1,11 @@
 enable_testing()
 
 SET(TEST_EXECUTABLES
-        test-simple
         test-line-spin
+        test-simple
         test-trig
         test-trig-loop
+        test-x
 )
 
 foreach(test ${TEST_EXECUTABLES})
