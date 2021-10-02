@@ -9,34 +9,42 @@ SET(LIBBLOT_SRCS
         blot_terminal.c
 )
 
-ADD_LIBRARY(blot STATIC
-        ${LIBBLOT_SRCS}
-)
+# build a libblot.so and a libblot.a
 
-set_property(TARGET blot PROPERTY POSITION_INDEPENDENT_CODE ON)
+ADD_LIBRARY(blot_a STATIC ${LIBBLOT_SRCS})
+ADD_LIBRARY(blot_so SHARED ${LIBBLOT_SRCS})
 
-#TARGET_COMPILE_DEFINITIONS(blot
-#        PUBLIC var="val"
-#)
+# each is configured exactly the same way
 
-TARGET_INCLUDE_DIRECTORIES(blot INTERFACE
-        ${CMAKE_SOURCE_DIR}/blot/include
-)
+foreach(blot blot_a blot_so)
 
-TARGET_INCLUDE_DIRECTORIES(blot PUBLIC
-        ${GLIB2_INCLUDE_DIRS}
-        ${CMAKE_SOURCE_DIR}/thriver/include
-)
+        SET_TARGET_PROPERTIES(${blot} PROPERTIES OUTPUT_NAME blot)
 
-TARGET_INCLUDE_DIRECTORIES(blot PRIVATE
-        ${CMAKE_SOURCE_DIR}/blot/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${GIO_INCLUDE_DIRS}
-        ${GIOUNIX_INCLUDE_DIRS}
-)
+        SET_PROPERTY(TARGET ${blot} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-TARGET_LINK_LIBRARIES(blot
-        ${GLIB2_LIBRARIES}
-        ${GIO_LIBRARIES}
-        ${GIOUNIX_LIBRARIES}
-)
+        #TARGET_COMPILE_DEFINITIONS(${blot}
+        #        PUBLIC var="val"
+        #)
+
+        TARGET_INCLUDE_DIRECTORIES(${blot} INTERFACE
+                ${CMAKE_SOURCE_DIR}/blot/include
+        )
+
+        TARGET_INCLUDE_DIRECTORIES(${blot} PUBLIC
+                ${GLIB2_INCLUDE_DIRS}
+        )
+
+        TARGET_INCLUDE_DIRECTORIES(${blot} PRIVATE
+                ${CMAKE_SOURCE_DIR}/blot/include
+                ${CMAKE_CURRENT_SOURCE_DIR}/include
+                ${GIO_INCLUDE_DIRS}
+                ${GIOUNIX_INCLUDE_DIRS}
+        )
+
+        TARGET_LINK_LIBRARIES(${blot}
+                ${GLIB2_LIBRARIES}
+                ${GIO_LIBRARIES}
+                ${GIOUNIX_LIBRARIES}
+        )
+
+endforeach(blot)

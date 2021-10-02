@@ -15,7 +15,7 @@ foreach(test ${TEST_EXECUTABLES})
         )
 
         TARGET_LINK_LIBRARIES(${test}
-                blot
+                blot_a
                 -lm
         )
 
