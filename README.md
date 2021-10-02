@@ -4,9 +4,9 @@ Blot is a plotting library written in C, that plots data onto a string buffer.
 
 That's right, there are no images, just text -- see examples below.
 
-Site: https://bartman.github.io/blot/
+Site: [bartman.github.io/blot](https://bartman.github.io/blot/)
 
-GitHub: https://github.com/bartman/blot/
+GitHub: [github.com/bartman/blot](https://github.com/bartman/blot/)
 
 Copyright © 2021 Bart Trojanowski
 
