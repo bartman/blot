@@ -26,7 +26,7 @@ blot_canvas * blot_canvas_new(unsigned _cols, unsigned _rows,
 		rows *= BRAILLE_GLYPH_ROWS;
 	}
 
-	gsize bitmap_size = cols * rows;
+	gsize bitmap_size = (gsize)cols * (gsize)rows;
 	gsize bitmap_bytes = (bitmap_size + BLOT_CANVAS_BITMAP_CELL_SIZE - 1)
 		/ BLOT_CANVAS_BITMAP_CELL_SIZE;
 

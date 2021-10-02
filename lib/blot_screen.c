@@ -14,7 +14,7 @@ blot_screen * blot_screen_new(const blot_dimensions *dim,
 			      const blot_margins *mrg,
 			      blot_render_flags flags, GError **error)
 {
-	gsize char_len = dim->cols * dim->rows;
+	gsize char_len = (gsize)dim->cols * (gsize)dim->rows;
 
 	// add extra space for screen clear escape code
 	if (flags & BLOT_RENDER_CLEAR)
