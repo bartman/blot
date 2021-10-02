@@ -85,11 +85,6 @@ static inline void __blot_set_error_unix(GError **error, int errno_code,
 #define RETURN_ERROR(_condition,_ret,_error,_format,_a...) \
 	RETURN_ERRORx(_condition,_ret,_error,errno,_format,##_a)
 
-#define RETURN_IF(_condition, _ret) ({ \
-	if (unlikely (_condition)) \
-		return _ret; \
-})
-
 #define RETURN_ERROR_IF(_condition,_ret,_error,_errno_code) \
 	RETURN_ERRORx(_condition, _ret, _error, _errno_code, "%s", #_condition)
 
@@ -98,4 +93,9 @@ static inline void __blot_set_error_unix(GError **error, int errno_code,
 
 #define RETURN_EINVAL_IF(_condition,_ret,_error) \
 	RETURN_ERROR_IF(_condition,_ret,_error,EINVAL)
+
+#define RETURN_IF(_condition, _ret) ({ \
+	if (unlikely (_condition)) \
+		return _ret; \
+})
 

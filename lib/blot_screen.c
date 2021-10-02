@@ -62,7 +62,7 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 		int len = swprintf(p, end-p, L"%s%lc %s %s\n",
 				   colstr, star, COL_RESET,
 				   lay->label);
-		RETURN_IF(len<0, false);
+		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
 	}
 
@@ -114,7 +114,8 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 			x_tick_cols[ti] = dsp_lft + 1 + ofs;
 			double val = lim->x_min + (v_tick_jump * ti);
 
-			snprintf(x_tick_labs[ti], dsp_wdh, "%.3f", val);
+			len = snprintf(x_tick_labs[ti], dsp_wdh, "%.3f", val);
+			RETURN_ERROR(len<0, false, error, "snprintf");
 		}
 
 		x_tick_width = s_tick_jump;
@@ -142,7 +143,8 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 			else
 				val= lim->y_min + (v_tick_jump * ti);
 
-			snprintf(y_tick_labs[ti], dsp_wdh, "%.3f", val);
+			len = snprintf(y_tick_labs[ti], dsp_wdh, "%.3f", val);
+			RETURN_ERROR(len<0, false, error, "snprintf");
 		}
 	}
 
@@ -178,6 +180,7 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 
 		const char *colstr = fg(axis_color);
 		len = swprintf(p, end-p, L"%s", colstr);
+		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
 		reset_after = true;
 
@@ -193,6 +196,7 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 				       dsp_lft-2, "");
 		}
 
+		RETURN_ERROR(len<0, false, error, "swprintf");
 		g_assert_cmpuint(len, ==, dsp_lft);
 		p += len;
 
@@ -226,6 +230,7 @@ plot_cells:
 				if (!(scr->flags & BLOT_RENDER_NO_COLOR)) {
 					const char *colstr = fg(top_col);
 					len = swprintf(p, end-p, L"%s", colstr);
+					RETURN_ERROR(len<0, false, error, "swprintf");
 					p += len;
 					reset_after = true;
 				}
@@ -239,6 +244,7 @@ skip_cell:
 
 		if (reset_after) {
 			len = swprintf(p, end-p, L"%s", COL_RESET);
+			RETURN_ERROR(len<0, false, error, "swprintf");
 			p += len;
 			reset_after = false;
 		}
@@ -255,6 +261,7 @@ skip_cell:
 
 		const char *colstr = fg(axis_color);
 		len = swprintf(p, end-p, L"%s", colstr);
+		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
 		reset_after = true;
 
@@ -286,17 +293,20 @@ skip_cell:
 
 		len = swprintf(p, end-p, L"%*s ",
 				   dsp_lft-1, "");
+		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
 
 		for (ti=0; ti<x_tick_num; ti++) {
 			len = swprintf(p, end-p, L"%-*s",
 					   x_tick_width, x_tick_labs[ti]);
+			RETURN_ERROR(len<0, false, error, "swprintf");
 			p += len;
 		}
 
 done_bot_line:
 		if (reset_after) {
 			len = swprintf(p, end-p, L"%s", COL_RESET);
+			RETURN_ERROR(len<0, false, error, "swprintf");
 			p += len;
 			reset_after = false;
 		}
@@ -322,6 +332,7 @@ bool blot_screen_render(blot_screen *scr, blot_color axis_color,
 	scr->data_used = 0;
 	if (scr->flags & BLOT_RENDER_CLEAR) {
 		int len = swprintf(scr->data, scr->data_size, L"%s", CLR_SCR);
+		RETURN_ERROR(len<0, false, error, "swprintf");
 		scr->data_used = len;
 	}
 
