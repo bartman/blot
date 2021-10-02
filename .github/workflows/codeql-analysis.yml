@@ -64,6 +64,7 @@ jobs:
     #    uses a compiled language
 
     - run: |
+        ./dependencies.sh
         make
     #   make bootstrap
     #   make release
