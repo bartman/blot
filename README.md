@@ -20,20 +20,20 @@ Licensed under LGPL v2.1, or any later version.
   * 256 colour support
   * data arrays can be provided in various types (`int16`, `int32`, `int64`, `double`, or `float`)
 
-## Prerequisites:
+## Prerequisites
 
 blot was only tested on Debian Linux. It is built using standard tools.
 
     sudo apt install make ninja-build cmake libglib2.0-dev
 
-## Building:
+## Building
 
 blot is built using cmake and ninja.  There is a top level Makefile only to
 simplify the build process (it invokes cmake in the `build` subdirectory).
 
     make
 
-## Examples:
+## Examples
 
 blot is being used in other projects as a library, but it comes with some
 examples.
@@ -50,7 +50,7 @@ Generated from [test-trig.c](test/test-trig.c)
 
 ![trig example](examples/trig.png)
 
-## Missing features:
+## Missing features
 
   * different plotting modes like bar and histograms (currently only plots line/scatter)
   * improve axis line and numbering (currently not very accurate)
@@ -65,4 +65,9 @@ Allow for swapping data from layer to allow for even faster plotting (allow blot
   3. call `blot_figure_render` and `blot_screen_get_text`
   4. then use `blot_layer_new_data` to swap the data
   5. repeat from step (3)
+
+## Similar projects
+
+  * [plotille](https://github.com/tammoippen/plotille) - Python, "plot, scatter plots and histograms in the terminal using braille dots"
+  * [Tables-and-Graphs](https://github.com/tdulcet/Tables-and-Graphs) - "C++ Console Table and Graph/Plot Libraries"
 
