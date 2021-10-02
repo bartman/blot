@@ -46,9 +46,9 @@ extern bool have_color_support;
 
 /* macros to build char colors */
 
-static inline const char *mkcol(char *buf, const char *fmt, int col)
+static inline const char *mkcol(char *buf, const char *fmt, unsigned col)
 {
-	g_snprintf(buf, COL_BUF_LEN, fmt, col);
+	g_snprintf(buf, COL_BUF_LEN, fmt, col & 0xFF);
 	return buf;
 }
 #define fg(col) ({ \
