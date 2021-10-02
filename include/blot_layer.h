@@ -73,7 +73,7 @@ get_y_value:
 
 	switch (lay->data_type & BLOT_DATA_Y_MASK) {
 	case BLOT_DATA_Y_INT16:
-		*x = ((const gint16 *)lay->ys)[index];
+		*y = ((const gint16 *)lay->ys)[index];
 		break;
 	case BLOT_DATA_Y_INT32:
 		*y = ((const gint32 *)lay->ys)[index];
