@@ -4,7 +4,12 @@ Blot is a plotting library written in C, that plots data onto a string buffer.
 
 That's right, there are no images, just text -- see examples below.
 
-## Noteworthy features:
+Copyright © 2021 Bart Trojanowski
+
+Licensed under LGPL v2.1, or any later version.
+
+
+## Noteworthy features
 
   * plots to the console as text (by calling `printf()`)
   * very very fast (compared to python alternatives)
