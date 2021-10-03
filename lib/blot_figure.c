@@ -185,6 +185,18 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 		}
 	}
 
+	double x_range = lim.x_max - lim.x_min;
+	if (!x_range) {
+		lim.x_min --;
+		lim.x_max ++;
+	}
+
+	double y_range = lim.y_max - lim.y_min;
+	if (!y_range) {
+		lim.y_min --;
+		lim.y_max ++;
+	}
+
 	if (unlikely (!something_set))
 		blot_set_error_unix(error, ENOENT,
 				    "could not determine limits automatically, since there is no data");
