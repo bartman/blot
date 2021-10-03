@@ -48,6 +48,8 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 			       blot_canvas *can, GError **);
 static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **);
+static bool blot_layer_histogram(const blot_layer *lay, const blot_xy_limits *lim,
+		      blot_canvas *can, GError **);
 
 typedef bool (*layer_to_canvas_fn)(const blot_layer *lay, const blot_xy_limits *lim,
 				   blot_canvas *can, GError **);
@@ -57,8 +59,9 @@ static layer_to_canvas_fn blot_layer_to_canvas_type_fns[BLOT_PLOT_TYPE_MAX][BLOT
 	}
 };
 static layer_to_canvas_fn blot_layer_to_canvas_fns[BLOT_PLOT_TYPE_MAX] = {
-	[BLOT_SCATTER] = blot_layer_scatter,
-	[BLOT_LINE] = blot_layer_line,
+	[BLOT_SCATTER]   = blot_layer_scatter,
+	[BLOT_LINE]      = blot_layer_line,
+	[BLOT_HISTOGRAM] = blot_layer_histogram,
 };
 
 struct blot_canvas * blot_layer_render(blot_layer *lay,
@@ -80,6 +83,9 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 	if (!fn)
 		/* otherwise use the generic function, that will be a bit slower */
 		fn = blot_layer_to_canvas_fns[lay->plot_type];
+
+	RETURN_ERRORx(!fn, false, error, EINVAL,
+		      "no handler for plot_type=%u", lay->plot_type);
 
 	bool plot_ok = fn(lay, lim, can, error);
 	if (!plot_ok) {
@@ -243,6 +249,33 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 		px = dx;
 		py = dy;
 		visible = true;
+	}
+	return true;
+}
+
+static bool blot_layer_histogram(const blot_layer *lay, const blot_xy_limits *lim,
+		      blot_canvas *can, GError **error)
+{
+	double x_range = lim->x_max - lim->x_min;
+	double y_range = lim->y_max - lim->y_min;
+
+	for (int di=0; di<lay->count; di++) {
+		// read the location
+		double rx, ry;
+
+		gboolean ok = blot_layer_get_double(lay, di, &rx, &ry, error);
+		if (unlikely (!ok))
+			return false;
+
+		// compute location
+		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
+		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
+
+		// plot it
+		blot_layer_draw_line(can, dx-1,  0, dx-1, dy);
+		blot_layer_draw_line(can, dx+1,  0, dx+1, dy);
+		blot_layer_draw_line(can, dx-1, dy, dx+1, dy);
+		blot_layer_draw_line(can, dx-1,  0, dx+1,  0);
 	}
 	return true;
 }

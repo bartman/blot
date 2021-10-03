@@ -1,6 +1,7 @@
 enable_testing()
 
 SET(TEST_EXECUTABLES
+        test-histogram
         test-line-spin
         test-simple
         test-trig

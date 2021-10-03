@@ -172,6 +172,14 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 			something_set = true;
 		}
 
+		if (lay->plot_type == BLOT_HISTOGRAM && lay->count) {
+			double x_min = -0.5;
+			double x_max = lay->count - 0.5;
+
+			lim.x_min = min_t(double, lim.x_min, x_min);
+			lim.x_max = max_t(double, lim.x_max, x_max);
+		}
+
 		for (int di=0; di<lay->count; di++) {
 			double x, y;
 			bool ok = blot_layer_get_double(lay, di, &x, &y, error);
@@ -185,6 +193,10 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 		}
 	}
 
+	if (unlikely (!something_set))
+		blot_set_error_unix(error, ENOENT,
+				    "could not determine limits automatically, since there is no data");
+
 	double x_range = lim.x_max - lim.x_min;
 	if (!x_range) {
 		lim.x_min --;
@@ -196,10 +208,6 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 		lim.y_min --;
 		lim.y_max ++;
 	}
-
-	if (unlikely (!something_set))
-		blot_set_error_unix(error, ENOENT,
-				    "could not determine limits automatically, since there is no data");
 
 	return lim;
 }
