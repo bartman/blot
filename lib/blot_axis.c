@@ -104,8 +104,14 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 				label = labels->strings[li];
 		} else {
 			size_t room = min_t(size_t, end-p, BLOT_AXIS_LABEL_MAX);
-			int rc = snprintf(p, (unsigned)room,
-					  "%.3f", d_val);
+			int rc;
+			const char **ff, *formats[] = {
+				"%.3f", "%.2f", "%.1f", "%g", "%.3g", "%3.g", NULL };
+			for (ff = formats; *ff; ff++) {
+				rc = snprintf(p, (unsigned)room, *ff, d_val);
+				if (rc>0 || rc < BLOT_AXIS_LABEL_MAX)
+					break;
+			}
 			RETURN_ERROR(rc<0, NULL, error,
 				     "axis label for %f format", d_val);
 			g_assert_cmpuint(rc, <=, BLOT_AXIS_LABEL_MAX);
