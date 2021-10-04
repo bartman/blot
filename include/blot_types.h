@@ -9,6 +9,7 @@ struct blot_figure;
 struct blot_layer;
 struct blot_canvas;
 struct blot_screen;
+struct blot_axis;
 
 typedef enum blot_plot_type {
 	BLOT_SCATTER,
@@ -70,3 +71,8 @@ typedef struct blot_margins {
 typedef struct blot_dimensions {
 	unsigned cols, rows;
 } blot_dimensions;
+
+typedef struct blot_strv {
+	size_t count;
+	char **strings;
+} blot_strv;

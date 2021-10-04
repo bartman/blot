@@ -1,4 +1,5 @@
 SET(LIBBLOT_SRCS
+        blot_axis.c
         blot_braille.c
         blot_canvas.c
         blot_color.c
