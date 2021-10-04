@@ -135,94 +135,6 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 	return can;
 }
 
-/* helpers */
-
-static inline void blot_layer_draw_point(blot_canvas *can, unsigned x, unsigned y)
-{
-	// out of bounds
-	if (unlikely (x >= can->dim.cols || y >= can->dim.rows))
-		return;
-
-	blot_canvas_set(can, x, y, 1);
-}
-
-static inline void blot_layer_draw_line(blot_canvas *can,
-					unsigned x0, unsigned y0,
-					unsigned x1, unsigned y1)
-{
-	double dx = x1 - x0;
-	double dy = y1 - y0;
-
-	double ax = abs_t(double,dx);
-	double ay = abs_t(double,dy);
-
-	g_assert_cmpuint(ax, >=, 0);
-	g_assert_cmpuint(ay, >=, 0);
-
-	if (ax<=1 && ay<=1) {
-		blot_layer_draw_point(can, x0, y0);
-		return;
-	}
-
-	if (ax > ay) {
-		if (x0 < x1) {
-			double m = dy/dx;
-			double x, y;
-
-			for (x=x0, y=y0; x<=x1; x++, y+=m)
-				blot_layer_draw_point(can, x, y);
-		} else {
-			double m = dy/dx;
-			double x, y;
-
-			for (x=x0, y=y0; x>=x1; x--, y-=m)
-				blot_layer_draw_point(can, x, y);
-		}
-
-	} else /* ax < ay */ {
-		if (y0 < y1) {
-			double m = dx/dy;
-			double x, y;
-
-			for (x=x0, y=y0; y<=y1; y++, x+=m)
-				blot_layer_draw_point(can, x, y);
-		} else {
-			double m = dx/dy;
-			double x, y;
-
-			for (x=x0, y=y0; y>=y1; y--, x-=m)
-				blot_layer_draw_point(can, x, y);
-		}
-	}
-}
-
-static inline void blot_layer_draw_rect(blot_canvas *can,
-					double x0, double y0,
-					double x1, double y1)
-{
-	blot_layer_draw_line(can, x0, y0, x0, y1);
-	blot_layer_draw_line(can, x1, y0, x1, y1);
-	blot_layer_draw_line(can, x1, y1, x0, y1);
-	blot_layer_draw_line(can, x0, y0, x1, y0);
-}
-
-static inline void blot_layer_fill_rect(blot_canvas *can,
-					unsigned x0, unsigned y0,
-					unsigned x1, unsigned y1)
-{
-	if (x0 > x1)
-		swap_t(unsigned, x0, x1);
-
-	if (y0 > y1)
-		swap_t(unsigned, y0, y1);
-
-	for (unsigned y=y0; y<=y1; y++) {
-		for (unsigned x=x0; x<=x1; x++) {
-			blot_layer_draw_point(can, x, y);
-		}
-	}
-}
-
 /* scatter */
 
 static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
@@ -244,7 +156,7 @@ static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
 
 		// plot it
-		blot_layer_draw_point(can, dx, dy);
+		blot_canvas_draw_point(can, dx, dy);
 	}
 	return true;
 }
@@ -275,7 +187,7 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
 
 		// plot it
-		blot_layer_draw_point(can, dx, dy);
+		blot_canvas_draw_point(can, dx, dy);
 	}
 	return true;
 }
@@ -303,7 +215,7 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 
 		// plot it
 		if (likely (visible)) {
-			blot_layer_draw_line(can, px, py, dx, dy);
+			blot_canvas_draw_line(can, px, py, dx, dy);
 		}
 
 		// remember current point for next line
@@ -337,8 +249,8 @@ static bool blot_layer_histogram(const blot_layer *lay, const blot_xy_limits *li
 		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
 
 		// plot it
-		//blot_layer_draw_rect(can, dx, 0, dx+wx, dy);
-		blot_layer_fill_rect(can, dx, 0, dx+wx, dy);
+		//blot_canvas_draw_rect(can, dx, 0, dx+wx, dy);
+		blot_canvas_fill_rect(can, dx, 0, dx+wx, dy);
 	}
 
 	return true;

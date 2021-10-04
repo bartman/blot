@@ -179,3 +179,87 @@ static inline wchar_t blot_canvas_get_cell(const blot_canvas *can,
 	}
 }
 
+/* draw functions */
+
+static inline void blot_canvas_draw_point(blot_canvas *can, unsigned x, unsigned y)
+{
+	blot_canvas_set(can, x, y, 1);
+}
+
+static inline void blot_canvas_draw_line(blot_canvas *can,
+					unsigned x0, unsigned y0,
+					unsigned x1, unsigned y1)
+{
+	double dx = x1 - x0;
+	double dy = y1 - y0;
+
+	double ax = abs_t(double,dx);
+	double ay = abs_t(double,dy);
+
+	g_assert_cmpuint(ax, >=, 0);
+	g_assert_cmpuint(ay, >=, 0);
+
+	if (ax<=1 && ay<=1) {
+		blot_canvas_draw_point(can, x0, y0);
+		return;
+	}
+
+	if (ax > ay) {
+		if (x0 < x1) {
+			double m = dy/dx;
+			double x, y;
+
+			for (x=x0, y=y0; x<=x1; x++, y+=m)
+				blot_canvas_draw_point(can, x, y);
+		} else {
+			double m = dy/dx;
+			double x, y;
+
+			for (x=x0, y=y0; x>=x1; x--, y-=m)
+				blot_canvas_draw_point(can, x, y);
+		}
+
+	} else /* ax < ay */ {
+		if (y0 < y1) {
+			double m = dx/dy;
+			double x, y;
+
+			for (x=x0, y=y0; y<=y1; y++, x+=m)
+				blot_canvas_draw_point(can, x, y);
+		} else {
+			double m = dx/dy;
+			double x, y;
+
+			for (x=x0, y=y0; y>=y1; y--, x-=m)
+				blot_canvas_draw_point(can, x, y);
+		}
+	}
+}
+
+static inline void blot_canvas_draw_rect(blot_canvas *can,
+					double x0, double y0,
+					double x1, double y1)
+{
+	blot_canvas_draw_line(can, x0, y0, x0, y1);
+	blot_canvas_draw_line(can, x1, y0, x1, y1);
+	blot_canvas_draw_line(can, x1, y1, x0, y1);
+	blot_canvas_draw_line(can, x0, y0, x1, y0);
+}
+
+static inline void blot_canvas_fill_rect(blot_canvas *can,
+					unsigned x0, unsigned y0,
+					unsigned x1, unsigned y1)
+{
+	if (x0 > x1)
+		swap_t(unsigned, x0, x1);
+
+	if (y0 > y1)
+		swap_t(unsigned, y0, y1);
+
+	for (unsigned y=y0; y<=y1; y++) {
+		for (unsigned x=x0; x<=x1; x++) {
+			blot_canvas_draw_point(can, x, y);
+		}
+	}
+}
+
