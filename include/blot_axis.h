@@ -13,6 +13,7 @@ typedef struct blot_axis_tick {
 
 typedef struct blot_axis {
 	bool is_vertical;
+	bool is_visible;
 	blot_color color;
 	unsigned screen_length;
 	double data_min, data_max;
@@ -22,7 +23,9 @@ typedef struct blot_axis {
 
 /* create/delete */
 
-extern blot_axis * blot_axis_new(bool is_vertical, blot_color color,
+extern blot_axis * blot_axis_new(bool is_vertical,
+				 bool is_visible,
+				 blot_color color,
 				 unsigned screen_length,
 				 double data_min, double data_max,
 				 const blot_strv *labels,
@@ -37,7 +40,7 @@ static inline const blot_axis_tick * blot_axis_get_tick_at(const blot_axis *axs,
 {
 	RETURN_EFAULT_IF(axs==NULL, NULL, error);
 
-	if (unlikely (screen_index >= axs->screen_length))
+	if (unlikely (!axs->is_visible || screen_index >= axs->screen_length))
 		return NULL;
 
 	return axs->entries[screen_index];

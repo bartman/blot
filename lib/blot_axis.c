@@ -11,12 +11,33 @@
 
 /* create/delete */
 
-blot_axis * blot_axis_new(bool is_vertical, blot_color color,
+blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
+			  blot_color color,
 			  unsigned screen_length,
 			  double data_min, double data_max,
 			  const blot_strv *labels,
 			  GError **error)
 {
+	blot_axis *axs;
+
+	/* special case for an axis that is not displayed */
+
+	if (!is_visible) {
+
+		axs = g_new0(blot_axis, 1);
+		RETURN_ERROR(!axs, NULL, error, "new blot_axis");
+
+		axs->is_vertical = is_vertical;
+		axs->is_visible = is_visible;
+		axs->color = color;
+		axs->screen_length = screen_length;
+		axs->data_min = data_min;
+		axs->data_min = data_max;
+
+		return axs;
+
+	}
+
 	/* figure out how many ticks we will have */
 
 	unsigned tick_count;
@@ -36,19 +57,19 @@ blot_axis * blot_axis_new(bool is_vertical, blot_color color,
 
 	/* allocate the object */
 
-	blot_axis *axs;
-
 	size_t total_size = sizeof(blot_axis)
 		+ screen_length * sizeof(axs->entries[0])
 		+ tick_count * sizeof(blot_axis_tick)
 		+ string_bytes;
 
 	axs = g_malloc(total_size);
-	RETURN_ERROR(!axs, NULL, error, "new blot_axis");
+	RETURN_ERROR(!axs, NULL, error, "new blot_axis(%u,%u,%zu",
+		     screen_length, tick_count, string_bytes);
 
 	/* populate the constants */
 
 	axs->is_vertical = is_vertical;
+	axs->is_visible = is_visible;
 	axs->color = color;
 	axs->screen_length = screen_length;
 	axs->data_min = data_min;

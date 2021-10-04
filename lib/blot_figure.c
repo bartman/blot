@@ -340,13 +340,17 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 
 	/* prepare the axis */
 
-	g_autofree blot_axis *x_axs = blot_axis_new(0, fig->axis_color,
+	bool x_axs_visible = !(flags & BLOT_RENDER_NO_X_AXIS);
+	g_autofree blot_axis *x_axs = blot_axis_new(0, x_axs_visible,
+					fig->axis_color,
 					dim.cols - mrg.left - mrg.right,
 					lim.x_min, lim.x_max,
 					&fig->xlabels, error);
 	RETURN_IF(*error, NULL);
 
-	g_autofree blot_axis *y_axs = blot_axis_new(1, fig->axis_color,
+	bool y_axs_visible = !(flags & BLOT_RENDER_NO_Y_AXIS);
+	g_autofree blot_axis *y_axs = blot_axis_new(1, y_axs_visible,
+					fig->axis_color,
 					dim.rows - mrg.top - mrg.bottom,
 					lim.y_min, lim.y_max,
 					NULL, error);
