@@ -9,6 +9,7 @@
 #include "blot_canvas.h"
 #include "blot_screen.h"
 #include "blot_terminal.h"
+#include "blot_axis.h"
 
 /* create/delete */
 
@@ -91,6 +92,18 @@ bool blot_figure_set_y_limits(blot_figure *fig,
 	return true;
 }
 
+bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
+				   char **x_labels, GError **error)
+{
+	RETURN_EFAULT_IF(fig==NULL, false, error);
+	RETURN_ERRORx((!!label_count) ^ (!!x_labels), false, error, EINVAL,
+		      "label_count=%u but x_labels=%p", label_count, x_labels);
+
+	fig->xlabels.count = label_count;
+	fig->xlabels.strings = x_labels;
+	return true;
+}
+
 
 /* add layers */
 
@@ -162,34 +175,23 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 	for (int li=0; li<fig->layer_count; li++) {
 		blot_layer *lay = fig->layers[li];
 
-		if (unlikely (!something_set && lay->count)) {
-			double x, y;
-			bool ok = blot_layer_get_double(lay, 0, &x, &y, error);
-			RETURN_IF(!ok, lim);
+		if (!lay->count)
+			continue;
 
-			lim.x_min = lim.x_max = x;
-			lim.y_min = lim.y_max = y;
+		blot_xy_limits lay_lim;
+		bool ok = blot_layer_get_lim(lay, &lay_lim, error);
+		RETURN_IF(!ok, lim);
+
+		if (likely (something_set)) {
+			lim.x_min = min_t(double, lim.x_min, lay_lim.x_min);
+			lim.x_max = max_t(double, lim.x_max, lay_lim.x_max);
+
+			lim.y_min = min_t(double, lim.y_min, lay_lim.y_min);
+			lim.y_max = max_t(double, lim.y_max, lay_lim.y_max);
+
+		} else {
+			lim = lay_lim;
 			something_set = true;
-		}
-
-		if (lay->plot_type == BLOT_HISTOGRAM && lay->count) {
-			double x_min = -0.5;
-			double x_max = lay->count - 0.5;
-
-			lim.x_min = min_t(double, lim.x_min, x_min);
-			lim.x_max = max_t(double, lim.x_max, x_max);
-		}
-
-		for (int di=0; di<lay->count; di++) {
-			double x, y;
-			bool ok = blot_layer_get_double(lay, di, &x, &y, error);
-			RETURN_IF(!ok, lim);
-
-			lim.x_min = min_t(double, lim.x_min, x);
-			lim.x_max = max_t(double, lim.x_max, x);
-
-			lim.y_min = min_t(double, lim.y_min, y);
-			lim.y_max = max_t(double, lim.y_max, y);
 		}
 	}
 
@@ -336,6 +338,20 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 		return NULL;
 	}
 
+	/* prepare the axis */
+
+	g_autofree blot_axis *x_axs = blot_axis_new(0, fig->axis_color,
+					dim.cols - mrg.left - mrg.right,
+					lim.x_min, lim.x_max,
+					&fig->xlabels, error);
+	RETURN_IF(*error, NULL);
+
+	g_autofree blot_axis *y_axs = blot_axis_new(1, fig->axis_color,
+					dim.rows - mrg.top - mrg.bottom,
+					lim.y_min, lim.y_max,
+					NULL, error);
+	RETURN_IF(*error, NULL);
+
 	/* merge canvases to screen */
 
 	blot_screen *scr = blot_screen_new(&dim, &mrg, flags, error);
@@ -344,8 +360,9 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 		return NULL;
 	}
 
-	bool render_ok = blot_screen_render(scr, fig->axis_color, &lim, fig->layer_count,
-					    fig->layers, cans, error);
+	bool render_ok = blot_screen_render(scr, &lim, x_axs, y_axs,
+					    fig->layer_count, fig->layers, cans,
+					    error);
 
 	/* we no longer need the canvases */
 	__free_canvases_array(cans, fig->layer_count);

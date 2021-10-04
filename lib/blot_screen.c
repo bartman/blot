@@ -7,6 +7,7 @@
 #include "blot_layer.h"
 #include "blot_color.h"
 #include "blot_braille.h"
+#include "blot_axis.h"
 
 /* create/delete */
 
@@ -72,8 +73,10 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 }
 
 
-static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
+static bool blot_screen_plot_cans(blot_screen *scr,
 				  const blot_xy_limits *lim,
+				  const blot_axis * x_axs,
+				  const blot_axis * y_axs,
 				  unsigned count,
 				  blot_canvas *const*cans,
 				  GError **error)
@@ -81,7 +84,7 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 	bool reset_after = false;
 	wchar_t *p = scr->data + scr->data_used,
 		 *end = scr->data + scr->data_size;
-	int len, ti;
+	int len;
 
 	/* determine the bounding box for canvases */
 	unsigned dsp_top = scr->mrg.top;
@@ -96,58 +99,6 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 	bool draw_y_axis = !(scr->flags & BLOT_RENDER_NO_Y_AXIS);
 	bool invert_y_axis = !(scr->flags & BLOT_RENDER_DONT_INVERT_Y_AXIS);
 
-	/* prepare the X-axis ticks */
-
-	const int x_tick_num = 5;
-	unsigned x_tick_width = 0;
-	unsigned x_tick_cols[x_tick_num];
-	char x_tick_labs[x_tick_num][dsp_wdh];
-
-	if (draw_x_axis) {
-		/* we will compute the tick mark locations and values */
-
-		double s_tick_jump = dsp_wdh / (x_tick_num-1);
-		double v_tick_jump = (lim->x_max - lim->x_min) / (x_tick_num-1);
-
-		for (ti=0; ti<x_tick_num; ti++) {
-			unsigned ofs = s_tick_jump * ti;
-			x_tick_cols[ti] = dsp_lft + 1 + ofs;
-			double val = lim->x_min + (v_tick_jump * ti);
-
-			len = snprintf(x_tick_labs[ti], dsp_wdh, "%.3f", val);
-			RETURN_ERROR(len<0, false, error, "snprintf");
-		}
-
-		x_tick_width = s_tick_jump;
-	}
-
-	/* prepare the Y-axis ticks */
-
-	const int y_tick_num = 5;
-	unsigned y_tick_rows[y_tick_num];
-	char y_tick_labs[y_tick_num][dsp_wdh];
-
-	if (draw_y_axis) {
-		/* we will compute the tick mark locations and values */
-
-		double s_tick_jump = dsp_hgt / (y_tick_num-1);
-		double v_tick_jump = (lim->y_max - lim->y_min) / (y_tick_num-1);
-
-		for (ti=0; ti<y_tick_num; ti++) {
-			unsigned ofs = s_tick_jump * ti;
-			y_tick_rows[ti] = dsp_top + 1 + ofs;
-			double val;
-
-			if (invert_y_axis)
-				val= lim->y_max - (v_tick_jump * ti);
-			else
-				val= lim->y_min + (v_tick_jump * ti);
-
-			len = snprintf(y_tick_labs[ti], dsp_wdh, "%.3f", val);
-			RETURN_ERROR(len<0, false, error, "snprintf");
-		}
-	}
-
 	/* now draw */
 
 	for (unsigned s_y=0; s_y<dsp_top; s_y++) {
@@ -156,7 +107,6 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 		g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
 	}
 
-	ti = 0;
 	for (unsigned s_y=dsp_top; s_y<dsp_bot; s_y++) {
 		/* this is where the canvases are merged */
 
@@ -176,9 +126,9 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 			/* no Y-axis, just plot */
 			goto plot_cells;
 
-		/* apply axis color */
+		/* apply Y-axis color */
 
-		const char *colstr = fg(axis_color);
+		const char *colstr = fg(y_axs->color);
 		len = swprintf(p, end-p, L"%s", colstr);
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
@@ -186,10 +136,12 @@ static bool blot_screen_plot_cans(blot_screen *scr, blot_color axis_color,
 
 		/* the next dsp_lft characters are the Y-axis label + line */
 
-		if (ti<y_tick_num && s_y == y_tick_rows[ti]) {
+		const blot_axis_tick *ytick;
+		ytick = blot_axis_get_tick_at(y_axs, c_y, error);
+
+		if (ytick) {
 			len = swprintf(p, end-p, L"%*s *",
-				       dsp_lft-2, y_tick_labs[ti]);
-			ti++;
+				       dsp_lft-2, ytick->label);
 
 		} else {
 			len = swprintf(p, end-p, L"%*s |",
@@ -253,13 +205,12 @@ skip_cell:
 		g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
 	}
 
-	ti = 0;
 	for (unsigned s_y=dsp_bot; s_y<scr->dim.rows; s_y++) {
 		/* the bottom lines may contain the X-axis */
 		if (!draw_x_axis)
 			goto done_bot_line;
 
-		const char *colstr = fg(axis_color);
+		const char *colstr = fg(x_axs->color);
 		len = swprintf(p, end-p, L"%s", colstr);
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
@@ -273,14 +224,14 @@ skip_cell:
 				} else if (s_x < dsp_lft) {
 					*(p++) = L' ';
 				} else if (s_x < dsp_rgt) {
-					if (ti<x_tick_num && s_x == x_tick_cols[ti]) {
+					unsigned c_x = s_x - dsp_lft;
+					const blot_axis_tick *xtick;
+					xtick = blot_axis_get_tick_at(x_axs, c_x, error);
+					if (xtick)
 						*(p++) = L'*';
-						ti++;
-					} else {
+					else
 						*(p++) = L'-';
-					}
 				}
-
 			}
 			goto done_bot_line;
 
@@ -291,16 +242,24 @@ skip_cell:
 
 		/* this is the X-axis label line */
 
-		len = swprintf(p, end-p, L"%*s ",
-				   dsp_lft-1, "");
+		len = swprintf(p, end-p, L"%*s",
+				   dsp_lft, "");
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
 
-		for (ti=0; ti<x_tick_num; ti++) {
-			len = swprintf(p, end-p, L"%-*s",
-					   x_tick_width, x_tick_labs[ti]);
+		for (unsigned c_x=0; c_x<dsp_wdh; c_x++) {
+			const blot_axis_tick *xtick;
+			xtick = blot_axis_get_tick_at(x_axs, c_x, error);
+			if (!xtick) {
+				*(p++) = L' ';
+				continue;
+			}
+
+			len = swprintf(p, end-p, L"%s", xtick->label);
 			RETURN_ERROR(len<0, false, error, "swprintf");
 			p += len;
+
+			c_x += len-1;
 		}
 
 done_bot_line:
@@ -320,8 +279,10 @@ done_bot_line:
 	return true;
 }
 
-bool blot_screen_render(blot_screen *scr, blot_color axis_color,
+bool blot_screen_render(blot_screen *scr,
 			const blot_xy_limits *lim,
+			const blot_axis * x_axs,
+			const blot_axis * y_axs,
 			unsigned count,
 			struct blot_layer *const*lays,
 			struct blot_canvas *const*cans,
@@ -343,7 +304,7 @@ bool blot_screen_render(blot_screen *scr, blot_color axis_color,
 		RETURN_IF(!ok, false);
 	}
 
-	ok = blot_screen_plot_cans(scr, axis_color, lim, count, cans, error);
+	ok = blot_screen_plot_cans(scr, lim, x_axs, y_axs, count, cans, error);
 	RETURN_IF(!ok, false);
 
 	if (scr->flags & BLOT_RENDER_LEGEND_BELOW) {

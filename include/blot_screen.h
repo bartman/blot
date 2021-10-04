@@ -25,8 +25,10 @@ extern void blot_screen_delete(blot_screen *scr);
 
 /* render */
 
-extern bool blot_screen_render(blot_screen *scr, blot_color axis_color,
+extern bool blot_screen_render(blot_screen *scr,
 			       const blot_xy_limits *lim,
+			       const struct blot_axis * x_axs,
+			       const struct blot_axis * y_axs,
 			       unsigned count,
 			       struct blot_layer *const*lays,
 			       struct blot_canvas *const*cans,
