@@ -44,6 +44,12 @@
 	(_a > _b) ? _a : _b;                                    \
 	})
 
+#define swap_t(type,a,b) ({                                     \
+	type _t = (a);                                          \
+	(a) = (b);                                              \
+	(b) = _t;                                               \
+	})
+
 #define abs_t(type,a) ({                                        \
 	type _a = (a);                                          \
 	(_a > 0) ? _a : -_a;                                    \
