@@ -7,7 +7,7 @@
 #include "blot_types.h"
 #include "blot_utils.h"
 
-#define BLOT_AXIS_LABEL_MAX 10
+#define BLOT_AXIS_LABEL_MAX 16
 
 /* create/delete */
 
@@ -32,7 +32,7 @@ blot_axis * blot_axis_new(bool is_vertical, blot_color color,
 	bool use_labels_arg = labels && labels->count;
 	size_t string_bytes = 0;
 	if (!use_labels_arg)
-		string_bytes = (BLOT_AXIS_LABEL_MAX+1) * tick_count;
+		string_bytes = 128 + (BLOT_AXIS_LABEL_MAX+1) * tick_count;
 
 	/* allocate the object */
 
@@ -87,7 +87,7 @@ blot_axis * blot_axis_new(bool is_vertical, blot_color color,
 					  "%.3f", d_val);
 			RETURN_ERROR(rc<0, NULL, error,
 				     "axis label for %f format", d_val);
-			g_assert_cmpuint(rc, <, BLOT_AXIS_LABEL_MAX);
+			g_assert_cmpuint(rc, <=, BLOT_AXIS_LABEL_MAX);
 			label = p;
 			p += rc + 1;
 			g_assert(p < end);
