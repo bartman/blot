@@ -44,7 +44,7 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 	if (labels && labels->count)
 		tick_count = labels->count;
 	else if (is_vertical)
-		tick_count = screen_length / 5;
+		tick_count = screen_length / 3;
 	else
 		tick_count = screen_length / 10;
 
@@ -90,7 +90,7 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 	double data_range = data_max - data_min;
 
 	double d_jump = data_range / tick_count;
-	double s_jump = (double)(screen_length) / tick_count;
+	double s_jump = (double)(screen_length-1) / (tick_count-1);
 
 	for (int ti=0; ti<tick_count; ti++) {
 
