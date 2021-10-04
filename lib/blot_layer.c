@@ -40,6 +40,45 @@ void blot_layer_delete(blot_layer *lay)
 	g_free(lay);
 }
 
+/* data */
+
+bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim, GError **error)
+{
+	RETURN_EFAULT_IF(lay==NULL, NULL, error);
+
+	memset(lim, 0, sizeof(*lim));
+
+	if (unlikely (!lay->xs)) {
+
+		lim->x_min = 0;
+		lim->x_max = lay->count;
+
+		for (int di=0; di<lay->count; di++) {
+			double y;
+			bool ok = blot_layer_get_y(lay, di, &y, error);
+			RETURN_IF(!ok, lim);
+
+			lim->y_min = min_t(double, lim->y_min, y);
+			lim->y_max = max_t(double, lim->y_max, y);
+		}
+		return true;
+	}
+
+	for (int di=0; di<lay->count; di++) {
+		double x, y;
+		bool ok = blot_layer_get_x_y(lay, di, &x, &y, error);
+		RETURN_IF(!ok, lim);
+
+		lim->x_min = min_t(double, lim->x_min, x);
+		lim->x_max = max_t(double, lim->x_max, x);
+
+		lim->y_min = min_t(double, lim->y_min, y);
+		lim->y_max = max_t(double, lim->y_max, y);
+	}
+
+	return true;
+}
+
 /* render */
 
 static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
@@ -174,7 +213,7 @@ static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 		// read the location
 		double rx, ry;
 
-		gboolean ok = blot_layer_get_double(lay, di, &rx, &ry, error);
+		gboolean ok = blot_layer_get_x_y(lay, di, &rx, &ry, error);
 		if (unlikely (!ok))
 			return false;
 
@@ -232,7 +271,7 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 		// read the location
 		double rx, ry;
 
-		gboolean ok = blot_layer_get_double(lay, di, &rx, &ry, error);
+		gboolean ok = blot_layer_get_x_y(lay, di, &rx, &ry, error);
 		if (unlikely (!ok))
 			return false;
 
@@ -263,7 +302,7 @@ static bool blot_layer_histogram(const blot_layer *lay, const blot_xy_limits *li
 		// read the location
 		double rx, ry;
 
-		gboolean ok = blot_layer_get_double(lay, di, &rx, &ry, error);
+		gboolean ok = blot_layer_get_x_y(lay, di, &rx, &ry, error);
 		if (unlikely (!ok))
 			return false;
 

@@ -32,20 +32,17 @@ extern void blot_layer_delete(blot_layer *fig);
 
 /* data */
 
-static inline bool blot_layer_get_double(const blot_layer *lay, unsigned index,
-					 double *x, double *y, GError **error)
+static inline bool blot_layer_get_x(const blot_layer *lay, unsigned index,
+				    double *x, GError **error)
 {
-	RETURN_ERRORx(!lay->ys, false, error, ENOENT, "Y-data is NULL");
 	RETURN_ERRORx(index > lay->count, false, error, ERANGE,
 		      "index %u is out of range %u", index, lay->count);
-	RETURN_ERRORx(lay->data_type >= BLOT_DATA_TYPE_MAX, false, error, EINVAL,
-		      "data_type==%u > MAX (%u)", lay->data_type, BLOT_DATA_TYPE_MAX);
 
 	if (unlikely (!lay->xs)) {
 		/* X data can be NULL, that means we
 		 * are plotting the index as X */
 		*x = index;
-		goto get_y_value;
+		return true;
 	}
 
 	switch (lay->data_type & BLOT_DATA_X_MASK) {
@@ -69,7 +66,15 @@ static inline bool blot_layer_get_double(const blot_layer *lay, unsigned index,
 		return false;
 	}
 
-get_y_value:
+	return true;
+}
+
+static inline bool blot_layer_get_y(const blot_layer *lay, unsigned index,
+				    double *y, GError **error)
+{
+	RETURN_ERRORx(!lay->ys, false, error, ENOENT, "Y-data is NULL");
+	RETURN_ERRORx(index > lay->count, false, error, ERANGE,
+		      "index %u is out of range %u", index, lay->count);
 
 	switch (lay->data_type & BLOT_DATA_Y_MASK) {
 	case BLOT_DATA_Y_INT16:
@@ -95,6 +100,19 @@ get_y_value:
 	return true;
 }
 
+static inline bool blot_layer_get_x_y(const blot_layer *lay, unsigned index,
+					 double *x, double *y, GError **error)
+{
+	bool ok;
+
+	ok = blot_layer_get_x(lay, index, x, error);
+	RETURN_IF(!ok, false);
+
+	return blot_layer_get_y(lay, index, y, error);
+}
+
+extern bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim,
+			       GError **);
 
 /* render */
 
