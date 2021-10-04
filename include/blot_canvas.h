@@ -187,8 +187,8 @@ static inline void blot_canvas_draw_point(blot_canvas *can, unsigned x, unsigned
 }
 
 static inline void blot_canvas_draw_line(blot_canvas *can,
-					unsigned x0, unsigned y0,
-					unsigned x1, unsigned y1)
+					double x0, double y0,
+					double x1, double y1)
 {
 	double dx = x1 - x0;
 	double dy = y1 - y0;
