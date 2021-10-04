@@ -64,7 +64,7 @@ int main(void)
 	blot_figure_set_y_limits(fig, -2, 2, &error);
 	FATAL_ERROR(error);
 
-#if 1
+#if 0
 	/* hack for now to add origin lines */
 
 	/* plot X-axis origin */
@@ -86,6 +86,60 @@ int main(void)
 			 2, yax, yay,
 			 8, NULL, &error);
 	FATAL_ERROR(error);
+#endif
+
+#if 1
+	/* hack for now to add origin lines */
+
+	/* plot X-axis origin */
+
+	gint32 xax[5][2];
+	gint32 xay[5][2];
+
+	for (int i=-2; i<=2; i++) {
+		xax[2+i][0] = -7;
+		xax[2+i][1] = 7;
+		xay[2+i][0] = i;
+		xay[2+i][1] = i;
+
+		blot_figure_line(fig, BLOT_DATA_INT32,
+				 2, xax[2+i], xay[2+i],
+				 i==0 ? 15 : 8, NULL, &error);
+		FATAL_ERROR(error);
+	}
+
+	/* plot Y-axis origin */
+
+	gint32 yax[15][2];
+	gint32 yay[15][2];
+
+	for (int i=-7; i<=7; i++) {
+		yax[7+i][0] = i;
+		yax[7+i][1] = i;
+		yay[7+i][0] = -2;
+		yay[7+i][1] = 2;
+
+		blot_figure_line(fig, BLOT_DATA_INT32,
+				 2, yax[7+i], yay[7+i],
+				 i==0 ? 15 : 8, NULL, &error);
+		FATAL_ERROR(error);
+	}
+	/* plot Y-axis origin */
+
+	double ypx[15][2];
+	gint32 ypy[15][2];
+
+	for (int i=-2; i<=2; i++) {
+		ypx[2+i][0] = i * M_PI;
+		ypx[2+i][1] = i * M_PI;
+		ypy[2+i][0] = -2;
+		ypy[2+i][1] = 2;
+
+		blot_figure_line(fig, BLOT_DATA_(DOUBLE,INT32),
+				 2, ypx[2+i], ypy[2+i],
+				 15, NULL, &error);
+		FATAL_ERROR(error);
+	}
 #endif
 
 	/* add a scatter plot */
