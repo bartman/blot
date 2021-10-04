@@ -45,17 +45,26 @@ void blot_layer_delete(blot_layer *lay)
 bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim, GError **error)
 {
 	RETURN_EFAULT_IF(lay==NULL, NULL, error);
+	double x, y;
+	bool ok;
 
-	memset(lim, 0, sizeof(*lim));
+	if (unlikely (!lay->count)) {
+		memset(lim, 0, sizeof(*lim));
+		return true;
+	}
 
 	if (unlikely (!lay->xs)) {
 
 		lim->x_min = 0;
 		lim->x_max = lay->count;
 
-		for (int di=0; di<lay->count; di++) {
-			double y;
-			bool ok = blot_layer_get_y(lay, di, &y, error);
+		ok = blot_layer_get_y(lay, 0, &y, error);
+		RETURN_IF(!ok, lim);
+
+		lim->y_min = lim->y_max = y;
+
+		for (int di=1; di<lay->count; di++) {
+			ok = blot_layer_get_y(lay, di, &y, error);
 			RETURN_IF(!ok, lim);
 
 			lim->y_min = min_t(double, lim->y_min, y);
@@ -64,9 +73,14 @@ bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim, GError **err
 		return true;
 	}
 
-	for (int di=0; di<lay->count; di++) {
-		double x, y;
-		bool ok = blot_layer_get_x_y(lay, di, &x, &y, error);
+	ok = blot_layer_get_x_y(lay, 0, &x, &y, error);
+	RETURN_IF(!ok, lim);
+
+	lim->x_min = lim->x_max = x;
+	lim->y_min = lim->y_max = y;
+
+	for (int di=1; di<lay->count; di++) {
+		ok = blot_layer_get_x_y(lay, di, &x, &y, error);
 		RETURN_IF(!ok, lim);
 
 		lim->x_min = min_t(double, lim->x_min, x);
