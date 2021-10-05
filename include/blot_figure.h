@@ -76,12 +76,12 @@ static inline bool blot_figure_line(blot_figure *fig, blot_data_type data_type,
 				data_color, data_label, error);
 }
 
-static inline bool blot_figure_histogram(blot_figure *fig, blot_data_type data_type,
-					 size_t data_count, const void *data_xs, const void *data_ys,
-					 blot_color data_color, const char *data_label,
-					 GError **error)
+static inline bool blot_figure_bar(blot_figure *fig, blot_data_type data_type,
+				   size_t data_count, const void *data_xs, const void *data_ys,
+				   blot_color data_color, const char *data_label,
+				   GError **error)
 {
-	return blot_figure_plot(fig, BLOT_HISTOGRAM, data_type,
+	return blot_figure_plot(fig, BLOT_BAR, data_type,
 				data_count, data_xs, data_ys,
 				data_color, data_label, error);
 }

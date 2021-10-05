@@ -102,7 +102,7 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 			       blot_canvas *can, GError **);
 static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **);
-static bool blot_layer_histogram(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_bar(const blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **);
 
 typedef bool (*layer_to_canvas_fn)(const blot_layer *lay, const blot_xy_limits *lim,
@@ -115,7 +115,7 @@ static layer_to_canvas_fn blot_layer_to_canvas_type_fns[BLOT_PLOT_TYPE_MAX][BLOT
 static layer_to_canvas_fn blot_layer_to_canvas_fns[BLOT_PLOT_TYPE_MAX] = {
 	[BLOT_SCATTER]   = blot_layer_scatter,
 	[BLOT_LINE]      = blot_layer_line,
-	[BLOT_HISTOGRAM] = blot_layer_histogram,
+	[BLOT_BAR]       = blot_layer_bar,
 };
 
 struct blot_canvas * blot_layer_render(blot_layer *lay,
@@ -241,13 +241,13 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 	return true;
 }
 
-static bool blot_layer_histogram(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_bar(const blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **error)
 {
 	double x_range = lim->x_max - lim->x_min;
 	double y_range = lim->y_max - lim->y_min;
 
-	/* histograms are plotted as rectangles of this width */
+	/* bar graphs are plotted as rectangles of this width */
 
 	double wx = (double)(0.5) * can->dim.cols / x_range;
 

@@ -14,7 +14,7 @@ struct blot_axis;
 typedef enum blot_plot_type {
 	BLOT_SCATTER,
 	BLOT_LINE,
-	BLOT_HISTOGRAM,
+	BLOT_BAR,
 	BLOT_PLOT_TYPE_MAX
 } blot_plot_type;
 

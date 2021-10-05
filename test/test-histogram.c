@@ -50,11 +50,11 @@ int main(void)
 	blot_figure_set_x_axis_labels(fig, DATA_COUNT, xlabels, &error);
 	FATAL_ERROR(error);
 
-	/* add a histogram plot */
+	/* add a bar plot */
 
-	blot_figure_histogram(fig, BLOT_DATA_INT32,
-			      DATA_COUNT, NULL, data,
-			      9, "histogram", &error);
+	blot_figure_bar(fig, BLOT_DATA_INT32,
+			DATA_COUNT, NULL, data,
+			9, "histogram", &error);
 	FATAL_ERROR(error);
 
 	/* render the plots */
