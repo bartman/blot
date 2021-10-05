@@ -2,6 +2,7 @@
 /* vim: set noet sw=8 ts=8 tw=80: */
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 #include "blot_axis.h"
 #include "blot_error.h"
 #include "blot_types.h"
