@@ -255,7 +255,7 @@ skip_cell:
 				continue;
 			}
 
-			len = swprintf(p, end-p, L"%s", xtick->label);
+			len = swprintf(p, end-p, L"%s ", xtick->label);
 			RETURN_ERROR(len<0, false, error, "swprintf");
 			p += len;
 
