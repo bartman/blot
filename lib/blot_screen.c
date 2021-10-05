@@ -243,7 +243,7 @@ skip_cell:
 		/* this is the X-axis label line */
 
 		len = swprintf(p, end-p, L"%*s",
-				   dsp_lft-3, "");
+				   dsp_lft, "");
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
 

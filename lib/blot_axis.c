@@ -41,16 +41,48 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 	/* figure out how many ticks we will have */
 
 	unsigned tick_count;
-	if (labels && labels->count)
+	if (labels && labels->count) {
 		tick_count = labels->count;
-	else if (is_vertical)
-		tick_count = screen_length / 3;
-	else
-		tick_count = screen_length / 10;
+
+	} else {
+		if (is_vertical)
+			tick_count = screen_length / 3;
+		else
+			tick_count = screen_length / 10;
+
+		// odd is better than even
+		if (!(tick_count&1))
+			tick_count ++;
+	}
+
+	/* compute spacing and offsets of the ticks */
+
+	bool use_labels_arg = labels && labels->count;
+
+	double data_range = data_max - data_min;
+
+	// jump is the width of each tick in data and screen offsets
+	double d_jump = data_range / tick_count;
+	double s_jump = (double)(screen_length) / (tick_count);
+
+	// base is a fudge factor to add to align it with 0, if needed
+	double d_base = 0;
+	double s_base = 0;
+
+	if (!use_labels_arg && data_min < 0 && 0 < data_max) {
+
+		/* compute an offset to force 0 to align on a tick location */
+
+		double t_shift = -data_min / d_jump;
+		unsigned ti = floor(t_shift);
+		double d_shift = (ti * d_jump) + data_min;
+
+		d_base = -d_shift;
+		s_base = (t_shift-ti) * s_jump;
+	}
 
 	/* compute the size of the labels */
 
-	bool use_labels_arg = labels && labels->count;
 	size_t string_bytes = 0;
 	if (!use_labels_arg)
 		string_bytes = 128 + (BLOT_AXIS_LABEL_MAX+1) * tick_count;
@@ -87,15 +119,10 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 
 	/* populate the entries */
 
-	double data_range = data_max - data_min;
-
-	double d_jump = data_range / tick_count;
-	double s_jump = (double)(screen_length-1) / (tick_count-1);
-
 	for (int ti=0; ti<tick_count; ti++) {
 
-		double   d_val = (ti * d_jump) + data_min;
-		unsigned s_val = (ti * s_jump);
+		double   d_val = d_base + (ti * d_jump) + data_min;
+		unsigned s_val = s_base + (ti * s_jump);
 
 		char *label = NULL;
 		if (use_labels_arg) {
@@ -124,7 +151,9 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 		tck->value = d_val;
 		tck->label = label;
 
-		axs->entries[s_val] = tck;
+		unsigned ei = round(s_val);
+		if (ei<axs->screen_length)
+			axs->entries[ei] = tck;
 	}
 
 	g_assert(p <= end);
