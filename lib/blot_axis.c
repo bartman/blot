@@ -127,7 +127,8 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 
 		char *label = NULL;
 		if (use_labels_arg) {
-			unsigned li = round(d_val);
+			//unsigned li = round(d_val);
+			unsigned li = round((d_val-data_min)/d_jump);
 			if (li<labels->count)
 				label = labels->strings[li];
 		} else {
