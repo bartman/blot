@@ -224,10 +224,7 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 
 	if (!(flags & BLOT_RENDER_NO_X_AXIS)) {
 		/* we will draw an X-axis */
-		mrg.bottom += 3;
-
-		/* we always reserve 1 line for text */
-		mrg.bottom += 1;
+		mrg.bottom += 2;
 	}
 
 	if (!(flags & BLOT_RENDER_NO_Y_AXIS)) {
