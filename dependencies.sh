@@ -23,7 +23,7 @@ elif [ -f /etc/debian_version ]; then
 
         say "Installing Debian/Ubuntu dependencies"
 
-        run apt install $YES make ninja-build cmake libglib2.0-dev
+        run apt install $YES make ninja-build cmake libglib2.0-dev git gcc g++
 
 else
         die "Distribution is not handled"
