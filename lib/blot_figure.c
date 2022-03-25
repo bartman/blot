@@ -199,17 +199,18 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 		blot_set_error_unix(error, ENOENT,
 				    "could not determine limits automatically, since there is no data");
 
+
+	/* if there is a range, widen it by 0.1% on either side,
+	 * if there is only one value, make the range 10% on either side */
 	double x_range = lim.x_max - lim.x_min;
-	if (!x_range) {
-		lim.x_min --;
-		lim.x_max ++;
-	}
+	double x_fudge = x_range ? x_range * 0.001 : lim.x_min * 0.1;
+	lim.x_min -= x_fudge;
+	lim.x_max += x_fudge;
 
 	double y_range = lim.y_max - lim.y_min;
-	if (!y_range) {
-		lim.y_min --;
-		lim.y_max ++;
-	}
+	double y_fudge = y_range ? y_range * 0.001 : lim.y_min * 0.1;
+	lim.y_min -= y_fudge;
+	lim.y_max += y_fudge;
 
 	return lim;
 }
