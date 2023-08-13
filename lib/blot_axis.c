@@ -131,7 +131,8 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 			unsigned li = round((d_val-data_min)/d_jump);
 			if (li<labels->count)
 				label = labels->strings[li];
-		} else {
+		}
+		if (!label) {
 			size_t room = min_t(size_t, end-p, BLOT_AXIS_LABEL_MAX);
 			if (!is_vertical)
 				room = min_t(size_t, end-p, floor(s_jump));
