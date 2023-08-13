@@ -5,8 +5,8 @@ PROJECT(blot)
 #set(CMAKE_BUILD_TYPE Debug)
 #set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
-SET(CMAKE_C_FLAGS_DEBUG "-g3 -O3 -march=native -Wall -Werror -Wno-dangling-pointer")
-SET(CMAKE_C_FLAGS_RELEASE "-O3 -march=native -Wall -Werror -Wno-dangling-pointer")
+SET(CMAKE_C_FLAGS_DEBUG "-D_GNU_SOURCE -g3 -O3 -march=native -Wall -Werror -Wno-dangling-pointer")
+SET(CMAKE_C_FLAGS_RELEASE "-D_GNU_SOURCE -O3 -march=native -Wall -Werror -Wno-dangling-pointer")
 
 SET(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -23,7 +23,6 @@ PKG_CHECK_MODULES(GIOUNIX REQUIRED gio-unix-2.0>=2.44)
 #PKG_CHECK_MODULES(MAGICWAND REQUIRED MagickWand>=6)
 
 SET(CMAKE_C_STANDARD 99)
-add_compile_definitions(_GNU_SOURCE)
 
 if(CMAKE_COMPILER_IS_GNUCC)
         add_definitions(-Wall -Werror -std=c99 -Wno-variadic-macros)
