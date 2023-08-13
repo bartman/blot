@@ -214,7 +214,7 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 	double y_range = lim->y_max - lim->y_min;
 
 	bool visible = false;
-	double px, py;
+	double px=0, py=0;
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location

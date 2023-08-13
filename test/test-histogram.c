@@ -31,7 +31,8 @@ int main(void)
 		data[i] = rand() % DATA_MAX;
 
 		/* let's make up some years */
-		asprintf(&xlabels[i], "%u", 2000-DATA_COUNT+i);
+		int rc = asprintf(&xlabels[i], "%u", 2000-DATA_COUNT+i);
+		g_assert(rc > 0);
 	}
 
 	/* configure the figure */
