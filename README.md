@@ -46,13 +46,13 @@ Generated from [test-simple.c](test/test-simple.c)
 
     ./build/test/test-simple
 
-![simple example](examples/simple.png)
+![simple example](images/simple.png)
 
 Generated from [test-trig.c](test/test-trig.c)
 
     ./build/test/test-trig
 
-![trig example](examples/trig.png)
+![trig example](images/trig.png)
 
 ## Missing features
 
