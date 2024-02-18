@@ -6,9 +6,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 #set(CMAKE_BUILD_TYPE Debug)
 #set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
-SET(CMAKE_C_FLAGS_DEBUG "-D_GNU_SOURCE -g3 -O3 -march=native -Wall -Werror -Wno-dangling-pointer")
-SET(CMAKE_C_FLAGS_RELEASE "-D_GNU_SOURCE -O3 -march=native -Wall -Werror -Wno-dangling-pointer")
-
 SET(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 SET(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
@@ -25,8 +22,10 @@ PKG_CHECK_MODULES(GIOUNIX REQUIRED gio-unix-2.0>=2.44)
 
 SET(CMAKE_C_STANDARD 99)
 
+add_definitions(-D_GNU_SOURCE)
+
 if(CMAKE_COMPILER_IS_GNUCC)
-        add_definitions(-Wall -Werror -std=c99 -Wno-variadic-macros)
+    add_definitions(-Wall -Werror -std=c99 -Wno-variadic-macros -Wno-dangling-pointer)
 endif(CMAKE_COMPILER_IS_GNUCC)
 
 include(GetGitRevisionDescription)

@@ -18,6 +18,17 @@ BUILDNINJA  = ${BUILDDIR}/build.ninja
 CMAKEFLAGS  = -G Ninja
 CMAKEFLAGS += -DCMAKE_BUILD_TYPE=Debug
 
+# prefer clang over gcc
+ifneq ($(shell which clang),)
+CMAKEFLAGS += -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+else
+ifneq ($(shell which gcc),)
+CMAKEFLAGS += -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+else
+# otherwise use default
+endif
+endif
+
 config: ${BUILDNINJA}
 
 ${BUILDNINJA}: Makefile CMakeLists.txt
