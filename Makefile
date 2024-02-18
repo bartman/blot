@@ -18,13 +18,19 @@ BUILDNINJA  = ${BUILDDIR}/build.ninja
 CMAKEFLAGS  = -G Ninja
 CMAKEFLAGS += -DCMAKE_BUILD_TYPE=Debug
 
-${BUILDNINJA}: Makefile CMakeLists.txt
-	mkdir -p ${BUILDDIR}
-	cd ${BUILDDIR} && cmake ${CMAKEFLAGS} ..
-
 config: ${BUILDNINJA}
 
-build: ${BUILDNINJA}
+${BUILDNINJA}: Makefile CMakeLists.txt
+	mkdir -p ${BUILDDIR}
+	cmake -B${BUILDDIR} -S. ${CMAKEFLAGS} 
+
+build/compile_commands.json: config
+
+COMPILE_COMMANDS = compile_commands.json
+${COMPILE_COMMANDS}: build/compile_commands.json
+	ln -fs $< $@
+
+build: ${BUILDNINJA} ${COMPILE_COMMANDS}
 	ninja -C ${BUILDDIR}
 
 clean:
