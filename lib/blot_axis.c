@@ -1,5 +1,5 @@
 /* blot: internal object that calculates axis tick/text placement */
-/* vim: set noet sw=8 ts=8 tw=80: */
+/* vim: set noet sw=8 ts=8 tw=120: */
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -91,7 +91,7 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 	/* allocate the object */
 
 	size_t total_size = sizeof(blot_axis)
-		+ screen_length * sizeof(axs->entries[0])
+		+ screen_length * sizeof(axs->entries[0]) // NOLINT - we want the sizeof a pinter
 		+ tick_count * sizeof(blot_axis_tick)
 		+ string_bytes;
 
@@ -108,7 +108,7 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 	axs->data_min = data_min;
 	axs->data_min = data_max;
 
-	memset(axs->entries, 0, screen_length * sizeof(axs->entries[0]));
+	memset(axs->entries, 0, screen_length * sizeof(axs->entries[0])); // NOLINT - we want the sizeof a pointer
 
 	/* derive pointers to ticks and strings */
 

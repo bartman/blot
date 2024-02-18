@@ -1,4 +1,5 @@
 #include <glib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <locale.h>
 #include "blot.h"

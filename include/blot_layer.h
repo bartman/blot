@@ -3,6 +3,7 @@
 #pragma once
 
 #include <glib.h>
+#include <stdbool.h>
 #include "blot_types.h"
 #include "blot_error.h"
 

@@ -3,6 +3,7 @@
 #pragma once
 
 #include <glib.h>
+#include <stdbool.h>
 #include "blot_types.h"
 
 #define BLOT_MIN_COLS 10

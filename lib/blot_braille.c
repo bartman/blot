@@ -1,7 +1,6 @@
 /* blot: braille character encoding */
-/* vim: set noet sw=8 ts=8 tw=80: */
+/* vim: set noet sw=8 ts=8 tw=120: */
 #include "blot_braille.h"
-#include "blot_error.h"
 
 guint8 braille_order_map[BRAILLE_GLYPH_SIZE] = {
 	0, 3,

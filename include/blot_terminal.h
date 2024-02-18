@@ -3,7 +3,7 @@
 #pragma once
 
 #include <glib.h>
-#include "blot_types.h"
+#include <stdbool.h>
 
 extern bool blot_terminal_get_size(int *cols, int *rows, GError **);
 
