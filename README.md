@@ -42,15 +42,15 @@ simplify the build process (it invokes cmake in the `build` subdirectory).
 blot is being used in other projects as a library, but it comes with some
 examples.
 
-Generated from [test-simple.c](test/test-simple.c)
+Generated from [test-simple.c](examples/test-simple.c)
 
-    ./build/test/test-simple
+    ./build/examples/test-simple
 
 ![simple example](images/simple.png)
 
-Generated from [test-trig.c](test/test-trig.c)
+Generated from [test-trig.c](examples/test-trig.c)
 
-    ./build/test/test-trig
+    ./build/examples/test-trig
 
 ![trig example](images/trig.png)
 
