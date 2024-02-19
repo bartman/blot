@@ -56,5 +56,5 @@ jobs:
       #if: failure()
       uses: actions/upload-artifact@v2
       with:
-        name: LastTest.log
+        name: testing-with-${{ matrix.compiler }}.log
         path: ${{github.workspace}}/build/Testing/Temporary/LastTest.log
