@@ -6,3 +6,4 @@ build
 tags
 cscope.files
 cscope.out
+compile_commands.json
