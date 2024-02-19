@@ -26,7 +26,7 @@ SET(CMAKE_CXX_STANDARD 20)
 add_definitions(-D_GNU_SOURCE)
 
 if(CMAKE_COMPILER_IS_GNUCC)
-    add_definitions(-Wall -Werror -std=c99 -Wno-variadic-macros -Wno-dangling-pointer)
+    add_definitions(-Wall -Werror -Wno-variadic-macros -Wno-dangling-pointer)
 endif(CMAKE_COMPILER_IS_GNUCC)
 
 include(GetGitRevisionDescription)
