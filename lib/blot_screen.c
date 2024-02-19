@@ -1,12 +1,13 @@
 /* blot: screen represents the final render object */
-/* vim: set noet sw=8 ts=8 tw=80: */
+/* vim: set noet sw=8 ts=8 tw=120: */
 #include <stdio.h>
+#include <stdint.h>
+#include <wchar.h>
 #include "blot_screen.h"
 #include "blot_error.h"
 #include "blot_canvas.h"
 #include "blot_layer.h"
 #include "blot_color.h"
-#include "blot_braille.h"
 #include "blot_axis.h"
 
 /* create/delete */

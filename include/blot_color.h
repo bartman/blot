@@ -3,8 +3,7 @@
 #pragma once
 
 #include <glib.h>
-#include <wchar.h>
-#include "blot_types.h"
+#include <stdbool.h>
 
 enum {
 	BLACK,

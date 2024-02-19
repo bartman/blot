@@ -2,8 +2,6 @@
 #pragma once
 
 #include <glib.h>
-#include <stdint.h>
-#include <stdbool.h>
 
 struct blot_figure;
 struct blot_layer;

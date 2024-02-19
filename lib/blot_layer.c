@@ -1,9 +1,8 @@
 /* blot: a layer contains the raw data to be plotted */
-/* vim: set noet sw=8 ts=8 tw=80: */
+/* vim: set noet sw=8 ts=8 tw=120: */
 #include <string.h>
 #include "blot_layer.h"
 #include "blot_error.h"
-#include "blot_color.h"
 #include "blot_canvas.h"
 
 /* create/delete */

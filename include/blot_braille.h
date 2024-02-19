@@ -3,7 +3,6 @@
 #pragma once
 
 #include <glib.h>
-#include "blot_types.h"
 
 /*
  * http://www.alanwood.net/unicode/braille_patterns.html

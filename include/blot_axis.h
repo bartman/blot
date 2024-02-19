@@ -1,8 +1,9 @@
 /* blot: internal object that calculates axis tick/text placement */
-/* vim: set noet sw=8 ts=8 tw=80: */
+/* vim: set noet sw=8 ts=8 tw=120: */
 #pragma once
 
 #include <glib.h>
+#include <stdbool.h>
 #include "blot_types.h"
 #include "blot_error.h"
 
@@ -45,4 +46,3 @@ static inline const blot_axis_tick * blot_axis_get_tick_at(const blot_axis *axs,
 
 	return axs->entries[screen_index];
 }
-
