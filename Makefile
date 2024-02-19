@@ -1,7 +1,7 @@
 # this make file is a wrapper around CMake and provided for convience only.
 # actual rules for building software and components should be in cmake scripts.
 
-.PHONY: all config build clean distclean install test
+.PHONY: all config build clean distclean install check
 .DEFAULT_GOAL := all
 
 USER = $(shell id -u -n)
@@ -53,8 +53,8 @@ distclean:
 install: build
 	DESTDIR=$(abspath ${DESTDIR}) ninja -C ${BUILDDIR} install
 
-test: build
-	ninja -C ${BUILDDIR} test
+check: build
+	cd ${BUILDDIR} && ctest
 
 # ---------------------------------------------------------------------------
 
