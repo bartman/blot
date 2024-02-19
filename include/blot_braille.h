@@ -1,5 +1,5 @@
 /* blot: braille character encoding */
-/* vim: set noet sw=8 ts=8 tw=80: */
+/* vim: set noet sw=8 ts=8 tw=120: */
 #pragma once
 
 #include <glib.h>
