@@ -47,7 +47,7 @@ again:
 
 		double y = 1 + sin(x);
 
-		data_xs[i] = i * DATA_X_MAX / DATA_COUNT;
+		data_xs[i] = (double)i * DATA_X_MAX / DATA_COUNT;
 		sin_ys[i] = y * DATA_Y_MAX / 2;
 
 		y = 1 + cos(x);
