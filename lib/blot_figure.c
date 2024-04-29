@@ -58,6 +58,8 @@ bool blot_figure_set_screen_size(blot_figure *fig,
 	RETURN_EFAULT_IF(fig==NULL, false, error);
 	RETURN_EINVAL_IF(cols<BLOT_MIN_COLS, false, error);
 	RETURN_EINVAL_IF(rows<BLOT_MIN_ROWS, false, error);
+	RETURN_EINVAL_IF(cols>BLOT_MAX_COLS, false, error);
+	RETURN_EINVAL_IF(rows>BLOT_MAX_ROWS, false, error);
 
 	fig->screen_dimensions_set = true;
 	fig->dim.cols = cols;
