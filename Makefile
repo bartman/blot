@@ -29,6 +29,10 @@ else
 endif
 endif
 
+ifneq (${DEBUG},)
+CMAKEFLAGS += -DCMAKE_BUILD_TYPE=Debug
+endif
+
 config: ${BUILDNINJA}
 
 ${BUILDNINJA}: Makefile CMakeLists.txt
