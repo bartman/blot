@@ -90,3 +90,53 @@ TEST(Layer, alloc_NULL_label)
     blot_layer_delete(layer);
 }
 
+TEST(Layer, get_lim_int32)
+{
+    blot_plot_type plot_type = BLOT_SCATTER;
+    blot_data_type data_type = BLOT_DATA_INT32;
+    const constexpr size_t data_count = 9;
+    const int data_xs[data_count] = { 1,-2,3,4,5,6,7,18,9 };
+    const int data_ys[data_count] = { 1,12,3,4,5,6,7,-8,9 };
+    blot_color data_color = 1;
+    const char *data_label = "label";
+    GError *error = NULL;
+
+    blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
+    ASSERT_TRUE(layer != NULL);
+
+    blot_xy_limits limits = {};
+    ASSERT_TRUE(blot_layer_get_lim(layer, &limits, &error));
+
+    ASSERT_FLOAT_EQ(limits.x_min, -2);
+    ASSERT_FLOAT_EQ(limits.x_max, 18);
+    ASSERT_FLOAT_EQ(limits.y_min, -8);
+    ASSERT_FLOAT_EQ(limits.y_max, 12);
+
+    blot_layer_delete(layer);
+}
+
+TEST(Layer, get_lim_float)
+{
+    blot_plot_type plot_type = BLOT_SCATTER;
+    blot_data_type data_type = BLOT_DATA_FLOAT;
+    const constexpr size_t data_count = 10;
+    const float data_xs[data_count] = { 1,0,-2,3,4,5,6,7,18,9 };
+    const float data_ys[data_count] = { 1,12,3,4,5,6,7,-8,0,9 };
+    blot_color data_color = 1;
+    const char *data_label = "label";
+    GError *error = NULL;
+
+    blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
+    ASSERT_TRUE(layer != NULL);
+
+    blot_xy_limits limits = {};
+    ASSERT_TRUE(blot_layer_get_lim(layer, &limits, &error));
+
+    ASSERT_FLOAT_EQ(limits.x_min, -2);
+    ASSERT_FLOAT_EQ(limits.x_max, 18);
+    ASSERT_FLOAT_EQ(limits.y_min, -8);
+    ASSERT_FLOAT_EQ(limits.y_max, 12);
+
+    blot_layer_delete(layer);
+}
+
