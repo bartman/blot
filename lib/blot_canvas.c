@@ -11,6 +11,8 @@ blot_canvas * blot_canvas_new(unsigned _cols, unsigned _rows,
 			      blot_render_flags flags, blot_color color,
 			      GError **error)
 {
+	RETURN_ERRORx(_cols == 0 || _rows == 0, NULL, error, EINVAL, "dimensions cannot be zero");
+
 	unsigned cols = _cols;
 	unsigned rows = _rows;
 
