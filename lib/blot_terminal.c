@@ -23,6 +23,7 @@ bool blot_terminal_set_size(blot_dimensions dims, GError **error)
 	return true;
 }
 
+// caller should call blot_terminal_set_size() if the terminal size cannot be determine
 bool blot_terminal_get_size(blot_dimensions *dims, GError **error)
 {
 	RETURN_ERROR_IF(!dims, false, error, EFAULT);

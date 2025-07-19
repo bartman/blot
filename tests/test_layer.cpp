@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 extern "C" {
+#include "blot_terminal.h"
 #include "blot_layer.h"
 #include "blot_types.h"
 #include "blot_canvas.h"

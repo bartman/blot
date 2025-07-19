@@ -162,8 +162,8 @@ static blot_dimensions blot_figure_finalize_dimensions(const blot_figure *fig,
 
 	bool ok = blot_terminal_get_size(&dim, error);
 	if (!ok) {
-		g_clear_error(error);
-		return dim;
+		// caller should call blot_terminal_set_size() if the terminal size cannot be determine
+		return (blot_dimensions){};
 	}
 
 	/* use the entire terminal screen, w/o the border */
