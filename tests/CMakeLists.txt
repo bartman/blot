@@ -1,8 +1,6 @@
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
-
-message("GTEST_INCLUDE_DIRS ${GTEST_INCLUDE_DIRS}")
-message("GTEST_LIBRARIES ${GTEST_LIBRARIES}")
+link_directories(${GTEST_LIBRARY_DIRS})
 
 file(GLOB TEST_SOURCES "test_*.cpp")
 
