@@ -248,22 +248,34 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 		mrg.left += 3;
 
 		/* how big are the numbers? */
-		double amin = ceil(abs_t(double, lim->y_min));
-		double wmin = ceil(log10(amin));
-		if (lim->y_min < 0) wmin ++;
+		double amin = fabs(lim->y_min);
+		double wmin = 1.0;
+		if (amin > 0) {
+			wmin = ceil(log10(amin));
+			if (lim->y_min < 0) wmin ++;
+		}
 
-		double amax = ceil(abs_t(double, lim->y_max));
-		double wmax = ceil(log10(amax));
-		if (lim->y_max < 0) wmax ++;
+		double amax = fabs(lim->y_max);
+		double wmax = 1.0;
+		if (amax > 0) {
+			wmax = ceil(log10(amax));
+			if (lim->y_max < 0) wmax ++;
+		}
 
 		/* worst case we need this many columns for text */
-		mrg.left += max_t(unsigned, wmin, wmax);
+		mrg.left += max_t(unsigned, (unsigned)wmin, (unsigned)wmax);
 
 		/* add 3 digits of precision */
 		mrg.left += 4;
+
+		// Ensure margins don't exceed dimensions
+		mrg.left = min_t(unsigned, mrg.left, dim->cols / 2);
+		mrg.bottom = min_t(unsigned, mrg.bottom, dim->rows / 2);
+		mrg.right = min_t(unsigned, mrg.right, dim->cols / 2);
+		mrg.top = min_t(unsigned, mrg.top, dim->rows / 2);
 	}
 
-#if 1
+#if 0
 	/* for testing only */
 	mrg.right += 1;
 	mrg.top += 1;
