@@ -60,7 +60,7 @@ bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim, GError **err
 	if (unlikely (!lay->xs)) {
 
 		lim->x_min = 0;
-		lim->x_max = lay->count;
+		lim->x_max = lay->count > 0 ? lay->count - 1 : 0;
 
 		ok = blot_layer_get_y(lay, 0, &y, error);
 		RETURN_IF(!ok, lim);
