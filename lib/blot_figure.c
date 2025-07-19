@@ -332,7 +332,13 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 
 	/* generate the canvases */
 
-	g_autofree blot_canvas **cans = g_new0(blot_canvas*, fig->layer_count);
+	g_autofree blot_canvas **cans = NULL;
+	g_autofree blot_axis *x_axs = NULL;
+	g_autofree blot_axis *y_axs = NULL;
+
+	/* generate the canvases */
+
+	cans = g_new0(blot_canvas*, fig->layer_count);
 	RETURN_ERROR(!cans, NULL, error, "new *canvas x %u", fig->layer_count);
 
 	for (int li=0; li<fig->layer_count; li++) {
@@ -340,19 +346,17 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 
 		cans[li] = blot_layer_render(lay, &lim, &use,
 					     flags, error);
-		if (cans[li])
-			continue;
-
-		/* error: unwind the canvases we allocated */
-		for (--li; li>=0; li--)
-			blot_canvas_delete(cans[--li]);
-		return NULL;
+		if (!cans[li]) {
+			/* error: unwind the canvases we allocated */
+			__free_canvases_array(cans, li);
+			return NULL;
+		}
 	}
 
 	/* prepare the axis */
 
 	bool x_axs_visible = !(flags & BLOT_RENDER_NO_X_AXIS);
-	g_autofree blot_axis *x_axs = blot_axis_new(0, x_axs_visible,
+	x_axs = blot_axis_new(0, x_axs_visible,
 					fig->axis_color,
 					dim.cols - mrg.left - mrg.right,
 					lim.x_min, lim.x_max,
@@ -360,7 +364,7 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 	RETURN_IF(*error, NULL);
 
 	bool y_axs_visible = !(flags & BLOT_RENDER_NO_Y_AXIS);
-	g_autofree blot_axis *y_axs = blot_axis_new(1, y_axs_visible,
+	y_axs = blot_axis_new(1, y_axs_visible,
 					fig->axis_color,
 					dim.rows - mrg.top - mrg.bottom,
 					lim.y_min, lim.y_max,
