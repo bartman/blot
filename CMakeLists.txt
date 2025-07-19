@@ -39,6 +39,13 @@ if(CMAKE_COMPILER_IS_GNUCC)
     add_definitions(-Wall -Werror -Wno-variadic-macros -Wno-dangling-pointer)
 endif(CMAKE_COMPILER_IS_GNUCC)
 
+if(CMAKE_BUILD_TYPE MATCHES Debug)
+    message(STATUS "ASAN enabled for debug build")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fno-omit-frame-pointer")
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=address")
+endif()
+
 include(GetGitRevisionDescription)
 get_git_head_revision(GIT_REFSPEC GIT_SHA1)
 git_describe(GIT_REVISION)
