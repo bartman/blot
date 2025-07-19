@@ -410,7 +410,7 @@ TEST(Layer, get_x_y_null_y)
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer == NULL);
     ASSERT_TRUE(error != NULL);
-    ASSERT_EQ(error->code, ENOENT);
+    ASSERT_EQ(error->code, EFAULT);
     g_clear_error(&error);
 }
 

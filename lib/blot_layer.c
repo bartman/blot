@@ -19,9 +19,9 @@ extern blot_layer * blot_layer_new(blot_plot_type plot_type,
 {
 	blot_layer *lay;
 
-	RETURN_ERROR(!count, NULL, error, "count is NULL");
-	RETURN_ERROR(!xs, NULL, error, "xs pointer is NULL");
-	RETURN_ERROR(!ys, NULL, error, "ys pointer is NULL");
+	RETURN_ERRORx(!count, NULL, error, EFAULT, "count is NULL");
+	RETURN_ERRORx(!xs, NULL, error, EFAULT, "xs pointer is NULL");
+	RETURN_ERRORx(!ys, NULL, error, EFAULT, "ys pointer is NULL");
 
 	RETURN_ERRORx(plot_type >= BLOT_PLOT_TYPE_MAX, false, error, EINVAL,
 		      "x_min >= x_max");

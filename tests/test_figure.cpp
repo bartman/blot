@@ -269,7 +269,7 @@ TEST(Figure, add_plot_null_xs)
     const int ys[] = {4, 5, 6};
     ASSERT_FALSE(blot_figure_scatter(fig, BLOT_DATA_INT32, 3, NULL, ys, 1, "scatter", &error));
     ASSERT_TRUE(error != NULL);
-    ASSERT_EQ(error->code, ENOENT);
+    ASSERT_EQ(error->code, EFAULT);
     g_clear_error(&error);
 
     blot_figure_delete(fig);
@@ -284,7 +284,7 @@ TEST(Figure, add_plot_null_ys)
     const int xs[] = {1, 2, 3};
     ASSERT_FALSE(blot_figure_scatter(fig, BLOT_DATA_INT32, 3, xs, NULL, 1, "scatter", &error));
     ASSERT_TRUE(error != NULL);
-    ASSERT_EQ(error->code, ENOENT);
+    ASSERT_EQ(error->code, EFAULT);
     g_clear_error(&error);
 
     blot_figure_delete(fig);
@@ -300,7 +300,7 @@ TEST(Figure, add_plot_zero_count)
     const int ys[] = {4, 5, 6};
     ASSERT_FALSE(blot_figure_scatter(fig, BLOT_DATA_INT32, 0, xs, ys, 1, "scatter", &error));
     ASSERT_TRUE(error != NULL);
-    ASSERT_EQ(error->code, ENOENT);
+    ASSERT_EQ(error->code, EFAULT);
     g_clear_error(&error);
 
     blot_figure_delete(fig);
