@@ -146,14 +146,10 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 		const blot_axis_tick *ytick;
 		ytick = blot_axis_get_tick_at(y_axs, c_y, error);
 
-		if (ytick) {
-			len = swprintf(p, end-p, L"%*s *",
-				       dsp_lft-2, ytick->label);
-
-		} else {
-			len = swprintf(p, end-p, L"%*s |",
-				       dsp_lft-2, "");
-		}
+		const char *ytick_label = ytick ? ytick->label : "";
+		char axis_char = ytick ? '*' : '-';
+		len = swprintf(p, end-p, L"%*s %c",
+			       dsp_lft-2, ytick_label, axis_char);
 
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		g_assert_cmpuint(len, ==, dsp_lft);
