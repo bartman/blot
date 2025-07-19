@@ -1,0 +1,100 @@
+stages:
+  - build
+  - unit-test
+  - smoke-test
+
+# ---
+
+.deb12-job: &deb12-job
+  image: debian:bookworm
+  before_script:
+    - bash .gitlab/ci/prepare-apt-proxy.sh
+    - bash dependencies.sh -y
+
+.deb13-job: &deb13-job
+  image: debian:trixie
+  before_script:
+    - bash .gitlab/ci/prepare-apt-proxy.sh
+    - bash dependencies.sh -y
+
+# ---
+
+build-deb12:
+  <<: *deb12-job
+  stage: build
+  script:
+    - make
+  artifacts:
+    paths:
+      - build
+    expire_in: 1 hour
+
+unit-test-deb12:
+  <<: *deb12-job
+  stage: unit-test
+  needs:
+    - job: build-deb12
+      artifacts: true
+  script:
+    - make test
+  artifacts:
+    when: always
+    paths:
+      - build/test_*_report.xml
+    reports:
+      junit:
+      - build/test_*_report.xml
+
+smoke-test-deb12:
+  <<: *deb12-job
+  stage: smoke-test
+  needs:
+    - job: build-deb12
+      artifacts: true
+  script:
+    - make smoke
+  artifacts:
+    when: always
+    paths:
+      - build/test/smoke/smoke.log
+
+# ---
+
+build-deb13:
+  <<: *deb13-job
+  stage: build
+  script:
+    - make
+  artifacts:
+    paths:
+      - build
+    expire_in: 1 hour
+
+unit-test-deb13:
+  <<: *deb13-job
+  stage: unit-test
+  needs:
+    - job: build-deb13
+      artifacts: true
+  script:
+    - make test
+  artifacts:
+    when: always
+    paths:
+      - build/test_*_report.xml
+    reports:
+      junit:
+      - build/test_*_report.xml
+
+smoke-test-deb13:
+  <<: *deb13-job
+  stage: smoke-test
+  needs:
+    - job: build-deb13
+      artifacts: true
+  script:
+    - make smoke
+  artifacts:
+    when: always
+    paths:
+      - build/test/smoke/smoke.log

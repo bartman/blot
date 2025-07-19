@@ -1,7 +1,7 @@
 # this make file is a wrapper around CMake and provided for convience only.
 # actual rules for building software and components should be in cmake scripts.
 
-.PHONY: all config build clean distclean install check
+.PHONY: all config build clean distclean install test check smoke
 .DEFAULT_GOAL := all
 
 USER = $(shell id -u -n)
@@ -9,6 +9,8 @@ SUDO = $(shell which sudo)
 
 DESTDIR    ?=
 BUILDDIR    = build
+
+Q = $(if ${V},,@)
 
 all: build
 
@@ -32,29 +34,40 @@ endif
 config: ${BUILDNINJA}
 
 ${BUILDNINJA}: Makefile CMakeLists.txt
-	mkdir -p ${BUILDDIR}
-	cmake -B${BUILDDIR} -S. ${CMAKEFLAGS} 
+	@echo "### setting up cmake in ${BUILDDIR}"
+	${Q}mkdir -p ${BUILDDIR}
+	${Q}cmake -B${BUILDDIR} -S. ${CMAKEFLAGS}
 
 build/compile_commands.json: config
 
 COMPILE_COMMANDS = compile_commands.json
 ${COMPILE_COMMANDS}: build/compile_commands.json
-	ln -fs $< $@
+	@echo "### linking compile_commands.json"
+	${Q}ln -fs $< $@
 
 build: ${BUILDNINJA} ${COMPILE_COMMANDS}
-	ninja -C ${BUILDDIR}
+	@echo "### building in ${BUILDDIR}"
+	${Q}ninja -C ${BUILDDIR}
 
 clean:
-	ninja -C ${BUILDDIR} clean
+	@echo "### cleaning in ${BUILDDIR}"
+	${Q}ninja -C ${BUILDDIR} clean
 
 distclean:
-	rm -rf build
+	@echo "### removing ${BUILDDIR}"
+	${Q}rm -rf build
 
 install: build
-	DESTDIR=$(abspath ${DESTDIR}) ninja -C ${BUILDDIR} install
+	@echo "### installing from ${BUILDDIR}"
+	${Q}DESTDIR=$(abspath ${DESTDIR}) ninja -C ${BUILDDIR} install
 
-check: build
-	cd ${BUILDDIR} && ctest
+test check: build
+	@echo "### unit-testing from ${BUILDDIR}"
+	${Q}cd ${BUILDDIR} && ctest
+
+smoke: build
+	@echo "### smoke-testing from ${BUILDDIR}"
+	@echo there are no smoke tests yet
 
 # ---------------------------------------------------------------------------
 
@@ -65,12 +78,12 @@ tags: cscope ctags
 
 cscope: cscope.out
 cscope.out: cscope.files
-	cscope -P`pwd` -b
+	${Q}cscope -P`pwd` -b
 
 cscope.files:
-	find ${TAG_DIRS} -type f -name '*.[ch]' -o -name '*.[ch]pp' \
+	${Q}find ${TAG_DIRS} -type f -name '*.[ch]' -o -name '*.[ch]pp' \
 		| grep -v -e /rpm/ -e CVS -e SCCS > $@
 
 ctags: cscope.files
-	ctags --sort=yes -L $<
+	${Q}ctags --sort=yes -L $<
 
