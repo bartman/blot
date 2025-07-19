@@ -37,6 +37,10 @@ simplify the build process (it invokes cmake in the `build` subdirectory).
 
     make
 
+You can build debug (with ASAN) using
+
+    make TYPE=Debug
+
 ## Examples
 
 blot is being used in other projects as a library, but it comes with some

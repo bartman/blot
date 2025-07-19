@@ -8,10 +8,6 @@ on:
   pull_request:
     branches: [ "master" ]
 
-env:
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-  BUILD_TYPE: Release
-
 jobs:
   build:
     # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
@@ -22,6 +18,7 @@ jobs:
     strategy:
       matrix:
         compiler: [gcc, clang]
+        build_type: [Release, Debug]
 
     steps:
     - uses: actions/checkout@v4
@@ -40,27 +37,27 @@ jobs:
         fi
 
     - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -G Ninja -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+      run: cmake -B ${{github.workspace}}/build-${{ matrix.compiler }}-${{ matrix.build_type }} -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
     - name: Build
       # Build your program with the given configuration
-      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      run: cmake --build ${{github.workspace}}/build-${{ matrix.compiler }}-${{ matrix.build_type }} --config ${{ matrix.build_type }}
 
     - name: Test
-      working-directory: ${{github.workspace}}/build
+      working-directory: ${{github.workspace}}/build-${{ matrix.compiler }}-${{ matrix.build_type }}
       # Execute tests defined by the CMake configuration.
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --output-junit test_report.xml
+      run: ctest -C ${{ matrix.build_type }} --output-on-failure --output-junit test_report.xml
 
     - name: Publish Test Results
       uses: EnricoMi/publish-unit-test-result-action@v2
       if: (!cancelled())  # Ensures this runs even if tests fail
       with:
-        files: "build/test_report.xml"
+        files: "build-${{ matrix.compiler }}-${{ matrix.build_type }}/test_report.xml"
 
     - name: Capture test logging
       #if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: testing-with-${{ matrix.compiler }}.log
-        path: ${{github.workspace}}/build/Testing/Temporary/LastTest.log
+        name: testing-with-${{ matrix.compiler }}-${{ matrix.build_type }}.log
+        path: ${{github.workspace}}/build-${{ matrix.compiler }}-${{ matrix.build_type }}/Testing/Temporary/LastTest.log

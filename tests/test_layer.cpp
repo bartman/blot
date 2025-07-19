@@ -24,6 +24,7 @@ TEST(Layer, alloc_scatter_int32)
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer != NULL);
     blot_layer_delete(layer);
+    g_clear_error(&error);
 }
 
 TEST(Layer, alloc_zero_count)
@@ -40,6 +41,7 @@ TEST(Layer, alloc_zero_count)
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer == NULL);
     blot_layer_delete(layer);
+    g_clear_error(&error);
 }
 
 TEST(Layer, alloc_NULL_xs)
@@ -56,6 +58,7 @@ TEST(Layer, alloc_NULL_xs)
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer == NULL);
     blot_layer_delete(layer);
+    g_clear_error(&error);
 }
 
 TEST(Layer, alloc_NULL_ys)
@@ -72,6 +75,7 @@ TEST(Layer, alloc_NULL_ys)
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer == NULL);
     blot_layer_delete(layer);
+    g_clear_error(&error);
 }
 
 TEST(Layer, alloc_NULL_label)
@@ -88,6 +92,7 @@ TEST(Layer, alloc_NULL_label)
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer != NULL);
     blot_layer_delete(layer);
+    g_clear_error(&error);
 }
 
 TEST(Layer, get_lim_int32)
@@ -113,6 +118,7 @@ TEST(Layer, get_lim_int32)
     ASSERT_FLOAT_EQ(limits.y_max, 12);
 
     blot_layer_delete(layer);
+    g_clear_error(&error);
 }
 
 TEST(Layer, get_lim_float)
@@ -138,5 +144,6 @@ TEST(Layer, get_lim_float)
     ASSERT_FLOAT_EQ(limits.y_max, 12);
 
     blot_layer_delete(layer);
+    g_clear_error(&error);
 }
 

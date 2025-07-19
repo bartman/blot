@@ -18,7 +18,11 @@ all: build
 
 BUILDNINJA  = ${BUILDDIR}/build.ninja
 CMAKEFLAGS  = -G Ninja
-CMAKEFLAGS += -DCMAKE_BUILD_TYPE=Debug
+
+DEFAULT_TYPE = Release
+CURRENT_TYPE = $(shell sed -r -n -e 's/CMAKE_BUILD_TYPE:STRING=//p' ${BUILDDIR}/CMakeCache.txt 2>/dev/null)
+TYPE ?= $(if ${CURRENT_TYPE},${CURRENT_TYPE},${DEFAULT_TYPE})
+CMAKEFLAGS += -DCMAKE_BUILD_TYPE=${TYPE}
 
 # prefer clang over gcc
 ifneq ($(shell which clang),)
@@ -31,14 +35,17 @@ else
 endif
 endif
 
-ifneq (${DEBUG},)
-CMAKEFLAGS += -DCMAKE_BUILD_TYPE=Debug
+ifneq (${TYPE},${CURRENT_TYPE})
+ifneq (${CURRENT_TYPE},)
+$(info ### switching from ${CURRENT_TYPE} to ${TYPE})
+endif
+.PHONY: ${BUILDNINJA}
 endif
 
 config: ${BUILDNINJA}
 
 ${BUILDNINJA}: Makefile CMakeLists.txt
-	@echo "### setting up cmake in ${BUILDDIR}"
+	@echo "### setting up cmake in ${BUILDDIR} for ${TYPE}"
 	${Q}mkdir -p ${BUILDDIR}
 	${Q}cmake -B${BUILDDIR} -S. ${CMAKEFLAGS}
 
