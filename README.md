@@ -26,24 +26,28 @@ Licensed under LGPL v2.1, or any later version.
 
 ## Prerequisites
 
-blot was only tested on Debian Linux. It is built using standard tools.
+`blot` is developed on NixOS and Debian, and CI tested on Debian and Ubuntu.
+It is built using standard tools. The dependency script will install the
+required packages if you're on a Debian-based distro.
 
-    sudo apt install make ninja-build cmake libglib2.0-dev
+    ./dependencies.sh
+
+Packages that `blot` needs: `make` `ninja` `cmake` `glib2` `googletest`.
 
 ## Building
 
-blot is built using cmake and ninja.  There is a top level Makefile only to
-simplify the build process (it invokes cmake in the `build` subdirectory).
+`blot` is built using `cmake` and `ninja`.  There is a top level `Makefile` only to
+simplify the build process (it invokes `cmake` in the `build` subdirectory).
 
     make
 
-You can build debug (with ASAN) using
+You can build debug (with `ASAN`) using
 
     make TYPE=Debug
 
 ## Examples
 
-blot is being used in other projects as a library, but it comes with some
+`blot` is being used in other projects as a library, but it comes with some
 examples.
 
 Generated from [test-simple.c](examples/test-simple.c)
@@ -67,7 +71,7 @@ Generated from [test-trig.c](examples/test-trig.c)
 
 ### Ideas:
 
-Allow for swapping data from layer to allow for even faster plotting (allow blot to reuse existing allocated structures)
+Allow for swapping data from layer to allow for even faster plotting (allow `blot` to reuse existing allocated structures)
   1. create a figure
   2. all `blot_figure_scatter` multiple times, have it return the `blot_layer`
   3. call `blot_figure_render` and `blot_screen_get_text`
