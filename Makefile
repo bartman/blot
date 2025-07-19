@@ -63,7 +63,7 @@ install: build
 
 test check: build
 	@echo "### unit-testing from ${BUILDDIR}"
-	${Q}cd ${BUILDDIR} && ctest
+	${Q}cd ${BUILDDIR} && ctest --output-on-failure --output-junit test_report.xml
 
 smoke: build
 	@echo "### smoke-testing from ${BUILDDIR}"

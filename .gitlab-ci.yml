@@ -40,10 +40,10 @@ unit-test-deb12:
   artifacts:
     when: always
     paths:
-      - build/test_*_report.xml
+      - build/test*_report.xml
     reports:
       junit:
-      - build/test_*_report.xml
+      - build/test*_report.xml
 
 smoke-test-deb12:
   <<: *deb12-job
@@ -81,10 +81,10 @@ unit-test-deb13:
   artifacts:
     when: always
     paths:
-      - build/test_*_report.xml
+      - build/test*_report.xml
     reports:
       junit:
-      - build/test_*_report.xml
+      - build/test*_report.xml
 
 smoke-test-deb13:
   <<: *deb13-job
