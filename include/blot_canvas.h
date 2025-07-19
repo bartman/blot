@@ -4,6 +4,7 @@
 
 #include <glib.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include "blot_types.h"
 #include "blot_utils.h"
 #include "blot_braille.h"
