@@ -38,6 +38,14 @@ blot_figure * blot_figure_new(GError **error)
 
 void blot_figure_delete(blot_figure *fig)
 {
+	if (fig->layers) {
+		for (int li=0; li<fig->layer_count; li++) {
+			blot_layer *lay = fig->layers[li];
+			blot_layer_delete(lay);
+		}
+
+		g_free(fig->layers);
+	}
 	g_free(fig);
 }
 
