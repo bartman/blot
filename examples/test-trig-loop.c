@@ -20,13 +20,24 @@ blot_color data_color = 9;
 		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
 })
 
+static bool signaled = false;
+static void sighandler(int sig)
+{
+	signaled = true;
+}
+
 int main(void)
 {
 	g_autoptr(GError) error = NULL;
 
 	setlocale(LC_CTYPE, "");
 
+	signal(SIGINT, sighandler);
+
 	unsigned offset = 0;
+	double t_render_total=0, t_display_total=0;
+	long iterations = 0;
+
 again:
 
 	/* build a dummy dataset */
@@ -36,7 +47,7 @@ again:
 
 		double y = 1 + sin(x);
 
-		data_xs[i] = i * DATA_X_MAX / DATA_COUNT;
+		data_xs[i] = (double)i * DATA_X_MAX / DATA_COUNT;
 		sin_ys[i] = y * DATA_Y_MAX / 2;
 
 		y = 1 + cos(x);
@@ -121,12 +132,20 @@ again:
 
 	double t_end = blot_double_time();
 
-	printf("time: render=%.6f show=%.6f\n",
-		t_render-t_start, t_end-t_render);
+	t_render_total += t_render-t_start;
+	t_display_total += t_end-t_render;
+	iterations ++;
+
+	printf("last: render=%.6f show=%.6f\n"
+		"mean: render=%.6f show=%.6f\n",
+		t_render-t_start, t_end-t_render,
+		t_render_total / iterations, t_display_total / iterations);
 	usleep(50000);
 
 	offset += DATA_COUNT/100;
-	goto again;
+
+	if (!signaled)
+		goto again;
 
 	return 0;
 }

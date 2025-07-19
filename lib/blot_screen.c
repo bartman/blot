@@ -16,7 +16,12 @@ blot_screen * blot_screen_new(const blot_dimensions *dim,
 			      const blot_margins *mrg,
 			      blot_render_flags flags, GError **error)
 {
+	RETURN_ERROR(!dim, NULL, error, "dimensions pointer is NULL");
+	RETURN_ERROR(!mrg, NULL, error, "margins pointer is NULL");
+
 	gsize char_len = (gsize)dim->cols * (gsize)dim->rows;
+
+	RETURN_ERROR(!char_len, NULL, error, "cannot create a zero sized screen");
 
 	// add extra space for screen clear escape code
 	if (flags & BLOT_RENDER_CLEAR)

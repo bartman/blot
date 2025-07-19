@@ -26,8 +26,12 @@ LINK_DIRECTORIES(
     ${GIOUNIX_LIBRARY_DIRS}
 )
 
-SET(CMAKE_C_STANDARD 99)
-SET(CMAKE_CXX_STANDARD 20)
+if (NOT DEFINED CMAKE_C_STANDARD)
+    SET(CMAKE_C_STANDARD 99) # use C99 if one is not set by user
+endif()
+if (NOT DEFINED CMAKE_CXX_STANDARD)
+    SET(CMAKE_CXX_STANDARD 20) # used only in test harness
+endif()
 
 add_definitions(-D_GNU_SOURCE)
 

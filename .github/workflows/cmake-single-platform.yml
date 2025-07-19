@@ -24,7 +24,7 @@ jobs:
         compiler: [gcc, clang]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Dependencies
       run: ./dependencies.sh ${{ matrix.compiler }}
@@ -50,6 +50,17 @@ jobs:
       working-directory: ${{github.workspace}}/build
       # Execute tests defined by the CMake configuration.
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest -C ${{env.BUILD_TYPE}}
+      run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --output-junit test_report.xml
 
+    - name: Publish Test Results
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      if: (!cancelled())  # Ensures this runs even if tests fail
+      with:
+        files: "build/test_report.xml"
 
+    - name: Capture test logging
+      #if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: testing-with-${{ matrix.compiler }}.log
+        path: ${{github.workspace}}/build/Testing/Temporary/LastTest.log
