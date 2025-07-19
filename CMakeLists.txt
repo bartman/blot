@@ -47,6 +47,8 @@ add_definitions(-D"BLOT_GIT_REFSPEC=${GIT_REFSPEC}")
 add_definitions(-D"BLOT_GIT_REVISION=${GIT_REVISION}")
 add_definitions(-D"BLOT_GIT_SHA1=${GIT_SHA1}")
 
+add_definitions(-O3 -g -gdwarf-3)
+
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
 
 add_subdirectory(lib)

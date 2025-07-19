@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <locale.h>
 #include <math.h>
+#include <coz.h>
 #include "blot.h"
 
 #define DATA_COUNT 100000
@@ -65,6 +66,7 @@ again:
 
 	blot_figure *fig;
 
+	COZ_BEGIN("init");
 	fig = blot_figure_new(&error);
 	FATAL_ERROR(error);
 
@@ -78,7 +80,9 @@ again:
 	FATAL_ERROR(error);
 	blot_figure_set_y_limits(fig, 0.0, DATA_Y_MAX, &error);
 	FATAL_ERROR(error);
+	COZ_END("init");
 
+	COZ_BEGIN("scatter");
 	/* add a scatter plot */
 
 	blot_figure_scatter(fig, BLOT_DATA_(INT32,DOUBLE),
@@ -99,6 +103,7 @@ again:
 			    DATA_COUNT, data_xs, tan_ys,
 			    data_color+2, "tan", &error);
 	FATAL_ERROR(error);
+	COZ_END("scatter");
 
 	/* render the plots */
 
@@ -113,14 +118,18 @@ again:
 	flags |= BLOT_RENDER_NO_X_AXIS;
 	flags |= BLOT_RENDER_NO_Y_AXIS;
 
+	COZ_BEGIN("render");
 	blot_screen *scr = blot_figure_render(fig, flags, &error);
 	FATAL_ERROR(error);
+	COZ_END("render");
 
 	/* print it to screen */
 
+	COZ_BEGIN("get_text");
 	gsize txt_size = 0;
 	const wchar_t *txt = blot_screen_get_text(scr, &txt_size, &error);
 	FATAL_ERROR(error);
+	COZ_END("get_text");
 
 	double t_render = blot_double_time();
 
@@ -143,6 +152,8 @@ again:
 	usleep(50000);
 
 	offset += DATA_COUNT/100;
+
+	COZ_PROGRESS_NAMED("loop finished");
 
 	if (!signaled)
 		goto again;
