@@ -157,15 +157,18 @@ static blot_dimensions blot_figure_finalize_dimensions(const blot_figure *fig,
 	if (fig->screen_dimensions_set)
 		return fig->dim;
 
-	blot_dimensions dim = {0,};
+	/* if we cannot get terminal dimensions, use the minimum values */
+	blot_dimensions dim = {BLOT_MIN_COLS, BLOT_MIN_ROWS};
 
-	int term_cols, term_rows;
-	bool ok = blot_terminal_get_size(&term_cols, &term_rows, error);
-	RETURN_IF(!ok, dim);
+	bool ok = blot_terminal_get_size(&dim, error);
+	if (!ok) {
+		g_clear_error(error);
+		return dim;
+	}
 
 	/* use the entire terminal screen, w/o the border */
-	dim.cols = max_t(unsigned, term_cols-2, BLOT_MIN_COLS);
-	dim.rows = max_t(unsigned, term_rows-2, BLOT_MIN_ROWS);
+	dim.cols = max_t(unsigned, dim.cols-2, BLOT_MIN_COLS);
+	dim.rows = max_t(unsigned, dim.rows-2, BLOT_MIN_ROWS);
 
 	RETURN_EINVAL_IF(dim.cols<BLOT_MIN_COLS, dim, error);
 	RETURN_EINVAL_IF(dim.rows<BLOT_MIN_ROWS, dim, error);
@@ -190,7 +193,7 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 
 		blot_xy_limits lay_lim;
 		bool ok = blot_layer_get_lim(lay, &lay_lim, error);
-		RETURN_IF(!ok, lim);
+		RETURN_IF(!ok, (blot_xy_limits){});
 
 		if (likely (something_set)) {
 			lim.x_min = min_t(double, lim.x_min, lay_lim.x_min);
