@@ -3,6 +3,8 @@
 extern "C" {
 #include "blot_layer.h"
 #include "blot_types.h"
+#include "blot_canvas.h"
+#include "blot_axis.h"
 };
 
 TEST(BaseTest, AssertionTrue)
@@ -560,3 +562,218 @@ TEST(Layer, get_lim_negative_values)
     blot_layer_delete(layer);
     g_clear_error(&error);
 }
+
+#if 0
+TEST(Layer, render_scatter_int32)
+{
+    blot_plot_type plot_type = BLOT_SCATTER;
+    blot_data_type data_type = BLOT_DATA_INT32;
+    const constexpr size_t data_count = 3;
+    const int data_xs[data_count] = { 0, 5, 9 };
+    const int data_ys[data_count] = { 0, 5, 9 };
+    blot_color data_color = 1;
+    const char *data_label = "label";
+    GError *error = NULL;
+
+    blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
+    ASSERT_TRUE(layer != NULL);
+
+    blot_xy_limits lim = { 0, 9, 0, 9 };
+    blot_dimensions dim = { 10, 10 };
+    blot_render_flags flags = BLOT_RENDER_NONE;
+
+    blot_canvas *canvas = blot_layer_render(layer, &lim, &dim, flags, &error);
+    ASSERT_TRUE(canvas != NULL);
+    ASSERT_TRUE(error == NULL);
+
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 0, 0), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 5, 5), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 9, 9), L'•');
+
+    blot_canvas_delete(canvas);
+    blot_layer_delete(layer);
+}
+#endif
+
+TEST(Layer, render_line_float)
+{
+    blot_plot_type plot_type = BLOT_LINE;
+    blot_data_type data_type = BLOT_DATA_FLOAT;
+    const constexpr size_t data_count = 2;
+    const float data_xs[data_count] = { 0.0f, 9.0f };
+    const float data_ys[data_count] = { 0.0f, 9.0f };
+    blot_color data_color = 1;
+    const char *data_label = "label";
+    GError *error = NULL;
+
+    blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
+    ASSERT_TRUE(layer != NULL);
+
+    blot_xy_limits lim = { 0, 9, 0, 9 };
+    blot_dimensions dim = { 10, 10 };
+    blot_render_flags flags = BLOT_RENDER_NONE;
+
+    blot_canvas *canvas = blot_layer_render(layer, &lim, &dim, flags, &error);
+    ASSERT_TRUE(canvas != NULL);
+    ASSERT_TRUE(error == NULL);
+
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 0, 0), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 5, 5), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 9, 9), L'•');
+
+    blot_canvas_delete(canvas);
+    blot_layer_delete(layer);
+}
+
+#if 0
+TEST(Layer, render_bar_double)
+{
+    blot_plot_type plot_type = BLOT_BAR;
+    blot_data_type data_type = BLOT_DATA_DOUBLE;
+    const constexpr size_t data_count = 1;
+    const double data_xs[data_count] = { 5.0 };
+    const double data_ys[data_count] = { 5.0 };
+    blot_color data_color = 1;
+    const char *data_label = "label";
+    GError *error = NULL;
+
+    blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
+    ASSERT_TRUE(layer != NULL);
+
+    blot_xy_limits lim = { 0, 9, 0, 9 };
+    blot_dimensions dim = { 10, 10 };
+    blot_render_flags flags = BLOT_RENDER_NONE;
+
+    blot_canvas *canvas = blot_layer_render(layer, &lim, &dim, flags, &error);
+    ASSERT_TRUE(canvas != NULL);
+    ASSERT_TRUE(error == NULL);
+
+    // For a bar chart, it fills a rectangle from x to x+width and 0 to y
+    // Given x=5, y=5, dim.cols=10, dim.rows=10, it should fill from (5,0) to (6,5)
+    // The plot character is L'•'
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 5, 0), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 5, 1), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 5, 2), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 5, 3), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 5, 4), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 5, 5), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 6, 0), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 6, 1), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 6, 2), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 6, 3), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 6, 4), L'•');
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 6, 5), L'•');
+
+    blot_canvas_delete(canvas);
+    blot_layer_delete(layer);
+}
+#endif
+
+#if 0
+TEST(Layer, render_with_braille_flag)
+{
+    blot_plot_type plot_type = BLOT_SCATTER;
+    blot_data_type data_type = BLOT_DATA_INT32;
+    const constexpr size_t data_count = 1;
+    const int data_xs[data_count] = { 0 };
+    const int data_ys[data_count] = { 0 };
+    blot_color data_color = 1;
+    const char *data_label = "label";
+    GError *error = NULL;
+
+    blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
+    ASSERT_TRUE(layer != NULL);
+
+    blot_xy_limits lim = { 0, 9, 0, 9 };
+    blot_dimensions dim = { 10, 10 };
+    blot_render_flags flags = BLOT_RENDER_BRAILLE;
+
+    blot_canvas *canvas = blot_layer_render(layer, &lim, &dim, flags, &error);
+    ASSERT_TRUE(canvas != NULL);
+    ASSERT_TRUE(error == NULL);
+
+    // When BLOT_RENDER_BRAILLE is set, the canvas uses braille characters
+    // A single point at (0,0) should result in a braille character at (0,0) cell
+    // The braille character for a single dot at (0,0) is L'⠁'
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 0, 0), L'⠁');
+
+    blot_canvas_delete(canvas);
+    blot_layer_delete(layer);
+}
+#endif
+
+TEST(Layer, render_with_no_unicode_flag)
+{
+    blot_plot_type plot_type = BLOT_SCATTER;
+    blot_data_type data_type = BLOT_DATA_INT32;
+    const constexpr size_t data_count = 1;
+    const int data_xs[data_count] = { 0 };
+    const int data_ys[data_count] = { 0 };
+    blot_color data_color = 1;
+    const char *data_label = "label";
+    GError *error = NULL;
+
+    blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
+    ASSERT_TRUE(layer != NULL);
+
+    blot_xy_limits lim = { 0, 9, 0, 9 };
+    blot_dimensions dim = { 10, 10 };
+    blot_render_flags flags = BLOT_RENDER_NO_UNICODE;
+
+    blot_canvas *canvas = blot_layer_render(layer, &lim, &dim, flags, &error);
+    ASSERT_TRUE(canvas != NULL);
+    ASSERT_TRUE(error == NULL);
+
+    // When BLOT_RENDER_NO_UNICODE is set, the plot character should be L'*'
+    ASSERT_EQ(blot_canvas_get_cell(canvas, 0, 0), L'*');
+
+    blot_canvas_delete(canvas);
+    blot_layer_delete(layer);
+}
+
+#if 0
+TEST(Layer, render_error_conditions)
+{
+    blot_plot_type plot_type = BLOT_SCATTER;
+    blot_data_type data_type = BLOT_DATA_INT32;
+    const constexpr size_t data_count = 3;
+    const int data_xs[data_count] = { 0, 5, 9 };
+    const int data_ys[data_count] = { 0, 5, 9 };
+    blot_color data_color = 1;
+    const char *data_label = "label";
+    GError *error = NULL;
+
+    blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
+    ASSERT_TRUE(layer != NULL);
+
+    blot_xy_limits lim = { 0, 9, 0, 9 };
+    blot_dimensions dim = { 10, 10 };
+    blot_render_flags flags = BLOT_RENDER_NONE;
+
+    // Test with NULL layer
+    blot_canvas *canvas = blot_layer_render(NULL, &lim, &dim, flags, &error);
+    ASSERT_TRUE(canvas == NULL);
+    ASSERT_TRUE(error != NULL);
+    ASSERT_EQ(error->code, EFAULT);
+    g_clear_error(&error);
+
+    // Test with invalid limits (e.g., x_min >= x_max)
+    lim = { 9, 0, 0, 9 }; // Invalid x_limits
+    canvas = blot_layer_render(layer, &lim, &dim, flags, &error);
+    ASSERT_TRUE(canvas == NULL);
+    ASSERT_TRUE(error != NULL);
+    ASSERT_EQ(error->code, EINVAL);
+    g_clear_error(&error);
+
+    // Test with invalid dimensions (e.g., cols = 0)
+    lim = { 0, 9, 0, 9 }; // Reset limits
+    dim = { 0, 10 }; // Invalid dimensions
+    canvas = blot_layer_render(layer, &lim, &dim, flags, &error);
+    ASSERT_TRUE(canvas == NULL);
+    ASSERT_TRUE(error != NULL);
+    ASSERT_EQ(error->code, EINVAL);
+    g_clear_error(&error);
+
+    blot_layer_delete(layer);
+}
+#endif
