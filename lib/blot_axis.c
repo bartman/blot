@@ -19,6 +19,9 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 			  const blot_strv *labels,
 			  GError **error)
 {
+	RETURN_ERRORx(screen_length == 0, NULL, error, EINVAL, "screen_length cannot be zero");
+	RETURN_ERRORx(data_min >= data_max, NULL, error, EINVAL, "data_min must be less than data_max");
+
 	blot_axis *axs;
 
 	/* special case for an axis that is not displayed */
@@ -33,7 +36,7 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 		axs->color = color;
 		axs->screen_length = screen_length;
 		axs->data_min = data_min;
-		axs->data_min = data_max;
+		axs->data_max = data_max;
 
 		return axs;
 
@@ -106,7 +109,7 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 	axs->color = color;
 	axs->screen_length = screen_length;
 	axs->data_min = data_min;
-	axs->data_min = data_max;
+	axs->data_max = data_max;
 
 	memset(axs->entries, 0, screen_length * sizeof(axs->entries[0])); // NOLINT - we want the sizeof a pointer
 
