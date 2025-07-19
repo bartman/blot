@@ -10,19 +10,24 @@
 #define LINE_COUNT 4
 #define POINT_COUNT 4
 
-#define SCREEN_WIDTH  80
-#define SCREEN_HEIGHT 25
-
 #define FATAL_ERROR(error) ({ \
 	if (unlikely (error)) \
 		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
 })
+
+static bool signaled = false;
+static void sighandler(int sig)
+{
+	signaled = true;
+}
 
 int main(void)
 {
 	g_autoptr(GError) error = NULL;
 
 	setlocale(LC_CTYPE, "");
+
+	signal(SIGINT, sighandler);
 
 	/* build axis lines */
 
@@ -52,7 +57,15 @@ int main(void)
 	double xb = DATA_X_MAX / 2;
 	double yb = DATA_Y_MAX / 2;
 
+	/* learn the screen */
+	int term_cols, term_rows;
+	blot_terminal_get_size(&term_cols, &term_rows, &error);
+	FATAL_ERROR(error);
+
 	double offset = 0, angle = 0, ainc = M_PI/LINE_COUNT;
+	double t_render_total=0, t_display_total=0;
+	long iterations = 0;
+
 again:
 	angle = offset;
 	for (int li=0; li<LINE_COUNT; li++) {
@@ -82,11 +95,18 @@ again:
 		angle += ainc;
 	}
 
+	/* start the time */
+
+	double t_start = blot_double_time();
+
 	/* configure the figure */
 
 	blot_figure *fig;
 
 	fig = blot_figure_new(&error);
+	FATAL_ERROR(error);
+
+	blot_figure_set_screen_size(fig, term_cols, term_rows-7-LINE_COUNT, &error);
 	FATAL_ERROR(error);
 
 	blot_figure_set_x_limits(fig, -DATA_X_MAX, DATA_X_MAX, &error);
@@ -146,15 +166,30 @@ again:
 	const wchar_t *txt = blot_screen_get_text(scr, &txt_size, &error);
 	FATAL_ERROR(error);
 
+	double t_render = blot_double_time();
+
 	printf("%ls", txt);
 
 	blot_screen_delete(scr);
 
 	blot_figure_delete(fig);
 
+	double t_end = blot_double_time();
+
+	t_render_total += t_render-t_start;
+	t_display_total += t_end-t_render;
+	iterations ++;
+
+	printf("last: render=%.6f show=%.6f\n"
+		"mean: render=%.6f show=%.6f\n",
+		t_render-t_start, t_end-t_render,
+		t_render_total / iterations, t_display_total / iterations);
 	usleep(50000);
+
 	offset += M_PI/18;
-	goto again;
+
+	if (!signaled)
+		goto again;
 
 	return 0;
 }

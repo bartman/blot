@@ -8,6 +8,8 @@
 
 #define BLOT_MIN_COLS 10
 #define BLOT_MIN_ROWS 10
+#define BLOT_MAX_COLS 1000
+#define BLOT_MAX_ROWS 1000
 
 typedef struct blot_figure {
 	/* config */
