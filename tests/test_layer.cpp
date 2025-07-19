@@ -564,9 +564,14 @@ TEST(Layer, get_lim_negative_values)
     g_clear_error(&error);
 }
 
-#if 0
+#if 1
 TEST(Layer, render_scatter_int32)
 {
+    GError *error = NULL;
+
+    // fake size for testing
+    ASSERT_TRUE(blot_terminal_set_size({100,100}, &error));
+
     blot_plot_type plot_type = BLOT_SCATTER;
     blot_data_type data_type = BLOT_DATA_INT32;
     const constexpr size_t data_count = 3;
@@ -574,7 +579,6 @@ TEST(Layer, render_scatter_int32)
     const int data_ys[data_count] = { 0, 5, 9 };
     blot_color data_color = 1;
     const char *data_label = "label";
-    GError *error = NULL;
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer != NULL);
@@ -598,6 +602,11 @@ TEST(Layer, render_scatter_int32)
 
 TEST(Layer, render_line_float)
 {
+    GError *error = NULL;
+
+    // fake size for testing
+    ASSERT_TRUE(blot_terminal_set_size({100,100}, &error));
+
     blot_plot_type plot_type = BLOT_LINE;
     blot_data_type data_type = BLOT_DATA_FLOAT;
     const constexpr size_t data_count = 2;
@@ -605,7 +614,6 @@ TEST(Layer, render_line_float)
     const float data_ys[data_count] = { 0.0f, 9.0f };
     blot_color data_color = 1;
     const char *data_label = "label";
-    GError *error = NULL;
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer != NULL);
@@ -626,9 +634,14 @@ TEST(Layer, render_line_float)
     blot_layer_delete(layer);
 }
 
-#if 0
+#if 1
 TEST(Layer, render_bar_double)
 {
+    GError *error = NULL;
+
+    // fake size for testing
+    ASSERT_TRUE(blot_terminal_set_size({100,100}, &error));
+
     blot_plot_type plot_type = BLOT_BAR;
     blot_data_type data_type = BLOT_DATA_DOUBLE;
     const constexpr size_t data_count = 1;
@@ -636,7 +649,6 @@ TEST(Layer, render_bar_double)
     const double data_ys[data_count] = { 5.0 };
     blot_color data_color = 1;
     const char *data_label = "label";
-    GError *error = NULL;
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer != NULL);
@@ -673,6 +685,11 @@ TEST(Layer, render_bar_double)
 #if 0
 TEST(Layer, render_with_braille_flag)
 {
+    GError *error = NULL;
+
+    // fake size for testing
+    ASSERT_TRUE(blot_terminal_set_size({100,100}, &error));
+
     blot_plot_type plot_type = BLOT_SCATTER;
     blot_data_type data_type = BLOT_DATA_INT32;
     const constexpr size_t data_count = 1;
@@ -680,7 +697,6 @@ TEST(Layer, render_with_braille_flag)
     const int data_ys[data_count] = { 0 };
     blot_color data_color = 1;
     const char *data_label = "label";
-    GError *error = NULL;
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer != NULL);
@@ -705,6 +721,11 @@ TEST(Layer, render_with_braille_flag)
 
 TEST(Layer, render_with_no_unicode_flag)
 {
+    GError *error = NULL;
+
+    // fake size for testing
+    ASSERT_TRUE(blot_terminal_set_size({100,100}, &error));
+
     blot_plot_type plot_type = BLOT_SCATTER;
     blot_data_type data_type = BLOT_DATA_INT32;
     const constexpr size_t data_count = 1;
@@ -712,7 +733,6 @@ TEST(Layer, render_with_no_unicode_flag)
     const int data_ys[data_count] = { 0 };
     blot_color data_color = 1;
     const char *data_label = "label";
-    GError *error = NULL;
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer != NULL);
@@ -735,6 +755,11 @@ TEST(Layer, render_with_no_unicode_flag)
 #if 0
 TEST(Layer, render_error_conditions)
 {
+    GError *error = NULL;
+
+    // fake size for testing
+    ASSERT_TRUE(blot_terminal_set_size({100,100}, &error));
+
     blot_plot_type plot_type = BLOT_SCATTER;
     blot_data_type data_type = BLOT_DATA_INT32;
     const constexpr size_t data_count = 3;
@@ -742,7 +767,6 @@ TEST(Layer, render_error_conditions)
     const int data_ys[data_count] = { 0, 5, 9 };
     blot_color data_color = 1;
     const char *data_label = "label";
-    GError *error = NULL;
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer != NULL);
