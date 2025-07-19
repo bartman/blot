@@ -16,12 +16,12 @@ blot_screen * blot_screen_new(const blot_dimensions *dim,
 			      const blot_margins *mrg,
 			      blot_render_flags flags, GError **error)
 {
-	RETURN_ERROR(!dim, NULL, error, "dimensions pointer is NULL");
-	RETURN_ERROR(!mrg, NULL, error, "margins pointer is NULL");
+	RETURN_ERRORx(!dim, NULL, error, EFAULT, "dimensions pointer is NULL");
+	RETURN_ERRORx(!mrg, NULL, error, EFAULT, "margins pointer is NULL");
 
 	gsize char_len = (gsize)dim->cols * (gsize)dim->rows;
 
-	RETURN_ERROR(!char_len, NULL, error, "cannot create a zero sized screen");
+	RETURN_ERRORx(!char_len, NULL, error, EINVAL, "cannot create a zero sized screen");
 
 	// add extra space for screen clear escape code
 	if (flags & BLOT_RENDER_CLEAR)
@@ -146,14 +146,10 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 		const blot_axis_tick *ytick;
 		ytick = blot_axis_get_tick_at(y_axs, c_y, error);
 
-		if (ytick) {
-			len = swprintf(p, end-p, L"%*s *",
-				       dsp_lft-2, ytick->label);
-
-		} else {
-			len = swprintf(p, end-p, L"%*s |",
-				       dsp_lft-2, "");
-		}
+		const char *ytick_label = ytick ? ytick->label : "";
+		char axis_char = ytick ? '*' : '-';
+		len = swprintf(p, end-p, L"%*s %c",
+			       dsp_lft-2, ytick_label, axis_char);
 
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		g_assert_cmpuint(len, ==, dsp_lft);

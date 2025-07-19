@@ -58,9 +58,12 @@ int main(void)
 	double yb = DATA_Y_MAX / 2;
 
 	/* learn the screen */
-	int term_cols, term_rows;
-	blot_terminal_get_size(&term_cols, &term_rows, &error);
+	blot_dimensions term = {};
+	blot_terminal_get_size(&term, &error);
 	FATAL_ERROR(error);
+
+	if (term.rows <= (7+LINE_COUNT))
+		g_error("screen is not tall enough");
 
 	double offset = 0, angle = 0, ainc = M_PI/LINE_COUNT;
 	double t_render_total=0, t_display_total=0;
@@ -106,7 +109,7 @@ again:
 	fig = blot_figure_new(&error);
 	FATAL_ERROR(error);
 
-	blot_figure_set_screen_size(fig, term_cols, term_rows-7-LINE_COUNT, &error);
+	blot_figure_set_screen_size(fig, term.cols, term.rows-7-LINE_COUNT, &error);
 	FATAL_ERROR(error);
 
 	blot_figure_set_x_limits(fig, -DATA_X_MAX, DATA_X_MAX, &error);

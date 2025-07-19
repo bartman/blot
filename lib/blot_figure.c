@@ -157,15 +157,18 @@ static blot_dimensions blot_figure_finalize_dimensions(const blot_figure *fig,
 	if (fig->screen_dimensions_set)
 		return fig->dim;
 
-	blot_dimensions dim = {0,};
+	/* if we cannot get terminal dimensions, use the minimum values */
+	blot_dimensions dim = {BLOT_MIN_COLS, BLOT_MIN_ROWS};
 
-	int term_cols, term_rows;
-	bool ok = blot_terminal_get_size(&term_cols, &term_rows, error);
-	RETURN_IF(!ok, dim);
+	bool ok = blot_terminal_get_size(&dim, error);
+	if (!ok) {
+		// caller should call blot_terminal_set_size() if the terminal size cannot be determine
+		return (blot_dimensions){};
+	}
 
 	/* use the entire terminal screen, w/o the border */
-	dim.cols = max_t(unsigned, term_cols-2, BLOT_MIN_COLS);
-	dim.rows = max_t(unsigned, term_rows-2, BLOT_MIN_ROWS);
+	dim.cols = max_t(unsigned, dim.cols-2, BLOT_MIN_COLS);
+	dim.rows = max_t(unsigned, dim.rows-2, BLOT_MIN_ROWS);
 
 	RETURN_EINVAL_IF(dim.cols<BLOT_MIN_COLS, dim, error);
 	RETURN_EINVAL_IF(dim.rows<BLOT_MIN_ROWS, dim, error);
@@ -190,7 +193,7 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 
 		blot_xy_limits lay_lim;
 		bool ok = blot_layer_get_lim(lay, &lay_lim, error);
-		RETURN_IF(!ok, lim);
+		RETURN_IF(!ok, (blot_xy_limits){});
 
 		if (likely (something_set)) {
 			lim.x_min = min_t(double, lim.x_min, lay_lim.x_min);
@@ -205,20 +208,22 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 		}
 	}
 
-	if (unlikely (!something_set))
+	if (unlikely (!something_set)) {
 		blot_set_error_unix(error, ENOENT,
 				    "could not determine limits automatically, since there is no data");
+		return lim;
+	}
 
 
 	/* if there is a range, widen it by 0.1% on either side,
 	 * if there is only one value, make the range 10% on either side */
 	double x_range = lim.x_max - lim.x_min;
-	double x_fudge = x_range ? x_range * 0.001 : lim.x_min * 0.1;
+	double x_fudge = x_range ? x_range * 0.001 : (lim.x_min == 0 ? 0.1 : fabs(lim.x_min * 0.1));
 	lim.x_min -= x_fudge;
 	lim.x_max += x_fudge;
 
 	double y_range = lim.y_max - lim.y_min;
-	double y_fudge = y_range ? y_range * 0.001 : lim.y_min * 0.1;
+	double y_fudge = y_range ? y_range * 0.001 : (lim.y_min == 0 ? 0.1 : fabs(lim.y_min * 0.1));
 	lim.y_min -= y_fudge;
 	lim.y_max += y_fudge;
 
@@ -243,22 +248,34 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 		mrg.left += 3;
 
 		/* how big are the numbers? */
-		double amin = ceil(abs_t(double, lim->y_min));
-		double wmin = ceil(log10(amin));
-		if (lim->y_min < 0) wmin ++;
+		double amin = fabs(lim->y_min);
+		double wmin = 1.0;
+		if (amin > 0) {
+			wmin = ceil(log10(amin));
+			if (lim->y_min < 0) wmin ++;
+		}
 
-		double amax = ceil(abs_t(double, lim->y_max));
-		double wmax = ceil(log10(amax));
-		if (lim->y_max < 0) wmax ++;
+		double amax = fabs(lim->y_max);
+		double wmax = 1.0;
+		if (amax > 0) {
+			wmax = ceil(log10(amax));
+			if (lim->y_max < 0) wmax ++;
+		}
 
 		/* worst case we need this many columns for text */
-		mrg.left += max_t(unsigned, wmin, wmax);
+		mrg.left += max_t(unsigned, (unsigned)wmin, (unsigned)wmax);
 
 		/* add 3 digits of precision */
 		mrg.left += 4;
+
+		// Ensure margins don't exceed dimensions
+		mrg.left = min_t(unsigned, mrg.left, dim->cols / 2);
+		mrg.bottom = min_t(unsigned, mrg.bottom, dim->rows / 2);
+		mrg.right = min_t(unsigned, mrg.right, dim->cols / 2);
+		mrg.top = min_t(unsigned, mrg.top, dim->rows / 2);
 	}
 
-#if 1
+#if 0
 	/* for testing only */
 	mrg.right += 1;
 	mrg.top += 1;
@@ -329,7 +346,13 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 
 	/* generate the canvases */
 
-	g_autofree blot_canvas **cans = g_new0(blot_canvas*, fig->layer_count);
+	g_autofree blot_canvas **cans = NULL;
+	g_autofree blot_axis *x_axs = NULL;
+	g_autofree blot_axis *y_axs = NULL;
+
+	/* generate the canvases */
+
+	cans = g_new0(blot_canvas*, fig->layer_count);
 	RETURN_ERROR(!cans, NULL, error, "new *canvas x %u", fig->layer_count);
 
 	for (int li=0; li<fig->layer_count; li++) {
@@ -337,19 +360,17 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 
 		cans[li] = blot_layer_render(lay, &lim, &use,
 					     flags, error);
-		if (cans[li])
-			continue;
-
-		/* error: unwind the canvases we allocated */
-		for (--li; li>=0; li--)
-			blot_canvas_delete(cans[--li]);
-		return NULL;
+		if (!cans[li]) {
+			/* error: unwind the canvases we allocated */
+			__free_canvases_array(cans, li);
+			return NULL;
+		}
 	}
 
 	/* prepare the axis */
 
 	bool x_axs_visible = !(flags & BLOT_RENDER_NO_X_AXIS);
-	g_autofree blot_axis *x_axs = blot_axis_new(0, x_axs_visible,
+	x_axs = blot_axis_new(0, x_axs_visible,
 					fig->axis_color,
 					dim.cols - mrg.left - mrg.right,
 					lim.x_min, lim.x_max,
@@ -357,7 +378,7 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 	RETURN_IF(*error, NULL);
 
 	bool y_axs_visible = !(flags & BLOT_RENDER_NO_Y_AXIS);
-	g_autofree blot_axis *y_axs = blot_axis_new(1, y_axs_visible,
+	y_axs = blot_axis_new(1, y_axs_visible,
 					fig->axis_color,
 					dim.rows - mrg.top - mrg.bottom,
 					lim.y_min, lim.y_max,

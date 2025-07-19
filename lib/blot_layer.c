@@ -1,6 +1,7 @@
 /* blot: a layer contains the raw data to be plotted */
 /* vim: set noet sw=8 ts=8 tw=120: */
 #include <string.h>
+#include <math.h>
 #include "blot_layer.h"
 #include "blot_error.h"
 #include "blot_canvas.h"
@@ -18,9 +19,9 @@ extern blot_layer * blot_layer_new(blot_plot_type plot_type,
 {
 	blot_layer *lay;
 
-	RETURN_ERROR(!count, NULL, error, "count is NULL");
-	RETURN_ERROR(!xs, NULL, error, "xs pointer is NULL");
-	RETURN_ERROR(!ys, NULL, error, "ys pointer is NULL");
+	RETURN_ERRORx(!count, NULL, error, EFAULT, "count is NULL");
+	RETURN_ERRORx(!xs, NULL, error, EFAULT, "xs pointer is NULL");
+	RETURN_ERRORx(!ys, NULL, error, EFAULT, "ys pointer is NULL");
 
 	RETURN_ERRORx(plot_type >= BLOT_PLOT_TYPE_MAX, false, error, EINVAL,
 		      "x_min >= x_max");
@@ -60,7 +61,7 @@ bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim, GError **err
 	if (unlikely (!lay->xs)) {
 
 		lim->x_min = 0;
-		lim->x_max = lay->count;
+		lim->x_max = lay->count > 0 ? lay->count - 1 : 0;
 
 		ok = blot_layer_get_y(lay, 0, &y, error);
 		RETURN_IF(!ok, lim);
@@ -141,7 +142,7 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 		/* otherwise use the generic function, that will be a bit slower */
 		fn = blot_layer_to_canvas_fns[lay->plot_type];
 
-	RETURN_ERRORx(!fn, false, error, EINVAL,
+	RETURN_ERRORx(!fn, NULL, error, EINVAL,
 		      "no handler for plot_type=%u", lay->plot_type);
 
 	bool plot_ok = fn(lay, lim, can, error);
@@ -158,8 +159,11 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 			 blot_canvas *can, GError **error)
 {
-	double x_range = lim->x_max - lim->x_min;
-	double y_range = lim->y_max - lim->y_min;
+	double x_range = lim->x_max - lim->x_min + 1;
+	double y_range = lim->y_max - lim->y_min + 1;
+
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location
@@ -174,7 +178,7 @@ static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
 
 		// plot it
-		blot_canvas_draw_point(can, dx, dy);
+		blot_canvas_draw_point(can, round(dx), round(dy));
 	}
 	return true;
 }
@@ -190,8 +194,8 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 
 	RETURN_ERRORx(!lay->ys, false, error, ENOENT, "Y-data is NULL");
 
-	double x_range = lim->x_max - lim->x_min;
-	double y_range = lim->y_max - lim->y_min;
+	double x_range = lim->x_max - lim->x_min + 1;
+	double y_range = lim->y_max - lim->y_min + 1;
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location
@@ -205,7 +209,7 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
 
 		// plot it
-		blot_canvas_draw_point(can, dx, dy);
+		blot_canvas_draw_point(can, round(dx), round(dy));
 	}
 	return true;
 }
@@ -213,8 +217,11 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **error)
 {
-	double x_range = lim->x_max - lim->x_min;
-	double y_range = lim->y_max - lim->y_min;
+	double x_range = lim->x_max - lim->x_min + 1;
+	double y_range = lim->y_max - lim->y_min + 1;
+
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
 
 	bool visible = false;
 	double px=0, py=0;
@@ -233,7 +240,7 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 
 		// plot it
 		if (likely (visible)) {
-			blot_canvas_draw_line(can, px, py, dx, dy);
+			blot_canvas_draw_line(can, round(px), round(py), round(dx), round(dy));
 		}
 
 		// remember current point for next line
@@ -247,8 +254,11 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 static bool blot_layer_bar(const blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **error)
 {
-	double x_range = lim->x_max - lim->x_min;
-	double y_range = lim->y_max - lim->y_min;
+	double x_range = lim->x_max - lim->x_min + 1;
+	double y_range = lim->y_max - lim->y_min + 1;
+
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
 
 	/* bar graphs are plotted as rectangles of this width */
 
@@ -267,8 +277,7 @@ static bool blot_layer_bar(const blot_layer *lay, const blot_xy_limits *lim,
 		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
 
 		// plot it
-		//blot_canvas_draw_rect(can, dx, 0, dx+wx, dy);
-		blot_canvas_fill_rect(can, dx, 0, dx+wx, dy);
+		blot_canvas_fill_rect(can, round(dx), 0, round(dx+wx), round(dy));
 	}
 
 	return true;

@@ -33,6 +33,7 @@ typedef enum blot_data_type {
 
 #define BLOT_DATA_(X,Y) (BLOT_DATA_X_##X  | BLOT_DATA_Y_##Y)
 
+	BLOT_DATA_INT16                 = BLOT_DATA_(INT16,  INT16),
 	BLOT_DATA_INT32                 = BLOT_DATA_(INT32,  INT32),
 	BLOT_DATA_INT64                 = BLOT_DATA_(INT64,  INT64),
 	BLOT_DATA_FLOAT                 = BLOT_DATA_(FLOAT,  FLOAT),
