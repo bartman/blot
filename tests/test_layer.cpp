@@ -8,6 +8,12 @@ extern "C" {
 #include "blot_axis.h"
 };
 
+// used for combining multiple enum entries
+template <typename T>
+T combine(T a, T b) {
+    return static_cast<T>(static_cast<int>(a) | static_cast<int>(b));
+}
+
 TEST(BaseTest, AssertionTrue)
 {
     ASSERT_TRUE(true);
@@ -564,7 +570,6 @@ TEST(Layer, get_lim_negative_values)
     g_clear_error(&error);
 }
 
-#if 1
 TEST(Layer, render_scatter_int32)
 {
     GError *error = NULL;
@@ -598,7 +603,6 @@ TEST(Layer, render_scatter_int32)
     blot_canvas_delete(canvas);
     blot_layer_delete(layer);
 }
-#endif
 
 TEST(Layer, render_line_float)
 {
@@ -634,7 +638,6 @@ TEST(Layer, render_line_float)
     blot_layer_delete(layer);
 }
 
-#if 1
 TEST(Layer, render_bar_double)
 {
     GError *error = NULL;
@@ -680,9 +683,7 @@ TEST(Layer, render_bar_double)
     blot_canvas_delete(canvas);
     blot_layer_delete(layer);
 }
-#endif
 
-#if 0
 TEST(Layer, render_with_braille_flag)
 {
     GError *error = NULL;
@@ -703,7 +704,8 @@ TEST(Layer, render_with_braille_flag)
 
     blot_xy_limits lim = { 0, 9, 0, 9 };
     blot_dimensions dim = { 10, 10 };
-    blot_render_flags flags = BLOT_RENDER_BRAILLE;
+    blot_render_flags flags = combine(BLOT_RENDER_BRAILLE,
+                                      BLOT_RENDER_DONT_INVERT_Y_AXIS);
 
     blot_canvas *canvas = blot_layer_render(layer, &lim, &dim, flags, &error);
     ASSERT_TRUE(canvas != NULL);
@@ -717,7 +719,6 @@ TEST(Layer, render_with_braille_flag)
     blot_canvas_delete(canvas);
     blot_layer_delete(layer);
 }
-#endif
 
 TEST(Layer, render_with_no_unicode_flag)
 {
@@ -752,7 +753,6 @@ TEST(Layer, render_with_no_unicode_flag)
     blot_layer_delete(layer);
 }
 
-#if 0
 TEST(Layer, render_error_conditions)
 {
     GError *error = NULL;
@@ -787,7 +787,7 @@ TEST(Layer, render_error_conditions)
     canvas = blot_layer_render(layer, &lim, &dim, flags, &error);
     ASSERT_TRUE(canvas == NULL);
     ASSERT_TRUE(error != NULL);
-    ASSERT_EQ(error->code, EINVAL);
+    ASSERT_EQ(error->code, ERANGE);
     g_clear_error(&error);
 
     // Test with invalid dimensions (e.g., cols = 0)
@@ -801,4 +801,3 @@ TEST(Layer, render_error_conditions)
 
     blot_layer_delete(layer);
 }
-#endif

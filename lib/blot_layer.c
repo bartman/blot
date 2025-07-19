@@ -162,6 +162,9 @@ static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 	double x_range = lim->x_max - lim->x_min + 1;
 	double y_range = lim->y_max - lim->y_min + 1;
 
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+
 	for (int di=0; di<lay->count; di++) {
 		// read the location
 		double rx, ry;
@@ -217,6 +220,9 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 	double x_range = lim->x_max - lim->x_min + 1;
 	double y_range = lim->y_max - lim->y_min + 1;
 
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+
 	bool visible = false;
 	double px=0, py=0;
 
@@ -250,6 +256,9 @@ static bool blot_layer_bar(const blot_layer *lay, const blot_xy_limits *lim,
 {
 	double x_range = lim->x_max - lim->x_min + 1;
 	double y_range = lim->y_max - lim->y_min + 1;
+
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
 
 	/* bar graphs are plotted as rectangles of this width */
 
