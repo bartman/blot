@@ -44,10 +44,10 @@ static inline bool blot_canvas_set(blot_canvas *can, unsigned col, unsigned row,
 {
 	g_assert_nonnull(can);
 
-	if (col >= can->dim.cols)
+	if (unlikely (col >= can->dim.cols))
 		return false;
 
-	if (row >= can->dim.rows)
+	if (unlikely (row >= can->dim.rows))
 		return false;
 
 	if (can->flags & BLOT_RENDER_BRAILLE) {

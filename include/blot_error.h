@@ -13,10 +13,10 @@ static inline void blot_set_error_valist(GError **error,
 					 GQuark domain, gint code,
 					 const gchar *format, va_list args)
 {
-	if (!error)
+	if (unlikely (!error))
 		return;
 
-	if (*error)
+	if (unlikely (*error))
 		g_clear_error(error);
 
 	*error = g_error_new_valist(domain, code, format, args);
@@ -37,10 +37,10 @@ static inline void __blot_set_error_unix_valist(GError **error, int errno_code,
 {
 	gchar *text;
 
-	if (!error)
+	if (unlikely (!error))
 		return;
 
-	if (*error)
+	if (unlikely (*error))
 		g_clear_error(error);
 
 	text = g_strdup_vprintf(format, args);
@@ -61,7 +61,7 @@ static inline void __blot_set_error_unix(GError **error, int errno_code,
 {
 	va_list ap;
 
-	if (!error)
+	if (unlikely (!error))
 		return;
 
 	va_start(ap, format);
