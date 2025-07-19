@@ -2,6 +2,7 @@
 /* vim: set noet sw=8 ts=8 tw=120: */
 #pragma once
 
+#define _GNU_SOURCE 1
 #include <time.h>
 
 #define BLOT_MSEC_PER_SEC 1000ull
