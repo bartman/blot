@@ -4,6 +4,7 @@
 *.a
 build
 tags
+.cache/
 cscope.files
 cscope.out
 compile_commands.json

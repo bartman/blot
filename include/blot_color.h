@@ -6,34 +6,33 @@
 #include <stdbool.h>
 #include "blot_utils.h"
 
-enum {
-	BLACK,
-	RED,
-	GREEN,
-	YELLOW,
-	BLUE,
-	MAGENTA,
-	CYAN,
-	WHITE,
+#define BLACK     0
+#define RED       1
+#define GREEN     2
+#define YELLOW    3
+#define BLUE      4
+#define MAGENTA   5
+#define CYAN      6
+#define WHITE     7
 
-	DIM_BLACK   = BLACK,
-	DIM_RED     = RED,
-	DIM_GREEN   = GREEN,
-	DIM_YELLOW  = YELLOW,
-	DIM_BLUE    = BLUE,
-	DIM_MAGENTA = MAGENTA,
-	DIM_CYAN    = CYAN,
-	DIM_WHITE   = WHITE,
+#define DIM_BLACK   BLACK
+#define DIM_RED     RED
+#define DIM_GREEN   GREEN
+#define DIM_YELLOW  YELLOW
+#define DIM_BLUE    BLUE
+#define DIM_MAGENTA MAGENTA
+#define DIM_CYAN    CYAN
+#define DIM_WHITE   WHITE
 
-	BRIGHT_BLACK   = 8 + BLACK,
-	BRIGHT_RED     = 8 + RED,
-	BRIGHT_GREEN   = 8 + GREEN,
-	BRIGHT_YELLOW  = 8 + YELLOW,
-	BRIGHT_BLUE    = 8 + BLUE,
-	BRIGHT_MAGENTA = 8 + MAGENTA,
-	BRIGHT_CYAN    = 8 + CYAN,
-	BRIGHT_WHITE   = 8 + WHITE,
-};
+#define BRIGHT_BLACK   8
+#define BRIGHT_RED     9
+#define BRIGHT_GREEN   10
+#define BRIGHT_YELLOW  11
+#define BRIGHT_BLUE    12
+#define BRIGHT_MAGENTA 13
+#define BRIGHT_CYAN    14
+#define BRIGHT_WHITE   15
+
 #define ESC "\033["
 #define COL_BUF_LEN 16
 
@@ -50,26 +49,39 @@ enum {
 extern bool have_color_support;
 
 /* runtime support */
-
-static inline char *mkcol(char *buf, size_t size, const char *fmt, int col)
+static inline char *mkcol_runtime(char *buf, size_t size, const char *fmt, int col)
 {
 	g_snprintf(buf, COL_BUF_LEN, fmt, col & 0xFF);
 	return buf;
 }
 
-/* macros to build char colors */
+/* constant expression support */
+#define mkcol_constant(prefix,col) \
+	(prefix __stringify(col) COL_SUFFIX)
 
+/* this allocates a color buffer on the stack */
 #define colbuf(name) \
 	char name[COL_BUF_LEN] = {}
 
+/* macros to build char colors */
 #define fg(col) ( \
-	have_color_support ? ({ \
-		 char *buf = alloca(COL_BUF_LEN); \
-		 mkcol(buf, COL_BUF_LEN, COL_FG_FMT, col); \
-		 }) : "" )
+	have_color_support ? ( \
+		__builtin_constant_p(col) ? ( \
+			mkcol_constant(COL_FG_PREFIX, col) \
+		) : ({ \
+			char *buf = (char*)alloca(COL_BUF_LEN); \
+			mkcol_runtime(buf, COL_BUF_LEN, COL_FG_FMT, col); \
+		}) \
+	) : "" \
+)
 #define bg(col) ( \
-	have_color_support ? ({ \
-		 char *buf = alloca(COL_BUF_LEN); \
-		 mkcol(buf, COL_BUF_LEN, COL_BG_FMT, col); \
-		 }) : "" )
+	have_color_support ? ( \
+		__builtin_constant_p(col) ? ( \
+			mkcol_constant(COL_BG_PREFIX, col) \
+		) : ({ \
+			char *buf = (char*)alloca(COL_BUF_LEN); \
+			mkcol_runtime(buf, COL_BUF_LEN, COL_BG_FMT, col); \
+		}) \
+	) : "" \
+)
 

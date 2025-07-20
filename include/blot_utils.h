@@ -79,3 +79,6 @@
 #define _L(x) L ## x
 #define L(x) _L(x)
 
+#if !__has_builtin(__builtin_constant_p)
+#define __builtin_constant_p(x) (0)
+#endif
