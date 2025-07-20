@@ -4,6 +4,7 @@
 
 #include <glib.h>
 #include <stdbool.h>
+#include "blot_utils.h"
 
 enum {
 	BLACK,
@@ -33,35 +34,42 @@ enum {
 	BRIGHT_CYAN    = 8 + CYAN,
 	BRIGHT_WHITE   = 8 + WHITE,
 };
+#define ESC "\033["
 #define COL_BUF_LEN 16
-#define COL_FG_FMT "\033[38;5;%dm"
-#define COL_BG_FMT "\033[48;5;%dm"
 
-#define COL_RESET  "\033[0m"
-//#define CLR_SCR    "\033c"    // this one also drops scrollback in tmux
-#define CLR_SCR    "\033[2J\033[H"
+#define COL_FG_PREFIX   ESC "38;5;"
+#define COL_BG_PREFIX   ESC "48;5;"
+#define COL_SUFFIX      "m"
+
+#define COL_FG_FMT   COL_FG_PREFIX "%d" COL_SUFFIX
+#define COL_BG_FMT   COL_BG_PREFIX "%d" COL_SUFFIX
+
+#define COL_RESET    ESC "0" COL_SUFFIX
+#define CLR_SCR      ESC "2J" ESC "H"
 
 extern bool have_color_support;
 
-/* macros to build char colors */
+/* runtime support */
 
-static inline const char *mkcol(char *buf, const char *fmt, unsigned col)
+static inline char *mkcol(char *buf, size_t size, const char *fmt, int col)
 {
 	g_snprintf(buf, COL_BUF_LEN, fmt, col & 0xFF);
 	return buf;
 }
-#define fg(col) ({ \
-	char _buf[COL_BUF_LEN] = {0,}; \
-	const char *res = ""; \
-	if (have_color_support) \
-		res = mkcol(_buf, COL_FG_FMT, col); \
-	res; \
-})
-#define bg(col) ({ \
-	char _buf[COL_BUF_LEN] = {0,}; \
-	const char *res = ""; \
-	if (have_color_support) \
-		res = mkcol(_buf, COL_BG_FMT, col); \
-	res; \
-})
+
+/* macros to build char colors */
+
+#define colbuf(name) \
+	char name[COL_BUF_LEN] = {}
+
+#define fg(col) ( \
+	have_color_support ? ({ \
+		 char *buf = alloca(COL_BUF_LEN); \
+		 mkcol(buf, COL_BUF_LEN, COL_FG_FMT, col); \
+		 }) : "" )
+#define bg(col) ( \
+	have_color_support ? ({ \
+		 char *buf = alloca(COL_BUF_LEN); \
+		 mkcol(buf, COL_BUF_LEN, COL_BG_FMT, col); \
+		 }) : "" )
 
