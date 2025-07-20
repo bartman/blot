@@ -97,11 +97,11 @@ TEST(Color, runtime_fg)
     };
 
     std::vector<std::string> generated;
-    for (int col=0; col<expected.size(); ++col) {
+    for (int col=0; col<(int)expected.size(); ++col) {
         generated.push_back(fg(col));
     }
 
-    for (int col=0; col<expected.size(); ++col) {
+    for (int col=0; col<(int)expected.size(); ++col) {
         ASSERT_STREQ(generated[col].c_str(), expected[col]) << " col=" << col;
     }
 }
@@ -120,11 +120,11 @@ TEST(Color, runtime_bg)
     };
 
     std::vector<std::string> generated;
-    for (int col=0; col<expected.size(); ++col) {
+    for (int col=0; col<(int)expected.size(); ++col) {
         generated.push_back(bg(col));
     }
 
-    for (int col=0; col<expected.size(); ++col) {
+    for (int col=0; col<(int)expected.size(); ++col) {
         ASSERT_STREQ(generated[col].c_str(), expected[col]) << " col=" << col;
     }
 }
