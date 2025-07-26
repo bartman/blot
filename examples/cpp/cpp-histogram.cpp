@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <locale.h>
-#include "blot.h"
+#include "blot.hpp"
 
 #define DATA_COUNT 10
 #define DATA_MAX   100
@@ -10,53 +10,36 @@
 #define SCREEN_WIDTH  80
 #define SCREEN_HEIGHT 25
 
-#define FATAL_ERROR(error) ({ \
-	if (unlikely (error)) \
-		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
-})
-
 int main(void)
 {
-	g_autoptr(GError) error = NULL;
-
 	setlocale(LC_CTYPE, "");
 	srand(0);
 
 	/* build a dummy dataset */
 
-	static uint32_t data[DATA_COUNT];
-	static char *xlabels[DATA_COUNT];
+    std::vector<int32_t> data(DATA_COUNT);
+    std::vector<std::string> xlabelstrs(DATA_COUNT);
+    std::vector<const char *> xlabelptrs(DATA_COUNT);
 
 	for (int i=0; i<DATA_COUNT; i++) {
 		data[i] = rand() % DATA_MAX;
 
 		/* let's make up some years */
-		int rc = asprintf(&xlabels[i], "%u", 2000-DATA_COUNT+i);
-		g_assert(rc > 0);
+        xlabelstrs[i] = std::to_string(2000-DATA_COUNT+i);
+        xlabelptrs[i] = xlabelstrs[i].c_str();
 	}
 
 	/* configure the figure */
 
-	blot_figure *fig;
+    Blot::Figure fig;
+	fig.set_axis_color(8);
+	fig.set_screen_size(80, 40);
 
-	fig = blot_figure_new(&error);
-	FATAL_ERROR(error);
-
-	blot_figure_set_axis_color(fig, 8, &error);
-	FATAL_ERROR(error);
-
-	blot_figure_set_screen_size(fig, 80, 40, &error);
-	FATAL_ERROR(error);
-
-	blot_figure_set_x_axis_labels(fig, DATA_COUNT, xlabels, &error);
-	FATAL_ERROR(error);
+	fig.set_x_axis_labels(xlabelptrs);
 
 	/* add a bar plot */
 
-	blot_figure_bar(fig, BLOT_DATA_INT32,
-			DATA_COUNT, NULL, data,
-			9, "histogram", &error);
-	FATAL_ERROR(error);
+	fig.bar(data, 9, "histogram");
 
 	/* render the plots */
 
@@ -64,23 +47,14 @@ int main(void)
         = BLOT_RENDER_BRAILLE
         | BLOT_RENDER_LEGEND_BELOW;
 
-	blot_screen *scr = blot_figure_render(fig, flags, &error);
-	FATAL_ERROR(error);
+    Blot::Screen scr = fig.render(flags);
 
 	/* print it to screen */
 
 	gsize txt_size = 0;
-	const wchar_t *txt = blot_screen_get_text(scr, &txt_size, &error);
-	FATAL_ERROR(error);
+	const wchar_t *txt = scr.get_text(txt_size);
 
 	printf("%ls", txt);
-
-	blot_screen_delete(scr);
-
-	blot_figure_delete(fig);
-
-	for (int i=0; i<DATA_COUNT; i++)
-		free(xlabels[i]);
 
 	return 0;
 }

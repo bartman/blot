@@ -148,7 +148,7 @@ public:
 			throw Exception(error);
 	}
 
-	void set_x_axis_labels(const std::vector<const char *> labels) {
+	void set_x_axis_labels(const std::vector<const char *> &labels) {
 		GError *error = nullptr;
 		size_t label_count = labels.size();
 		char **x_labels = (char**)labels.data(); // TOOD: fix this cast!
