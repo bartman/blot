@@ -1,6 +1,6 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 
-PROJECT(blot)
+PROJECT(blot VERSION 0.0.6 LANGUAGES C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 #set(CMAKE_BUILD_TYPE Release)
 #set(CMAKE_BUILD_TYPE Debug)
@@ -13,12 +13,8 @@ SET(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 FIND_PACKAGE(PkgConfig)
 
 PKG_CHECK_MODULES(GLIB2 REQUIRED glib-2.0>=2.44)
-PKG_CHECK_MODULES(GIO REQUIRED gio-2.0>=2.44)
-PKG_CHECK_MODULES(GIOUNIX REQUIRED gio-unix-2.0>=2.44)
-#PKG_CHECK_MODULES(GMODULE REQUIRED gmodule-2.0>=2.44)
-#PKG_CHECK_MODULES(URIPARSER REQUIRED liburiparser>=0.8)
-#PKG_CHECK_MODULES(MAGICCORE REQUIRED MagickCore>=6)
-#PKG_CHECK_MODULES(MAGICWAND REQUIRED MagickWand>=6)
+#PKG_CHECK_MODULES(GIO REQUIRED gio-2.0>=2.44)
+#PKG_CHECK_MODULES(GIOUNIX REQUIRED gio-unix-2.0>=2.44)
 
 LINK_DIRECTORIES(
     ${GLIB2_LIBRARY_DIRS}
@@ -41,9 +37,12 @@ endif(CMAKE_COMPILER_IS_GNUCC)
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
     message(STATUS "ASAN enabled for debug build")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -gdwarf-3 -fsanitize=address -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -gdwarf-3 -fsanitize=address -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG=1 -gdwarf-3 -fsanitize=address -fno-omit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG=1 -gdwarf-3 -fsanitize=address -fno-omit-frame-pointer")
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=address")
+else()
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DNDEBUG=1")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DNDEBUG=1")
 endif()
 
 include(GetGitRevisionDescription)
@@ -58,7 +57,8 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
 
 add_subdirectory(lib)
 #add_subdirectory(cli)
-add_subdirectory(examples)
+add_subdirectory(examples/c)
+add_subdirectory(examples/cpp)
 
 enable_testing()
 include(CTest)

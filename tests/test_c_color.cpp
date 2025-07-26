@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
 
-extern "C" {
 #include "blot_color.h"
-};
 
 TEST(Color, mkcol_runtime_fg)
 {

@@ -62,7 +62,7 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 		const struct blot_layer *lay = lays[ci];
 		const char *colstr = fg(lay->color);
 
-		if (!lay->label)
+		if (!lay->label || !*lay->label)
 			continue;
 
 		//wchar_t star = 0x2605; // does not show up in Terminus font

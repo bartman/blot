@@ -4,6 +4,8 @@
 
 #include <glib.h>
 #include <stdbool.h>
+
+#include "blot_compiler.h"
 #include "blot_utils.h"
 
 #define BLACK     0
@@ -46,7 +48,7 @@
 #define COL_RESET    ESC "0" COL_SUFFIX
 #define CLR_SCR      ESC "2J" ESC "H"
 
-extern bool have_color_support;
+BLOT_EXTERN bool have_color_support;
 
 /* runtime support */
 static inline char *mkcol_runtime(char *buf, size_t size, const char *fmt, int col)

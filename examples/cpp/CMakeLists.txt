@@ -1,18 +1,18 @@
 enable_testing()
 
 SET(TEST_EXECUTABLES
-        test-histogram
-        test-line-spin
-        test-simple
-        test-trig
-        test-trig-loop
-        test-x
+        cpp-histogram
+        cpp-line-spin
+        cpp-simple
+        cpp-trig
+        cpp-trig-loop
+        cpp-x
 )
 
 foreach(test ${TEST_EXECUTABLES})
 
         ADD_EXECUTABLE(${test}
-                ${test}.c
+                ${test}.cpp
         )
 
         TARGET_LINK_LIBRARIES(${test}

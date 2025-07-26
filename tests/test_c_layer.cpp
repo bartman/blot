@@ -1,12 +1,10 @@
 #include <gtest/gtest.h>
 
-extern "C" {
 #include "blot_terminal.h"
 #include "blot_layer.h"
 #include "blot_types.h"
 #include "blot_canvas.h"
 #include "blot_axis.h"
-};
 
 // used for combining multiple enum entries
 template <typename T>
@@ -65,8 +63,9 @@ TEST(Layer, alloc_NULL_xs)
     const char *data_label = "label";
     GError *error = NULL;
 
+    /* It's OK for data_xs to be NULL */
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
-    ASSERT_TRUE(layer == NULL);
+    ASSERT_FALSE(layer == NULL);
     blot_layer_delete(layer);
     g_clear_error(&error);
 }

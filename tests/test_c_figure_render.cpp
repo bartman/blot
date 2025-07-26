@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-extern "C" {
 #include "blot_terminal.h"
 #include "blot_figure.h"
 #include "blot_error.h"
@@ -9,7 +8,6 @@ extern "C" {
 #include "blot_layer.h"
 #include "blot_canvas.h"
 #include "blot_axis.h"
-};
 
 TEST(Figure, render_no_layers)
 {

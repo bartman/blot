@@ -5,6 +5,8 @@
 #include <glib.h>
 #include <stdbool.h>
 #include <stdio.h>
+
+#include "blot_compiler.h"
 #include "blot_types.h"
 #include "blot_utils.h"
 #include "blot_braille.h"
@@ -34,10 +36,10 @@ typedef struct blot_canvas {
 
 /* create/delete */
 
-extern blot_canvas * blot_canvas_new(unsigned cols, unsigned rows,
+BLOT_EXTERN blot_canvas * blot_canvas_new(unsigned cols, unsigned rows,
 				     blot_render_flags flags, blot_color color,
 				     GError **);
-extern void blot_canvas_delete(blot_canvas *fig);
+BLOT_EXTERN void blot_canvas_delete(blot_canvas *fig);
 
 /* render */
 

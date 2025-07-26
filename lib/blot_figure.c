@@ -23,6 +23,18 @@ bool blot_figure_init(blot_figure *fig, GError **error)
 	return true;
 }
 
+void blot_figure_cleanup(blot_figure *fig)
+{
+	if (fig->layers) {
+		for (int li=0; li<fig->layer_count; li++) {
+			blot_layer *lay = fig->layers[li];
+			blot_layer_delete(lay);
+		}
+
+		g_free(fig->layers);
+	}
+}
+
 blot_figure * blot_figure_new(GError **error)
 {
 	blot_figure *fig;
@@ -38,14 +50,7 @@ blot_figure * blot_figure_new(GError **error)
 
 void blot_figure_delete(blot_figure *fig)
 {
-	if (fig->layers) {
-		for (int li=0; li<fig->layer_count; li++) {
-			blot_layer *lay = fig->layers[li];
-			blot_layer_delete(lay);
-		}
-
-		g_free(fig->layers);
-	}
+	blot_figure_cleanup(fig);
 	g_free(fig);
 }
 
@@ -375,6 +380,7 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 					dim.cols - mrg.left - mrg.right,
 					lim.x_min, lim.x_max,
 					&fig->xlabels, error);
+	if (*error) __free_canvases_array(cans, fig->layer_count);
 	RETURN_IF(*error, NULL);
 
 	bool y_axs_visible = !(flags & BLOT_RENDER_NO_Y_AXIS);
@@ -383,6 +389,7 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 					dim.rows - mrg.top - mrg.bottom,
 					lim.y_min, lim.y_max,
 					NULL, error);
+	if (*error) __free_canvases_array(cans, fig->layer_count);
 	RETURN_IF(*error, NULL);
 
 	/* merge canvases to screen */

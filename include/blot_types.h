@@ -3,11 +3,27 @@
 
 #include <glib.h>
 
+#include "blot_compiler.h"
+
 struct blot_figure;
 struct blot_layer;
 struct blot_canvas;
 struct blot_screen;
 struct blot_axis;
+
+/* this allows us to use the same syntax for enums in C and C++ */
+#ifdef __cplusplus
+#define DEFINE_ENUM_OPERATORS_FOR(T) \
+constexpr T operator|(T a, T b) { \
+	return static_cast<T>(static_cast<unsigned int>(a) | static_cast<unsigned int>(b)); \
+} \
+constexpr T& operator|=(T &a, T &b) { \
+	a = a | b; \
+	return a; \
+}
+#else
+#define DEFINE_ENUM_OPERATORS_FOR(T)
+#endif
 
 typedef enum blot_plot_type {
 	BLOT_SCATTER,
@@ -15,6 +31,7 @@ typedef enum blot_plot_type {
 	BLOT_BAR,
 	BLOT_PLOT_TYPE_MAX
 } blot_plot_type;
+DEFINE_ENUM_OPERATORS_FOR(blot_plot_type)
 
 typedef enum blot_data_type {
 	BLOT_DATA_X_MASK                = 0x000F,
@@ -31,7 +48,7 @@ typedef enum blot_data_type {
 	BLOT_DATA_Y_FLOAT               = 0x0030,
 	BLOT_DATA_Y_DOUBLE              = 0x0040,
 
-#define BLOT_DATA_(X,Y) (BLOT_DATA_X_##X  | BLOT_DATA_Y_##Y)
+#define BLOT_DATA_(X,Y) (BLOT_DATA_X_##X | BLOT_DATA_Y_##Y)
 
 	BLOT_DATA_INT16                 = BLOT_DATA_(INT16,  INT16),
 	BLOT_DATA_INT32                 = BLOT_DATA_(INT32,  INT32),
@@ -39,8 +56,10 @@ typedef enum blot_data_type {
 	BLOT_DATA_FLOAT                 = BLOT_DATA_(FLOAT,  FLOAT),
 	BLOT_DATA_DOUBLE                = BLOT_DATA_(DOUBLE, DOUBLE),
 
-	BLOT_DATA_TYPE_MAX              = 0x00FF
+	BLOT_DATA_TYPE_MAX              = (BLOT_DATA_X_MASK | BLOT_DATA_Y_MASK)
 } blot_data_type;
+DEFINE_ENUM_OPERATORS_FOR(blot_data_type)
+#define BLOT_DATA_TYPE(x,y) (blot_data_type)(((x) & BLOT_DATA_X_MASK) | ((y) & BLOT_DATA_Y_MASK))
 
 typedef guint8 blot_color;
 
@@ -56,6 +75,7 @@ typedef enum blot_render_flags {
 	BLOT_RENDER_NO_X_AXIS           = 0x00000080,
 	BLOT_RENDER_NO_Y_AXIS           = 0x00000100,
 } blot_render_flags;
+DEFINE_ENUM_OPERATORS_FOR(blot_render_flags)
 
 typedef struct blot_xy_limits {
 	double x_min, x_max;

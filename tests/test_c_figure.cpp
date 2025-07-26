@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-extern "C" {
 #include "blot_terminal.h"
 #include "blot_figure.h"
 #include "blot_error.h"
@@ -9,7 +8,6 @@ extern "C" {
 #include "blot_layer.h"
 #include "blot_canvas.h"
 #include "blot_axis.h"
-};
 
 TEST(Figure, alloc_new_delete)
 {
@@ -267,10 +265,10 @@ TEST(Figure, add_plot_null_xs)
     ASSERT_TRUE(fig != NULL);
 
     const int ys[] = {4, 5, 6};
-    ASSERT_FALSE(blot_figure_scatter(fig, BLOT_DATA_INT32, 3, NULL, ys, 1, "scatter", &error));
-    ASSERT_TRUE(error != NULL);
-    ASSERT_EQ(error->code, EFAULT);
-    g_clear_error(&error);
+    ASSERT_TRUE(blot_figure_scatter(fig, BLOT_DATA_INT32, 3, NULL, ys, 1, "scatter", &error));
+    ASSERT_TRUE(error == NULL);
+
+    ASSERT_EQ(fig->layer_count, 1);
 
     blot_figure_delete(fig);
 }

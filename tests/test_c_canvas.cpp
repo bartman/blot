@@ -1,9 +1,7 @@
 #include <gtest/gtest.h>
 
-extern "C" {
 #include "blot_canvas.h"
 #include "blot_error.h"
-};
 
 TEST(Canvas, alloc_new_delete)
 {

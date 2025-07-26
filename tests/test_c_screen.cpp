@@ -1,12 +1,10 @@
 #include <gtest/gtest.h>
 
-extern "C" {
 #include "blot_screen.h"
 #include "blot_layer.h"
 #include "blot_axis.h"
 #include "blot_canvas.h"
 #include "blot_types.h"
-};
 
 TEST(BaseTest, AssertionTrue)
 {

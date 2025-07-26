@@ -8,7 +8,7 @@
 
 /* create/delete */
 
-extern blot_layer * blot_layer_new(blot_plot_type plot_type,
+BLOT_EXTERN blot_layer * blot_layer_new(blot_plot_type plot_type,
 				   blot_data_type data_type,
 				   size_t count,
 				   const void *xs,
@@ -20,7 +20,6 @@ extern blot_layer * blot_layer_new(blot_plot_type plot_type,
 	blot_layer *lay;
 
 	RETURN_ERRORx(!count, NULL, error, EFAULT, "count is NULL");
-	RETURN_ERRORx(!xs, NULL, error, EFAULT, "xs pointer is NULL");
 	RETURN_ERRORx(!ys, NULL, error, EFAULT, "ys pointer is NULL");
 
 	RETURN_ERRORx(plot_type >= BLOT_PLOT_TYPE_MAX, false, error, EINVAL,
