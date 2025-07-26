@@ -1,7 +1,7 @@
 # this make file is a wrapper around CMake and provided for convience only.
 # actual rules for building software and components should be in cmake scripts.
 
-.PHONY: all config build clean distclean install test check smoke
+.PHONY: all help config build clean distclean install test check smoke
 .DEFAULT_GOAL := all
 
 USER = $(shell id -u -n)
@@ -13,6 +13,15 @@ BUILDDIR    = build
 Q = $(if ${V},,@)
 
 all: build
+
+help:
+	@echo "make build"
+	@echo "make build TYPE=[Debug|Release]"
+	@echo "make clean"
+	@echo "make distclean"
+	@echo "make install"
+	@echo "make test"
+	@echo "make smoke"
 
 # ---------------------------------------------------------------------------
 

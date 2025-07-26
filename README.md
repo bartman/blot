@@ -1,6 +1,6 @@
 # blot
 
-Blot is a plotting library written in C, that plots data onto a string buffer.
+Blot is a plotting library written in C (with a C++ wrapper), that plots data onto a string buffer.
 
 That's right, there are no images, just text -- see examples below.
 

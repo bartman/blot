@@ -180,6 +180,7 @@ public:
 
 	void set_x_axis_labels(const std::vector<const char *> &labels) {
 		GError *error = nullptr;
+		BLOT_EXPECT(!labels.empty());
 		size_t label_count = labels.size();
 		char **x_labels = (char**)labels.data(); // TOOD: fix this cast!
 		if (!blot_figure_set_x_axis_labels(this, label_count, x_labels, &error))
@@ -193,7 +194,7 @@ public:
 		GError *error = nullptr;
 		size_t data_count = data_ys.size();
 
-		BLOT_EXPECT(data_ys.size());
+		BLOT_EXPECT(!data_ys.empty());
 		const void *ptr_ys = (const void*)data_ys.data();
 
 		const void *ptr_xs = nullptr;
