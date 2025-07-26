@@ -56,7 +56,7 @@ add_definitions(-D"BLOT_GIT_SHA1=${GIT_SHA1}")
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
 
 add_subdirectory(lib)
-#add_subdirectory(cli)
+add_subdirectory(cli)
 add_subdirectory(examples/c)
 add_subdirectory(examples/cpp)
 
