@@ -10,6 +10,11 @@ SET(LIBBLOT_SRCS
     blot_terminal.c
 )
 
+# we need glib
+
+FIND_PACKAGE(PkgConfig)
+PKG_CHECK_MODULES(GLIB2 REQUIRED glib-2.0>=2.44)
+
 # build a libblot.so and a libblot.a
 
 ADD_LIBRARY(blot_a STATIC ${LIBBLOT_SRCS})

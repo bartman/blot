@@ -2,29 +2,25 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 
 PROJECT(blot VERSION 0.0.7 LANGUAGES C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
-#set(CMAKE_BUILD_TYPE Release)
-#set(CMAKE_BUILD_TYPE Debug)
-#set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
 SET(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 SET(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-FIND_PACKAGE(PkgConfig)
-
-PKG_CHECK_MODULES(GLIB2 REQUIRED glib-2.0>=2.44)
 
 if (NOT DEFINED CMAKE_C_STANDARD)
-    SET(CMAKE_C_STANDARD 99) # use C99 if one is not set by user
+    SET(CMAKE_C_STANDARD 99)
 endif()
 if (NOT DEFINED CMAKE_CXX_STANDARD)
-    SET(CMAKE_CXX_STANDARD 20) # used only in test harness
+    SET(CMAKE_CXX_STANDARD 20)
 endif()
 
 add_definitions(-D_GNU_SOURCE)
 
-if(CMAKE_COMPILER_IS_GNUCC)
-    add_definitions(-Wall -Werror -Wno-variadic-macros -Wno-dangling-pointer)
-endif(CMAKE_COMPILER_IS_GNUCC)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(-Wall -Werror -Wno-variadic-macros -Wno-dangling-pointer)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options(-Wall -Werror -Wno-variadic-macros)
+endif()
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
     message(STATUS "ASAN enabled for debug build")
