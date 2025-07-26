@@ -159,17 +159,20 @@ public:
 	/* add layers */
 
 	template <typename T>
-	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<T> data_ys, blot_color data_color, const char *data_label) {
+	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<T> &data_ys, blot_color data_color, const char *data_label) {
 		GError *error = nullptr;
-		BLOT_EXPECT(data_ys.size());
-		if (data_xs.size())
-			BLOT_EXPECT_EQ(data_xs.size(), data_ys.size());
 		size_t data_count = data_ys.size();
 
-		blot_data_type data_type;
-		const void *ptr_xs = (const void*)data_xs.data();
+		BLOT_EXPECT(data_ys.size());
 		const void *ptr_ys = (const void*)data_ys.data();
 
+		const void *ptr_xs = nullptr;
+		if (data_xs.size()) {
+			BLOT_EXPECT_EQ(data_xs.size(), data_ys.size());
+			ptr_xs = (const void*)data_xs.data();
+		}
+
+		blot_data_type data_type;
 		if constexpr (std::is_same_v<T, int16_t>)
 			data_type = BLOT_DATA_INT16;
 		else if constexpr (std::is_same_v<T, int32_t>)
@@ -189,32 +192,32 @@ public:
 	}
 
 	template <typename T>
-	void scatter(const std::vector<T> &data_xs, const std::vector<T> data_ys, blot_color data_color, const char *data_label) {
+	void scatter(const std::vector<T> &data_xs, const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
 		plot(BLOT_SCATTER, data_xs, data_ys, data_color, data_label);
 	}
 
 	template <typename T>
-	void scatter(const std::vector<T> data_ys, blot_color data_color, const char *data_label) {
+	void scatter(const std::vector<T> &data_ys, blot_color data_color, const char *data_label) {
 		plot(BLOT_SCATTER, {}, data_ys, data_color, data_label);
 	}
 
 	template <typename T>
-	void line(const std::vector<T> &data_xs, const std::vector<T> data_ys, blot_color data_color, const char *data_label) {
+	void line(const std::vector<T> &data_xs, const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
 		plot(BLOT_LINE, data_xs, data_ys, data_color, data_label);
 	}
 
 	template <typename T>
-	void line(const std::vector<T> data_ys, blot_color data_color, const char *data_label) {
+	void line(const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
 		plot(BLOT_LINE, {}, data_ys, data_color, data_label);
 	}
 
 	template <typename T>
-	void bar(const std::vector<T> &data_xs, const std::vector<T> data_ys, blot_color data_color, const char *data_label) {
+	void bar(const std::vector<T> &data_xs, const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
 		plot(BLOT_BAR, data_xs, data_ys, data_color, data_label);
 	}
 
 	template <typename T>
-	void bar(const std::vector<T> data_ys, blot_color data_color, const char *data_label) {
+	void bar(const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
 		plot(BLOT_BAR, {}, data_ys, data_color, data_label);
 	}
 
