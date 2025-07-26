@@ -1,7 +1,7 @@
 #include <glib.h>
 #include <stdio.h>
 #include <locale.h>
-#include "blot.h"
+#include "blot.hpp"
 
 #define DATA_X_MIN -1
 #define DATA_X_MAX 1
@@ -17,21 +17,14 @@
 #define SCREEN_WIDTH  80
 #define SCREEN_HEIGHT 25
 
-#define FATAL_ERROR(error) ({ \
-	if (unlikely (error)) \
-		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
-})
-
 int main(void)
 {
-	g_autoptr(GError) error = NULL;
-
 	setlocale(LC_CTYPE, "");
 
 	/* build a dummy dataset */
 
-	static double scat_x[SCAT_COUNT];
-	static double scat_y[SCAT_COUNT];
+    std::vector<double> scat_x(SCAT_COUNT);
+    std::vector<double> scat_y(SCAT_COUNT);
 
 	for (int i=0; i<SCAT_COUNT; i++) {
 		double f = (double)i / (SCAT_COUNT-1);
@@ -39,64 +32,45 @@ int main(void)
 		scat_y[i] = DATA_Y_MIN + (f * DATA_Y_RANGE);
 	}
 
-	static double line_x[LINE_COUNT] = { DATA_X_MIN, DATA_Y_MAX };
-	static double line_y[LINE_COUNT] = { DATA_Y_MAX, DATA_Y_MIN };
+    std::vector<double> line_x = { DATA_X_MIN, DATA_Y_MAX };
+    std::vector<double> line_y = { DATA_Y_MAX, DATA_Y_MIN };
 
 	/* configure the figure */
 
-	blot_figure *fig;
+    Blot::Figure fig;
 
-	fig = blot_figure_new(&error);
-	FATAL_ERROR(error);
+	fig.set_axis_color(8);
 
-	blot_figure_set_axis_color(fig, 8, &error);
-	FATAL_ERROR(error);
+	fig.set_screen_size(80, 40);
 
-	blot_figure_set_screen_size(fig, 80, 40, &error);
-	FATAL_ERROR(error);
-
-	blot_figure_set_x_limits(fig, DATA_X_MIN*2, DATA_X_MAX*2, &error);
-	FATAL_ERROR(error);
-	blot_figure_set_y_limits(fig, DATA_Y_MIN*2, DATA_Y_MAX*2, &error);
-	FATAL_ERROR(error);
+	fig.set_x_limits(DATA_X_MIN*2, DATA_X_MAX*2);
+	fig.set_y_limits(DATA_Y_MIN*2, DATA_Y_MAX*2);
 
 #if 1
 	/* hack for now to add origin lines */
 
 	/* plot X-axis origin */
 
-	gint32 xax[2] = { DATA_X_MIN*2, DATA_X_MAX*2 };
-	gint32 xay[2] = { 0, 0 };
+    std::vector<gint32> xax = { DATA_X_MIN*2, DATA_X_MAX*2 };
+    std::vector<gint32> xay = { 0, 0 };
 
-	blot_figure_line(fig, BLOT_DATA_INT32,
-			 2, xax, xay,
-			 8, NULL, &error);
-	FATAL_ERROR(error);
+	fig.line(xax, xay, 8, NULL);
 
 	/* plot Y-axis origin */
 
-	gint32 yax[2] = { 0, 0 };
-	gint32 yay[2] = {DATA_Y_MIN*2, DATA_Y_MAX*2 };
+    std::vector<gint32> yax = { 0, 0 };
+    std::vector<gint32> yay = {DATA_Y_MIN*2, DATA_Y_MAX*2 };
 
-	blot_figure_line(fig, BLOT_DATA_INT32,
-			 2, yax, yay,
-			 8, NULL, &error);
-	FATAL_ERROR(error);
+	fig.line(yax, yay, 8, NULL);
 #endif
 
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_DATA_DOUBLE,
-			    SCAT_COUNT, scat_x, scat_y,
-			    9, "scatter", &error);
-	FATAL_ERROR(error);
+	fig.scatter(scat_x, scat_y, 9, "scatter");
 
 	/* add a line plot */
 
-	blot_figure_line(fig, BLOT_DATA_DOUBLE,
-			    LINE_COUNT, line_x, line_y,
-			    10, "line", &error);
-	FATAL_ERROR(error);
+	fig.line(line_x, line_y, 10, "line");
 
 	/* render the plots */
 
@@ -105,22 +79,16 @@ int main(void)
         | BLOT_RENDER_LEGEND_BELOW
         | BLOT_RENDER_DONT_INVERT_Y_AXIS;
 
-	blot_screen *scr = blot_figure_render(fig, flags, &error);
-	FATAL_ERROR(error);
+    Blot::Screen scr = fig.render(flags);
 
 	/* print it to screen */
 
 	gsize txt_size = 0;
-	const wchar_t *txt = blot_screen_get_text(scr, &txt_size, &error);
-	FATAL_ERROR(error);
+	const wchar_t *txt = scr.get_text(txt_size);
 
 	printf("--------------------------------------------------------------------------------\n");
 	printf("%ls", txt);
 	printf("--------------------------------------------------------------------------------\n");
-
-	blot_screen_delete(scr);
-
-	blot_figure_delete(fig);
 
 	return 0;
 }
