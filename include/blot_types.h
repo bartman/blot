@@ -48,7 +48,7 @@ typedef enum blot_data_type {
 	BLOT_DATA_Y_FLOAT               = 0x0030,
 	BLOT_DATA_Y_DOUBLE              = 0x0040,
 
-#define BLOT_DATA_(X,Y) (BLOT_DATA_X_##X  | BLOT_DATA_Y_##Y)
+#define BLOT_DATA_(X,Y) (BLOT_DATA_X_##X | BLOT_DATA_Y_##Y)
 
 	BLOT_DATA_INT16                 = BLOT_DATA_(INT16,  INT16),
 	BLOT_DATA_INT32                 = BLOT_DATA_(INT32,  INT32),
@@ -56,9 +56,10 @@ typedef enum blot_data_type {
 	BLOT_DATA_FLOAT                 = BLOT_DATA_(FLOAT,  FLOAT),
 	BLOT_DATA_DOUBLE                = BLOT_DATA_(DOUBLE, DOUBLE),
 
-	BLOT_DATA_TYPE_MAX              = 0x00FF
+	BLOT_DATA_TYPE_MAX              = (BLOT_DATA_X_MASK | BLOT_DATA_Y_MASK)
 } blot_data_type;
 DEFINE_ENUM_OPERATORS_FOR(blot_data_type)
+#define BLOT_DATA_TYPE(x,y) (blot_data_type)(((x) & BLOT_DATA_X_MASK) | ((y) & BLOT_DATA_Y_MASK))
 
 typedef guint8 blot_color;
 

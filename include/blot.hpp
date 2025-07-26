@@ -90,6 +90,24 @@ public:
 
 // ------------------------------------------------------------------------
 
+template <typename T>
+constexpr blot_data_type data_type() {
+	if constexpr (std::is_same_v<T, int16_t>)
+		return BLOT_DATA_INT16;
+	else if constexpr (std::is_same_v<T, int32_t>)
+		return BLOT_DATA_INT32;
+	else if constexpr (std::is_same_v<T, int64_t>)
+		return BLOT_DATA_INT64;
+	else if constexpr (std::is_same_v<T, float>)
+		return BLOT_DATA_FLOAT;
+	else if constexpr (std::is_same_v<T, double>)
+		return BLOT_DATA_DOUBLE;
+	else
+		BLOT_THROW(EINVAL, "unsupported type");
+}
+
+// ------------------------------------------------------------------------
+
 struct Dimensions final : public blot_dimensions {
 public:
 	explicit Dimensions() {
@@ -170,8 +188,8 @@ public:
 
 	/* add layers */
 
-	template <typename T>
-	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<T> &data_ys, blot_color data_color, const char *data_label) {
+	template <typename T, typename U>
+	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<U> &data_ys, blot_color data_color, const char *data_label) {
 		GError *error = nullptr;
 		size_t data_count = data_ys.size();
 
@@ -184,53 +202,43 @@ public:
 			ptr_xs = (const void*)data_xs.data();
 		}
 
-		blot_data_type data_type;
-		if constexpr (std::is_same_v<T, int16_t>)
-			data_type = BLOT_DATA_INT16;
-		else if constexpr (std::is_same_v<T, int32_t>)
-			data_type = BLOT_DATA_INT32;
-		else if constexpr (std::is_same_v<T, int64_t>)
-			data_type = BLOT_DATA_INT64;
-		else if constexpr (std::is_same_v<T, float>)
-			data_type = BLOT_DATA_FLOAT;
-		else if constexpr (std::is_same_v<T, double>)
-			data_type = BLOT_DATA_DOUBLE;
-		else
-			BLOT_THROW(EINVAL, "unsupported type");
+		blot_data_type x_data_type = data_type<T>();
+		blot_data_type y_data_type = data_type<U>();
+		blot_data_type data_type = BLOT_DATA_TYPE(x_data_type, y_data_type);
 
 		if (!blot_figure_plot(this, plot_type, data_type, data_count, ptr_xs, ptr_ys, data_color, data_label, &error)) {
 			throw Exception(error);
 		}
 	}
 
-	template <typename T>
-	void scatter(const std::vector<T> &data_xs, const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
+	template <typename T, typename U>
+	void scatter(const std::vector<T> &data_xs, const std::vector<U>& data_ys, blot_color data_color, const char *data_label) {
 		plot(BLOT_SCATTER, data_xs, data_ys, data_color, data_label);
 	}
 
 	template <typename T>
 	void scatter(const std::vector<T> &data_ys, blot_color data_color, const char *data_label) {
-		plot(BLOT_SCATTER, {}, data_ys, data_color, data_label);
+		plot<T,T>(BLOT_SCATTER, {}, data_ys, data_color, data_label);
 	}
 
-	template <typename T>
-	void line(const std::vector<T> &data_xs, const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
+	template <typename T, typename U>
+	void line(const std::vector<T> &data_xs, const std::vector<U>& data_ys, blot_color data_color, const char *data_label) {
 		plot(BLOT_LINE, data_xs, data_ys, data_color, data_label);
 	}
 
 	template <typename T>
 	void line(const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
-		plot(BLOT_LINE, {}, data_ys, data_color, data_label);
+		plot<T,T>(BLOT_LINE, {}, data_ys, data_color, data_label);
 	}
 
-	template <typename T>
-	void bar(const std::vector<T> &data_xs, const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
+	template <typename T, typename U>
+	void bar(const std::vector<T> &data_xs, const std::vector<U>& data_ys, blot_color data_color, const char *data_label) {
 		plot(BLOT_BAR, data_xs, data_ys, data_color, data_label);
 	}
 
 	template <typename T>
 	void bar(const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
-		plot(BLOT_BAR, {}, data_ys, data_color, data_label);
+		plot<T,T>(BLOT_BAR, {}, data_ys, data_color, data_label);
 	}
 
 	/* render */
