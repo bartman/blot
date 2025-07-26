@@ -1,6 +1,11 @@
 enable_testing()
 
 SET(TEST_EXECUTABLES
+        cpp-histogram
+        cpp-line-spin
+        cpp-simple
+        cpp-trig
+        cpp-trig-loop
         cpp-x
 )
 
