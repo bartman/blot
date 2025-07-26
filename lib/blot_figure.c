@@ -23,6 +23,18 @@ bool blot_figure_init(blot_figure *fig, GError **error)
 	return true;
 }
 
+void blot_figure_cleanup(blot_figure *fig)
+{
+	if (fig->layers) {
+		for (int li=0; li<fig->layer_count; li++) {
+			blot_layer *lay = fig->layers[li];
+			blot_layer_delete(lay);
+		}
+
+		g_free(fig->layers);
+	}
+}
+
 blot_figure * blot_figure_new(GError **error)
 {
 	blot_figure *fig;
@@ -38,14 +50,7 @@ blot_figure * blot_figure_new(GError **error)
 
 void blot_figure_delete(blot_figure *fig)
 {
-	if (fig->layers) {
-		for (int li=0; li<fig->layer_count; li++) {
-			blot_layer *lay = fig->layers[li];
-			blot_layer_delete(lay);
-		}
-
-		g_free(fig->layers);
-	}
+	blot_figure_cleanup(fig);
 	g_free(fig);
 }
 

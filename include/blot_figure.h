@@ -36,6 +36,7 @@ typedef struct blot_figure {
 
 BLOT_EXTERN bool blot_figure_init(blot_figure *fig, GError **);
 BLOT_EXTERN blot_figure * blot_figure_new(GError **);
+BLOT_EXTERN void blot_figure_cleanup(blot_figure *fig);
 BLOT_EXTERN void blot_figure_delete(blot_figure *fig);
 
 /* configure */
