@@ -90,6 +90,18 @@ public:
 
 // ------------------------------------------------------------------------
 
+struct Dimensions final : public blot_dimensions {
+public:
+	explicit Dimensions() {
+		GError *error = nullptr;
+		blot_terminal_get_size(this, &error);
+		if (error)
+			throw Exception(error);
+	}
+};
+
+// ------------------------------------------------------------------------
+
 struct Screen final {
 	blot_screen *m_screen;
 public:

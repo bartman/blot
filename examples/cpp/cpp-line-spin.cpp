@@ -2,18 +2,17 @@
 #include <math.h>
 #include <stdio.h>
 #include <locale.h>
-#include "blot.h"
+
+#include <vector>
+#include <array>
+
+#include "blot.hpp"
 
 #define DATA_X_MAX 1000
 #define DATA_Y_MAX 1000
 
 #define LINE_COUNT 4
 #define POINT_COUNT 4
-
-#define FATAL_ERROR(error) ({ \
-	if (unlikely (error)) \
-		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
-})
 
 static bool signaled = false;
 static void sighandler(int sig)
@@ -23,24 +22,22 @@ static void sighandler(int sig)
 
 int main(void)
 {
-	g_autoptr(GError) error = NULL;
-
 	setlocale(LC_CTYPE, "");
 
 	signal(SIGINT, sighandler);
 
 	/* build axis lines */
 
-	gint32 xax[DATA_X_MAX*2];
-	gint32 xay[DATA_X_MAX*2];
+    std::vector<gint32> xax(DATA_X_MAX*2);
+    std::vector<gint32> xay(DATA_X_MAX*2);
 
 	for (int ai=0; ai<(DATA_X_MAX*2); ai++) {
 		xax[ai] = ai-DATA_X_MAX;
 		xay[ai] = 0;
 	}
 
-	gint32 yax[DATA_Y_MAX*2];
-	gint32 yay[DATA_Y_MAX*2];
+    std::vector<gint32> yax(DATA_Y_MAX*2);
+    std::vector<gint32> yay(DATA_Y_MAX*2);
 
 	for (int ai=0; ai<(DATA_Y_MAX*2); ai++) {
 		yax[ai] = 0;
@@ -51,16 +48,18 @@ int main(void)
 
 	char slab[LINE_COUNT][128];
 	char llab[LINE_COUNT][128];
-	gint32 xs[LINE_COUNT][POINT_COUNT];
-	gint32 ys[LINE_COUNT][POINT_COUNT];
+    std::array<std::vector<gint32>,LINE_COUNT> xs;
+    std::array<std::vector<gint32>,LINE_COUNT> ys;
+	for (int li=0; li<LINE_COUNT; li++) {
+        xs[li].resize(POINT_COUNT);
+        ys[li].resize(POINT_COUNT);
+    }
 
 	double xb = DATA_X_MAX / 2;
 	double yb = DATA_Y_MAX / 2;
 
 	/* learn the screen */
-	blot_dimensions term = {};
-	blot_terminal_get_size(&term, &error);
-	FATAL_ERROR(error);
+    Blot::Dimensions term;
 
 	if (term.rows <= (7+LINE_COUNT))
 		g_error("screen is not tall enough");
@@ -104,32 +103,20 @@ again:
 
 	/* configure the figure */
 
-	blot_figure *fig;
+    Blot::Figure fig;
 
-	fig = blot_figure_new(&error);
-	FATAL_ERROR(error);
+	fig.set_screen_size(term.cols, term.rows-7-LINE_COUNT);
 
-	blot_figure_set_screen_size(fig, term.cols, term.rows-7-LINE_COUNT, &error);
-	FATAL_ERROR(error);
-
-	blot_figure_set_x_limits(fig, -DATA_X_MAX, DATA_X_MAX, &error);
-	FATAL_ERROR(error);
-	blot_figure_set_y_limits(fig, -DATA_Y_MAX, DATA_Y_MAX, &error);
-	FATAL_ERROR(error);
+	fig.set_x_limits(-DATA_X_MAX, DATA_X_MAX);
+	fig.set_y_limits(-DATA_Y_MAX, DATA_Y_MAX);
 
 	/* plot X-axis origin */
 
-	blot_figure_scatter(fig, BLOT_DATA_INT32,
-			    DATA_X_MAX*2, xax, xay,
-			    8, NULL, &error);
-	FATAL_ERROR(error);
+	fig.scatter(xax, xay, 8, NULL);
 
 	/* plot Y-axis origin */
 
-	blot_figure_scatter(fig, BLOT_DATA_INT32,
-			    DATA_Y_MAX*2, yax, yay,
-			    8, NULL, &error);
-	FATAL_ERROR(error);
+	fig.scatter(yax, yay, 8, NULL);
 
 	/* add a line plot */
 
@@ -137,17 +124,11 @@ again:
 
 		/* plot as line */
 
-		blot_figure_line(fig, BLOT_DATA_INT32,
-				    POINT_COUNT, xs[li], ys[li],
-				    1+li, llab[li], &error);
-		FATAL_ERROR(error);
+		fig.line(xs[li], ys[li], 1+li, llab[li]);
 
 		/* plot as scatter */
 
-		blot_figure_scatter(fig, BLOT_DATA_INT32,
-				    POINT_COUNT, xs[li], ys[li],
-				    9+li, slab[li], &error);
-		FATAL_ERROR(error);
+		fig.scatter(xs[li], ys[li], 9+li, slab[li]);
 
 	}
 
@@ -160,22 +141,16 @@ again:
         | BLOT_RENDER_NO_X_AXIS
         | BLOT_RENDER_NO_Y_AXIS;
 
-	blot_screen *scr = blot_figure_render(fig, flags, &error);
-	FATAL_ERROR(error);
+    Blot::Screen scr = fig.render(flags);
 
 	/* print it to screen */
 
 	gsize txt_size = 0;
-	const wchar_t *txt = blot_screen_get_text(scr, &txt_size, &error);
-	FATAL_ERROR(error);
+	const wchar_t *txt = scr.get_text(txt_size);
 
 	double t_render = blot_double_time();
 
 	printf("%ls", txt);
-
-	blot_screen_delete(scr);
-
-	blot_figure_delete(fig);
 
 	double t_end = blot_double_time();
 
@@ -193,6 +168,8 @@ again:
 
 	if (!signaled)
 		goto again;
+
+    puts("\nDONE");
 
 	return 0;
 }
