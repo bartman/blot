@@ -69,7 +69,7 @@ public:
 	throw Exception(error); \
 })
 #else
-#define __BLOT_THROW(code,format,args...) \
+#define BLOT_THROW(code,format,args...) \
 	throw Exception(g_error_new(G_UNIX_ERROR, code, "%s:%u:%s: " format, \
 			     basename(__FILE__), __LINE__, __func__, ##args))
 #endif
