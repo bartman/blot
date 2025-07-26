@@ -15,7 +15,7 @@ Licensed under LGPL v2.1, or any later version.
 
 ## Noteworthy features
 
-  * plots to the console as text (by calling `printf()`)
+  * plots to the console as text (by calling `puts()`)
   * very very fast (compared to python alternatives)
   * very very memory usage friendly
   * can plot multiple datasets on one canvas
@@ -23,6 +23,7 @@ Licensed under LGPL v2.1, or any later version.
   * supports braille plotting (like [plotille](https://github.com/tammoippen/plotille))
   * 256 colour support
   * data arrays can be provided in various types (`int16`, `int32`, `int64`, `double`, or `float`)
+  * there is a C++ wrapper, for convenience
 
 ## Prerequisites
 
@@ -50,13 +51,13 @@ You can build debug (with `ASAN`) using
 `blot` is being used in other projects as a library, but it comes with some
 examples.
 
-Generated from [test-simple.c](examples/c/c-simple.c)
+Generated from [simple.c](examples/c/c-simple.c) (see also [simple.cpp](examples/cpp/cpp-simple.cpp) for C++ wrapper usage)
 
     ./build/examples/c/c-simple
 
 ![simple example](images/simple.png)
 
-Generated from [test-trig.c](examples/c/c-trig.c)
+Generated from [trig.c](examples/c/c-trig.c) (see also [trig.cpp](examples/cpp/cpp-trig.cpp) for C++ wrapper usage)
 
     ./build/examples/c/c-trig
 
@@ -64,7 +65,7 @@ Generated from [test-trig.c](examples/c/c-trig.c)
 
 ## Missing features
 
-  * different plotting modes like bar and histograms (currently only plots line/scatter)
+  * different plotting modes like histograms (currently only plots line/scatter/bar)
   * improve axis line and numbering (currently not very accurate)
   * add axis labels and minor ticks (configurable)
   * draw origin lines and minor tick lines (configurable)
