@@ -1,7 +1,9 @@
+/* vim: set noet sw=8 ts=8 tw=120: */
 #include <glib.h>
 #include <stdio.h>
 #include <locale.h>
-#include "blot.h"
+
+#include "blot.hpp"
 
 #define DATA_COUNT 10000
 
@@ -26,58 +28,44 @@ int main(void)
 
 	/* build a dummy dataset */
 
-	static gint64 data[DATA_COUNT];
+	std::vector<gint64> data;
+	data.resize(DATA_COUNT);
 
 	for (int i=0; i<DATA_COUNT; i++) {
 		data[i] = i;
 	}
 
-	static gint32 line_x[LINE_COUNT] = { 0, DATA_Y_MAX };
-	static gint32 line_y[LINE_COUNT] = { DATA_X_MAX, 0 };
+	std::vector<gint32> line_x = { 0, DATA_Y_MAX };
+	std::vector<gint32>  line_y = { DATA_X_MAX, 0 };
 
 	/* configure the figure */
 
-	blot_figure *fig;
-
-	fig = blot_figure_new(&error);
-	FATAL_ERROR(error);
+	Blot::Figure fig;
 
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_DATA_INT64,
-			    DATA_COUNT, NULL, data,
-			    9, "scatter", &error);
-	FATAL_ERROR(error);
+	fig.scatter(data, 9, "scatter");
 
 	/* add a line plot */
 
-	blot_figure_line(fig, BLOT_DATA_INT32,
-			    LINE_COUNT, line_x, line_y,
-			    10, "line", &error);
-	FATAL_ERROR(error);
+	fig.line(line_x, line_y, 10, "line");
 
 	/* render the plots */
 
 	blot_render_flags flags
-        = BLOT_RENDER_BRAILLE
-        | BLOT_RENDER_LEGEND_BELOW
-        | BLOT_RENDER_NO_X_AXIS
-        | BLOT_RENDER_NO_Y_AXIS;
+		= BLOT_RENDER_BRAILLE
+		| BLOT_RENDER_LEGEND_BELOW
+		| BLOT_RENDER_NO_X_AXIS
+		| BLOT_RENDER_NO_Y_AXIS;
 
-	blot_screen *scr = blot_figure_render(fig, flags, &error);
-	FATAL_ERROR(error);
+	Blot::Screen scr = fig.render(flags);
 
 	/* print it to screen */
 
 	gsize txt_size = 0;
-	const wchar_t *txt = blot_screen_get_text(scr, &txt_size, &error);
-	FATAL_ERROR(error);
+	const wchar_t *txt = scr.get_text(txt_size);
 
 	printf("%ls", txt);
-
-	blot_screen_delete(scr);
-
-	blot_figure_delete(fig);
 
 	return 0;
 }

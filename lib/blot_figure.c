@@ -380,6 +380,7 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 					dim.cols - mrg.left - mrg.right,
 					lim.x_min, lim.x_max,
 					&fig->xlabels, error);
+	if (*error) __free_canvases_array(cans, fig->layer_count);
 	RETURN_IF(*error, NULL);
 
 	bool y_axs_visible = !(flags & BLOT_RENDER_NO_Y_AXIS);
@@ -388,6 +389,7 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 					dim.rows - mrg.top - mrg.bottom,
 					lim.y_min, lim.y_max,
 					NULL, error);
+	if (*error) __free_canvases_array(cans, fig->layer_count);
 	RETURN_IF(*error, NULL);
 
 	/* merge canvases to screen */
