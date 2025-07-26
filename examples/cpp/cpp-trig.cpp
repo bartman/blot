@@ -1,14 +1,19 @@
+/* vim: set noet sw=8 ts=8 tw=120: */
 #include <glib.h>
 #include <stdio.h>
 #include <locale.h>
 #include <math.h>
-#include "blot.h"
+
+#include <vector>
+#include <array>
+
+#include "blot.hpp"
 
 #define DATA_COUNT 1000
-static double data_xs[DATA_COUNT];
-static double sin_ys[DATA_COUNT];
-static double cos_ys[DATA_COUNT];
-static double tan_ys[DATA_COUNT];
+static std::vector<double> data_xs(DATA_COUNT);
+static std::vector<double> sin_ys(DATA_COUNT);
+static std::vector<double> cos_ys(DATA_COUNT);
+static std::vector<double> tan_ys(DATA_COUNT);
 
 #define X_MIN -7
 #define X_MAX 7
@@ -17,15 +22,8 @@ static double tan_ys[DATA_COUNT];
 
 blot_color data_color = 9;
 
-#define FATAL_ERROR(error) ({ \
-	if (unlikely (error)) \
-		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
-})
-
 int main(void)
 {
-	g_autoptr(GError) error = NULL;
-
 	setlocale(LC_CTYPE, "");
 
 	/* build a dummy dataset */
@@ -53,145 +51,84 @@ int main(void)
 
 	/* configure the figure */
 
-	blot_figure *fig;
+	Blot::Figure fig;
 
-	fig = blot_figure_new(&error);
-	FATAL_ERROR(error);
+	fig.set_axis_color(8);
 
-	blot_figure_set_axis_color(fig, 8, &error);
-	FATAL_ERROR(error);
+	fig.set_screen_size(80, 40);
 
-	blot_figure_set_screen_size(fig, 80, 40, &error);
-	FATAL_ERROR(error);
-
-	blot_figure_set_x_limits(fig, X_MIN, X_MAX, &error);
-	FATAL_ERROR(error);
-	blot_figure_set_y_limits(fig, Y_MIN, Y_MAX, &error);
-	FATAL_ERROR(error);
-
-#if 0
-	/* hack for now to add origin lines */
-
-	/* plot X-axis origin */
-
-	gint32 xax[2] = { X_MIN, X_MAX };
-	gint32 xay[2] = { 0, 0 };
-
-	blot_figure_line(fig, BLOT_DATA_INT32,
-			 2, xax, xay,
-			 8, NULL, &error);
-	FATAL_ERROR(error);
-
-	/* plot Y-axis origin */
-
-	gint32 yax[2] = { 0, 0 };
-	gint32 yay[2] = { Y_MIN, Y_MAX };
-
-	blot_figure_line(fig, BLOT_DATA_INT32,
-			 2, yax, yay,
-			 8, NULL, &error);
-	FATAL_ERROR(error);
-#endif
+	fig.set_x_limits(X_MIN, X_MAX);
+	fig.set_y_limits(Y_MIN, Y_MAX);
 
 #if 1
 	/* hack for now to add origin lines */
 
 	/* plot X-axis origin */
 
-	gint32 xax[5][2];
-	gint32 xay[5][2];
+	std::array<std::vector<gint32>,5> xax;
+	std::array<std::vector<gint32>,5> xay;
 
 	for (int i=Y_MIN; i<=Y_MAX; i++) {
-		xax[Y_MAX+i][0] = X_MIN;
-		xax[Y_MAX+i][1] = X_MAX;
-		xay[Y_MAX+i][0] = i;
-		xay[Y_MAX+i][1] = i;
+		xax[Y_MAX+i] = { X_MIN, X_MAX };
+		xay[Y_MAX+i] = { i, i };
 
-		blot_figure_line(fig, BLOT_DATA_INT32,
-				 2, xax[Y_MAX+i], xay[Y_MAX+i],
-				 i==0 ? 15 : 8, NULL, &error);
-		FATAL_ERROR(error);
+		fig.line(xax[Y_MAX+i], xay[Y_MAX+i], i==0 ? 15 : 8, NULL);
 	}
 
 	/* plot Y-axis origin */
 
-	gint32 yax[15][2];
-	gint32 yay[15][2];
+	std::array<std::vector<gint32>,15> yax;
+	std::array<std::vector<gint32>,15> yay;
 
 	for (int i=X_MIN; i<=X_MAX; i++) {
-		yax[X_MAX+i][0] = i;
-		yax[X_MAX+i][1] = i;
-		yay[X_MAX+i][0] = Y_MIN;
-		yay[X_MAX+i][1] = Y_MAX;
+		yax[X_MAX+i] = { i, i };
+		yay[X_MAX+i] = { Y_MIN, Y_MAX };
 
-		blot_figure_line(fig, BLOT_DATA_INT32,
-				 2, yax[X_MAX+i], yay[X_MAX+i],
-				 i==0 ? 15 : 8, NULL, &error);
-		FATAL_ERROR(error);
+		fig.line(yax[X_MAX+i], yay[X_MAX+i], i==0 ? 15 : 8, NULL);
 	}
 	/* plot Y-axis origin */
 
-	double ypx[15][2];
-	gint32 ypy[15][2];
+	std::array<std::vector<double>,15> ypx;
+	std::array<std::vector<gint32>,15> ypy;
 
 	for (int i=Y_MIN; i<=Y_MAX; i++) {
-		ypx[Y_MAX+i][0] = i * M_PI;
-		ypx[Y_MAX+i][1] = i * M_PI;
-		ypy[Y_MAX+i][0] = Y_MIN;
-		ypy[Y_MAX+i][1] = Y_MAX;
+		ypx[Y_MAX+i] = { i * M_PI, i * M_PI };
+		ypy[Y_MAX+i] = { Y_MIN, Y_MAX };
 
-		blot_figure_line(fig, BLOT_DATA_(DOUBLE,INT32),
-				 2, ypx[Y_MAX+i], ypy[Y_MAX+i],
-				 15, NULL, &error);
-		FATAL_ERROR(error);
+		fig.line(ypx[Y_MAX+i], ypy[Y_MAX+i], 15, NULL);
 	}
 #endif
 
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_DATA_DOUBLE,
-			    DATA_COUNT, data_xs, sin_ys,
-			    data_color, "sin", &error);
-	FATAL_ERROR(error);
+	fig.scatter(data_xs, sin_ys, data_color, "sin");
 
 	/* add a scatter plot */
 
 #if 1
-	blot_figure_scatter(fig, BLOT_DATA_DOUBLE,
-			    DATA_COUNT, data_xs, cos_ys,
-			    data_color+1, "cos", &error);
-	FATAL_ERROR(error);
+	fig.scatter(data_xs, cos_ys, data_color+1, "cos");
 #endif
 
 	/* add a scatter plot */
 
 #if 1
-	blot_figure_scatter(fig, BLOT_DATA_DOUBLE,
-			    DATA_COUNT, data_xs, tan_ys,
-			    data_color+2, "tan", &error);
-	FATAL_ERROR(error);
+	fig.scatter(data_xs, tan_ys, data_color+2, "tan");
 #endif
 
 	/* render the plots */
 
 	blot_render_flags flags
-        = BLOT_RENDER_BRAILLE
-        | BLOT_RENDER_LEGEND_ABOVE;
+		= BLOT_RENDER_BRAILLE
+		| BLOT_RENDER_LEGEND_ABOVE;
 
-	blot_screen *scr = blot_figure_render(fig, flags, &error);
-	FATAL_ERROR(error);
+	Blot::Screen scr = fig.render(flags);
 
 	/* print it to screen */
 
 	gsize txt_size = 0;
-	const wchar_t *txt = blot_screen_get_text(scr, &txt_size, &error);
-	FATAL_ERROR(error);
+	const wchar_t *txt = scr.get_text(txt_size);
 
 	printf("%ls\n", txt);
-
-	blot_screen_delete(scr);
-
-	blot_figure_delete(fig);
 
 	return 0;
 }

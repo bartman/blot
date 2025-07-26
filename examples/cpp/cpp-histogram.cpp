@@ -1,3 +1,4 @@
+/* vim: set noet sw=8 ts=8 tw=120: */
 #include <glib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -14,21 +15,21 @@ int main(void)
 
 	/* build a dummy dataset */
 
-    std::vector<int32_t> data(DATA_COUNT);
-    std::vector<std::string> xlabelstrs(DATA_COUNT);
-    std::vector<const char *> xlabelptrs(DATA_COUNT);
+	std::vector<int32_t> data(DATA_COUNT);
+	std::vector<std::string> xlabelstrs(DATA_COUNT);
+	std::vector<const char *> xlabelptrs(DATA_COUNT);
 
 	for (int i=0; i<DATA_COUNT; i++) {
 		data[i] = rand() % DATA_MAX;
 
 		/* let's make up some years */
-        xlabelstrs[i] = std::to_string(2000-DATA_COUNT+i);
-        xlabelptrs[i] = xlabelstrs[i].c_str();
+		xlabelstrs[i] = std::to_string(2000-DATA_COUNT+i);
+		xlabelptrs[i] = xlabelstrs[i].c_str();
 	}
 
 	/* configure the figure */
 
-    Blot::Figure fig;
+	Blot::Figure fig;
 	fig.set_axis_color(8);
 	fig.set_screen_size(80, 40);
 
@@ -41,10 +42,10 @@ int main(void)
 	/* render the plots */
 
 	blot_render_flags flags
-        = BLOT_RENDER_BRAILLE
-        | BLOT_RENDER_LEGEND_BELOW;
+		= BLOT_RENDER_BRAILLE
+		| BLOT_RENDER_LEGEND_BELOW;
 
-    Blot::Screen scr = fig.render(flags);
+	Blot::Screen scr = fig.render(flags);
 
 	/* print it to screen */
 

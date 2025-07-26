@@ -1,3 +1,4 @@
+/* vim: set noet sw=8 ts=8 tw=120: */
 #include <glib.h>
 #include <math.h>
 #include <stdio.h>
@@ -28,16 +29,16 @@ int main(void)
 
 	/* build axis lines */
 
-    std::vector<gint32> xax(DATA_X_MAX*2);
-    std::vector<gint32> xay(DATA_X_MAX*2);
+	std::vector<gint32> xax(DATA_X_MAX*2);
+	std::vector<gint32> xay(DATA_X_MAX*2);
 
 	for (int ai=0; ai<(DATA_X_MAX*2); ai++) {
 		xax[ai] = ai-DATA_X_MAX;
 		xay[ai] = 0;
 	}
 
-    std::vector<gint32> yax(DATA_Y_MAX*2);
-    std::vector<gint32> yay(DATA_Y_MAX*2);
+	std::vector<gint32> yax(DATA_Y_MAX*2);
+	std::vector<gint32> yay(DATA_Y_MAX*2);
 
 	for (int ai=0; ai<(DATA_Y_MAX*2); ai++) {
 		yax[ai] = 0;
@@ -48,18 +49,18 @@ int main(void)
 
 	char slab[LINE_COUNT][128];
 	char llab[LINE_COUNT][128];
-    std::array<std::vector<gint32>,LINE_COUNT> xs;
-    std::array<std::vector<gint32>,LINE_COUNT> ys;
+	std::array<std::vector<gint32>,LINE_COUNT> xs;
+	std::array<std::vector<gint32>,LINE_COUNT> ys;
 	for (int li=0; li<LINE_COUNT; li++) {
-        xs[li].resize(POINT_COUNT);
-        ys[li].resize(POINT_COUNT);
-    }
+		xs[li].resize(POINT_COUNT);
+		ys[li].resize(POINT_COUNT);
+	}
 
 	double xb = DATA_X_MAX / 2;
 	double yb = DATA_Y_MAX / 2;
 
 	/* learn the screen */
-    Blot::Dimensions term;
+	Blot::Dimensions term;
 
 	if (term.rows <= (7+LINE_COUNT))
 		g_error("screen is not tall enough");
@@ -103,7 +104,7 @@ again:
 
 	/* configure the figure */
 
-    Blot::Figure fig;
+	Blot::Figure fig;
 
 	fig.set_screen_size(term.cols, term.rows-7-LINE_COUNT);
 
@@ -135,13 +136,13 @@ again:
 	/* render the plots */
 
 	blot_render_flags flags
-        = BLOT_RENDER_BRAILLE
-        | BLOT_RENDER_LEGEND_BELOW
-        | BLOT_RENDER_CLEAR
-        | BLOT_RENDER_NO_X_AXIS
-        | BLOT_RENDER_NO_Y_AXIS;
+		= BLOT_RENDER_BRAILLE
+		| BLOT_RENDER_LEGEND_BELOW
+		| BLOT_RENDER_CLEAR
+		| BLOT_RENDER_NO_X_AXIS
+		| BLOT_RENDER_NO_Y_AXIS;
 
-    Blot::Screen scr = fig.render(flags);
+	Blot::Screen scr = fig.render(flags);
 
 	/* print it to screen */
 
@@ -159,9 +160,9 @@ again:
 	iterations ++;
 
 	printf("last: render=%.6f show=%.6f\n"
-		"mean: render=%.6f show=%.6f\n",
-		t_render-t_start, t_end-t_render,
-		t_render_total / iterations, t_display_total / iterations);
+	"mean: render=%.6f show=%.6f\n",
+	t_render-t_start, t_end-t_render,
+	t_render_total / iterations, t_display_total / iterations);
 	usleep(50000);
 
 	offset += M_PI/18;
@@ -169,7 +170,7 @@ again:
 	if (!signaled)
 		goto again;
 
-    puts("\nDONE");
+	puts("\nDONE");
 
 	return 0;
 }
