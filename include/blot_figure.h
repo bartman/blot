@@ -4,6 +4,8 @@
 
 #include <glib.h>
 #include <stdbool.h>
+
+#include "blot_compiler.h"
 #include "blot_types.h"
 
 #define BLOT_MIN_COLS 10
@@ -32,28 +34,28 @@ typedef struct blot_figure {
 
 /* create/delete */
 
-extern bool blot_figure_init(blot_figure *fig, GError **);
-extern blot_figure * blot_figure_new(GError **);
-extern void blot_figure_delete(blot_figure *fig);
+BLOT_EXTERN bool blot_figure_init(blot_figure *fig, GError **);
+BLOT_EXTERN blot_figure * blot_figure_new(GError **);
+BLOT_EXTERN void blot_figure_delete(blot_figure *fig);
 
 /* configure */
 
-extern bool blot_figure_set_axis_color(blot_figure *fig, blot_color, GError **);
+BLOT_EXTERN bool blot_figure_set_axis_color(blot_figure *fig, blot_color, GError **);
 
-extern bool blot_figure_set_screen_size(blot_figure *fig,
+BLOT_EXTERN bool blot_figure_set_screen_size(blot_figure *fig,
 					unsigned cols, unsigned rows, GError **);
 
-extern bool blot_figure_set_x_limits(blot_figure *fig,
+BLOT_EXTERN bool blot_figure_set_x_limits(blot_figure *fig,
 				     double x_min, double x_max, GError **);
-extern bool blot_figure_set_y_limits(blot_figure *fig,
+BLOT_EXTERN bool blot_figure_set_y_limits(blot_figure *fig,
 				     double y_min, double y_max, GError **);
 
-extern bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
+BLOT_EXTERN bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 					  char **x_labels, GError **);
 
 /* add layers */
 
-extern bool blot_figure_plot(blot_figure *fig,
+BLOT_EXTERN bool blot_figure_plot(blot_figure *fig,
 		      blot_plot_type plot_type, blot_data_type data_type,
 		      size_t data_count, const void *data_xs, const void *data_ys,
 		      blot_color data_color, const char *data_label,
@@ -91,7 +93,7 @@ static inline bool blot_figure_bar(blot_figure *fig, blot_data_type data_type,
 
 /* render */
 
-extern struct blot_screen * blot_figure_render(blot_figure *fig,
+BLOT_EXTERN struct blot_screen * blot_figure_render(blot_figure *fig,
 					       blot_render_flags flags,
 					       GError **);
 

@@ -5,6 +5,8 @@
 #define _GNU_SOURCE 1
 #include <time.h>
 
+#include "blot_compiler.h"
+
 #define BLOT_MSEC_PER_SEC 1000ull
 #define BLOT_USEC_PER_SEC 1000000ull
 #define BLOT_NSEC_PER_SEC 1000000000ull

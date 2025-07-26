@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
 
-extern "C" {
 #include "blot_time.h"
-};
 
 TEST(BaseTest, AssertionTrue)
 {

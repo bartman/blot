@@ -4,6 +4,8 @@
 
 #include <glib.h>
 
+#include "blot_compiler.h"
+
 /*
  * http://www.alanwood.net/unicode/braille_patterns.html
  *
@@ -30,8 +32,8 @@
 
 #define BRAILLE_GLYPH_MAP_INDEX(x,y) ( ( (y) * BRAILLE_GLYPH_COLS) + (x) )
 
-extern guint8 braille_order_map[BRAILLE_GLYPH_SIZE];
-extern guint8 braille_upsidedown_order_map[BRAILLE_GLYPH_SIZE];
+BLOT_EXTERN guint8 braille_order_map[BRAILLE_GLYPH_SIZE];
+BLOT_EXTERN guint8 braille_upsidedown_order_map[BRAILLE_GLYPH_SIZE];
 
-extern guint8 braille_masks[BRAILLE_GLYPH_SIZE];
-extern guint8 braille_upsidedown_masks[BRAILLE_GLYPH_SIZE];
+BLOT_EXTERN guint8 braille_masks[BRAILLE_GLYPH_SIZE];
+BLOT_EXTERN guint8 braille_upsidedown_masks[BRAILLE_GLYPH_SIZE];

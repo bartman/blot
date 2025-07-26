@@ -4,6 +4,8 @@
 
 #include <glib.h>
 #include <stdbool.h>
+
+#include "blot_compiler.h"
 #include "blot_types.h"
 #include "blot_utils.h"
 
@@ -18,14 +20,14 @@ typedef struct blot_screen {
 
 /* create/delete */
 
-extern blot_screen * blot_screen_new(const blot_dimensions *dim,
+BLOT_EXTERN blot_screen * blot_screen_new(const blot_dimensions *dim,
 				     const blot_margins *mrg,
 				     blot_render_flags flags, GError **);
-extern void blot_screen_delete(blot_screen *scr);
+BLOT_EXTERN void blot_screen_delete(blot_screen *scr);
 
 /* render */
 
-extern bool blot_screen_render(blot_screen *scr,
+BLOT_EXTERN bool blot_screen_render(blot_screen *scr,
 			       const blot_xy_limits *lim,
 			       const struct blot_axis * x_axs,
 			       const struct blot_axis * y_axs,
@@ -34,5 +36,5 @@ extern bool blot_screen_render(blot_screen *scr,
 			       struct blot_canvas *const*cans,
 			       GError **);
 
-extern const wchar_t * blot_screen_get_text(const blot_screen *scr,
+BLOT_EXTERN const wchar_t * blot_screen_get_text(const blot_screen *scr,
 					     gsize *txt_size, GError**);

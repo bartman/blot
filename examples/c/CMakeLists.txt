@@ -1,12 +1,12 @@
 enable_testing()
 
 SET(TEST_EXECUTABLES
-        test-histogram
-        test-line-spin
-        test-simple
-        test-trig
-        test-trig-loop
-        test-x
+        c-histogram
+        c-line-spin
+        c-simple
+        c-trig
+        c-trig-loop
+        c-x
 )
 
 foreach(test ${TEST_EXECUTABLES})

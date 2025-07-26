@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <errno.h>
 
+#include "blot_compiler.h"
 #include "blot_utils.h"
 
 static inline void blot_set_error_valist(GError **error,

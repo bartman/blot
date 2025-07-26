@@ -1,9 +1,7 @@
 #include <gtest/gtest.h>
 
-extern "C" {
 #include "blot_axis.h"
 #include "blot_error.h"
-};
 
 TEST(Axis, alloc_new_delete)
 {

@@ -54,7 +54,8 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
 
 add_subdirectory(lib)
 #add_subdirectory(cli)
-add_subdirectory(examples)
+add_subdirectory(examples/c)
+add_subdirectory(examples/cpp)
 
 enable_testing()
 include(CTest)
