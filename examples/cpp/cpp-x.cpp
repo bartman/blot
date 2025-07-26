@@ -15,15 +15,8 @@
 #define SCREEN_WIDTH  80
 #define SCREEN_HEIGHT 25
 
-#define FATAL_ERROR(error) ({ \
-	if (unlikely (error)) \
-		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
-})
-
 int main(void)
 {
-	g_autoptr(GError) error = NULL;
-
 	setlocale(LC_CTYPE, "");
 
 	/* build a dummy dataset */

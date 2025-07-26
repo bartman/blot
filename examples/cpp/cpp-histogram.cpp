@@ -7,9 +7,6 @@
 #define DATA_COUNT 10
 #define DATA_MAX   100
 
-#define SCREEN_WIDTH  80
-#define SCREEN_HEIGHT 25
-
 int main(void)
 {
 	setlocale(LC_CTYPE, "");

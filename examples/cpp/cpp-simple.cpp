@@ -12,10 +12,6 @@
 #define DATA_Y_RANGE (DATA_Y_MAX - DATA_Y_MIN)
 
 #define SCAT_COUNT 9
-#define LINE_COUNT 2
-
-#define SCREEN_WIDTH  80
-#define SCREEN_HEIGHT 25
 
 int main(void)
 {
