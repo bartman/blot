@@ -50,15 +50,15 @@ You can build debug (with `ASAN`) using
 `blot` is being used in other projects as a library, but it comes with some
 examples.
 
-Generated from [test-simple.c](examples/test-simple.c)
+Generated from [test-simple.c](examples/c/c-simple.c)
 
-    ./build/examples/test-simple
+    ./build/examples/c/c-simple
 
 ![simple example](images/simple.png)
 
-Generated from [test-trig.c](examples/test-trig.c)
+Generated from [test-trig.c](examples/c/c-trig.c)
 
-    ./build/examples/test-trig
+    ./build/examples/c/c-trig
 
 ![trig example](images/trig.png)
 
