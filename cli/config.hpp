@@ -67,11 +67,21 @@ struct Input final {
 
 struct Config {
 	const char *m_self{};
-	std::vector<Input> m_inputs;
 	enum output_type { ASCII, UNICODE, BRAILLE } m_output_type;
+	std::vector<Input> m_inputs;
+	double m_interval{0};
 
 	Config(int argc, char *argv[]);
 	~Config() {}
+
+	std::string output_type_name() const {
+		switch (m_output_type) {
+			case ASCII:   return "ASCII";
+			case UNICODE: return "Unicode";
+			case BRAILLE: return "Braille";
+			default: return {};
+		}
+	}
 };
 
 

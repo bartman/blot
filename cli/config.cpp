@@ -2,6 +2,8 @@
 
 #include <format>
 #include <iostream>
+#include <charconv>
+#include <system_error>
 
 #include "blot.hpp"
 #include "spdlog/spdlog.h"
@@ -15,30 +17,41 @@
 Config::Config(int argc, char *argv[])
 : m_self(basename(argv[0]))
 {
-
-	bool show_help{}, be_verbose{}, show_version{};
-	auto head_cli = (
+	bool show_help{}, show_version{};
+	auto cli_head = (
 		clipp::option("-h", "--help").set(show_help).doc("This help"),
-		clipp::option("-v", "--verbose").set(be_verbose).doc("Enable debug"),
-		clipp::option("-V", "--version").set(show_version).doc("Version")
+		clipp::option("-V", "--version").set(show_version).doc("Version"),
+		clipp::option("-v", "--verbose").call([]{
+			spdlog::set_level(spdlog::level::debug);
+		}).doc("Enable debug"),
+		clipp::option("-i", "--interval").doc("Interval in seconds")
+		& clipp::value("seconds").call([&](const char *txt){
+			auto len = strlen(txt);
+			auto [_,ec] = std::from_chars(txt, txt+len, m_interval);
+			if (ec != std::errc{}) {
+				spdlog::error("failed to parse '{}': {}",
+					txt, std::make_error_code(ec).message());
+				std::exit(1);
+			}
+		})
 	);
 
-
-	auto output_cli = (
+	auto cli_output = (
 		clipp::option("-A", "--ascii").set(m_output_type,ASCII).doc("ASCII output") |
 		clipp::option("-U", "--unicode").set(m_output_type,UNICODE).doc("Unicode output") |
 		clipp::option("-B", "--braille").set(m_output_type,BRAILLE).doc("Braille output")
 	);
 
 	std::vector<std::string> wrong;
-	auto wrong_cli = clipp::any_other(wrong);
+	auto cli_wrong = clipp::any_other(wrong);
 
 	auto start_input = [&](blot_plot_type plot_type) {
 		m_inputs.push_back(Input{plot_type});
 	};
 
 	auto cli = (
-		head_cli |
+		cli_head |
+		cli_output,
 		clipp::repeatable(
 			/* select a plot type */
 
@@ -77,7 +90,7 @@ Config::Config(int argc, char *argv[])
 				.call([&](const char *x) { m_inputs.back().set_source(Input::EXEC, x); })
 
 		),
-		wrong_cli
+		cli_wrong
 	);
 
 	if(!parse(argc, argv, cli) || wrong.size()) {
