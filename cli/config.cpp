@@ -90,7 +90,7 @@ Config::Config(int argc, char *argv[])
 			|
 			clipp::option("-w", "--watch").doc("Run command, one value per call")
 			& clipp::value("command")
-				.call([&](const char *x) { m_inputs.back().set_source(Input::EXEC, x); })
+				.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); })
 
 		),
 		cli_wrong
