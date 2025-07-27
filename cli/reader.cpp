@@ -4,6 +4,12 @@
 #include <fstream>
 #include <filesystem>
 
+#include <cstdio>    // for popen, pclose
+#include <unistd.h>  // for read, fileno
+#include <fcntl.h>   // for fcntl, O_NONBLOCK
+#include <cerrno>    // for errno
+#include <cstring>   // for strerror
+
 #include "spdlog/spdlog.h"
 
 namespace fs = std::filesystem;
@@ -84,6 +90,95 @@ struct FileReader : public Reader {
 	}
 };
 
+struct ExecStreamReader : public Reader {
+	std::string m_command;
+	FILE* m_pipe = nullptr;
+	int m_fd = -1;
+	std::string m_buffer;
+	bool m_eof = false;
+	bool m_fail = false;
+
+	ExecStreamReader(const std::string& command) : m_command(command) {
+		m_pipe = popen(m_command.c_str(), "r");
+		if (!m_pipe) {
+			spdlog::error("failed to execute command '{}': {}", m_command, std::strerror(errno));
+			std::exit(1);
+		}
+
+		m_fd = fileno(m_pipe);
+		int flags = fcntl(m_fd, F_GETFL, 0);
+		if (flags == -1 || fcntl(m_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+			spdlog::error("failed to set non-blocking mode for command '{}': {}", m_command, std::strerror(errno));
+			std::exit(1);
+		}
+	}
+
+	~ExecStreamReader() override {
+		if (m_pipe) {
+			pclose(m_pipe);
+		}
+	}
+
+	bool fail() const override {
+		return m_fail;
+	}
+
+	bool eof() const override {
+		return m_eof;
+	}
+
+	operator bool() const override {
+		return !m_fail && !m_eof;
+	}
+
+	std::optional<std::string> line() override {
+		if (m_fail || m_eof) {
+			return {};
+		}
+
+		// Extract a complete line from the buffer if available
+		while (true) {
+			size_t pos = m_buffer.find('\n');
+			if (pos != std::string::npos) {
+				std::string l = m_buffer.substr(0, pos);
+				m_buffer.erase(0, pos + 1);
+				spdlog::debug("{}: {}", m_command, l);
+				return l;
+			}
+
+			// Read more data non-blockingly
+			char buf[4096];
+			ssize_t bytes_read = read(m_fd, buf, sizeof(buf));
+			if (bytes_read > 0) {
+				m_buffer.append(buf, bytes_read);
+				continue;  // Check for a line again
+			} else if (bytes_read == 0) {
+				// EOF: subprocess exited
+				m_eof = true;
+				spdlog::trace("command '{}' reached EOF", m_command);
+				if (!m_buffer.empty()) {
+					// Return any remaining data as the last (unterminated) line
+					std::string l = std::move(m_buffer);
+					m_buffer.clear();
+					spdlog::debug("{}: {}", m_command, l);
+					return l;
+				}
+				return {};
+			} else {
+				// Read error
+				if (errno == EAGAIN || errno == EWOULDBLOCK) {
+					// No data available yet (async/non-blocking behavior)
+					return {};
+				} else {
+					spdlog::warn("read error for command '{}': {}", m_command, std::strerror(errno));
+					m_fail = true;
+					return {};
+				}
+			}
+		}
+	}
+};
+
 std::unique_ptr<Reader> Reader::from(const Input &input)
 {
 	switch (input.m_source) {
@@ -92,6 +187,7 @@ std::unique_ptr<Reader> Reader::from(const Input &input)
 		case Input::FOLLOW:
 			return std::make_unique<FileReader>(input.m_details, true);
 		case Input::EXEC:
+			return std::make_unique<ExecStreamReader>(input.m_details);
 		case Input::WATCH:
 			spdlog::error("input source value {} not yet supported",
 					(int)input.m_source);
