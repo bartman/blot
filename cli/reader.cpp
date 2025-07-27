@@ -22,8 +22,13 @@ struct FileReader : public Reader {
 			spdlog::error("{}: does not exist", m_path.string());
 			std::exit(1);
 		}
-		if (!fs::is_regular_file(m_path)) {
-			spdlog::error("{}: is not a file", m_path.string());
+		if (fs::is_character_file(m_path) || fs::is_fifo(m_path)) {
+			if (follow) {
+				spdlog::error("{}: fifo/chardev cannot be used with follow", m_path.string());
+				std::exit(1);
+			}
+		} else if (!fs::is_regular_file(m_path)) {
+			spdlog::error("{}: is not a file/fifo/chardev", m_path.string());
 			std::exit(1);
 		}
 		m_stream = std::ifstream(m_path);
