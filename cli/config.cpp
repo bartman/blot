@@ -23,7 +23,10 @@ Config::Config(int argc, char *argv[])
 		clipp::option("-V", "--version").set(show_version).doc("Version"),
 		clipp::option("-v", "--verbose").call([]{
 			spdlog::set_level(spdlog::level::debug);
-		}).doc("Enable debug"),
+		}).doc("Enable verbose output"),
+		clipp::option("--debug").call([]{
+			spdlog::set_level(spdlog::level::trace);
+		}).doc("Enable debug output"),
 		clipp::option("-i", "--interval").doc("Interval in seconds")
 		& clipp::value("seconds").call([&](const char *txt){
 			auto len = strlen(txt);
