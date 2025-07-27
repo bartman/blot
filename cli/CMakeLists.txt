@@ -11,7 +11,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog clipp)
 
-
 ADD_EXECUTABLE(blot
         main.cpp
 )
@@ -20,7 +19,7 @@ TARGET_INCLUDE_DIRECTORIES(blot PRIVATE
         ${clipp_SOURCE_DIR}/include
 )
 
-TARGET_LINK_LIBRARIES(blot
+TARGET_LINK_LIBRARIES(blot PRIVATE
         blot_a
         -lm
         spdlog::spdlog

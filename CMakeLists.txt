@@ -36,9 +36,9 @@ include(GetGitRevisionDescription)
 get_git_head_revision(GIT_REFSPEC GIT_SHA1)
 git_describe(GIT_REVISION)
 
-add_definitions(-D"BLOT_GIT_REFSPEC=${GIT_REFSPEC}")
-add_definitions(-D"BLOT_GIT_REVISION=${GIT_REVISION}")
-add_definitions(-D"BLOT_GIT_SHA1=${GIT_SHA1}")
+add_definitions(-DBLOT_GIT_REFSPEC="${GIT_REFSPEC}")
+add_definitions(-DBLOT_GIT_REVISION="${GIT_REVISION}")
+add_definitions(-DBLOT_GIT_SHA1="${GIT_SHA1}")
 
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
 
