@@ -9,19 +9,25 @@
 #include "clipp.h"
 #pragma GCC diagnostic pop
 
+struct Input {
+	enum Type {NONE,FILE,EXEC} m_type;
+	std::string m_details;
+	blot_plot_type m_plot_type;
+	blot_color m_plot_color;
+};
+
 int main(int argc, char *argv[])
 {
 	const char *self = basename(argv[0]);
 
 	bool show_help{}, be_verbose{}, show_version{};
-	enum output_type { ASCII, UNICODE, BRAILLE } output_type;
-	blot_plot_type plot_type = BLOT_LINE;
-
 	auto head_cli = (
 		clipp::option("-h", "--help").set(show_help).doc("This help"),
 		clipp::option("-v", "--verbose").set(be_verbose).doc("Enable debug"),
 		clipp::option("-V", "--version").set(show_version).doc("Version")
 	);
+
+	enum output_type { ASCII, UNICODE, BRAILLE } output_type;
 
 	auto output_cli = (
 		clipp::option("-A", "--ascii").set(output_type,ASCII).doc("ASCII output") |
@@ -29,54 +35,54 @@ int main(int argc, char *argv[])
 		clipp::option("-B", "--braille").set(output_type,BRAILLE).doc("Braille output")
 	);
 
-	blot_color plot_color = 9;
-	auto modifier_cli = (
-		clipp::option("-s", "--scatter").set(plot_type, BLOT_SCATTER).doc("Scatter plot").repeatable(true),
-		clipp::option("-l", "--line").set(plot_type, BLOT_LINE).doc("Line plot").repeatable(true),
-		clipp::option("-b", "--bar").set(plot_type, BLOT_BAR).doc("Bar plot").repeatable(true),
+	std::vector<std::string> wrong;
+	auto wrong_cli = clipp::any_other(wrong);
 
-		clipp::repeatable(
-			clipp::option("-c", "--color").doc("Color")
-			& clipp::value("color").call([&](std::string c) {
-				plot_color = std::strtol(c.c_str(), NULL, 10);
-			})
-		)
-	);
-
-	struct Input {
-		enum {FILE,EXEC} type;
-		std::string details;
-		blot_plot_type plot_type;
-		blot_color plot_color;
-	};
 	std::vector<Input> inputs;
 
-	auto input_cli = (
-		clipp::repeatable(
-			clipp::option("-f", "--file")
-			& clipp::value("file").call([&](std::string f) { inputs.push_back({Input::FILE, f, plot_type, plot_color}); })
-		).doc("read from a file"),
-		clipp::repeatable(
-			clipp::option("-x", "--exec")
-			& clipp::value("command").call([&](std::string x) { inputs.push_back({Input::EXEC, x, plot_type, plot_color}); })
-		).doc("execute command")
-	);
+	auto start_input = [&](blot_plot_type new_plot_type) {
+		inputs.push_back({});
+	};
+	auto set_source = [&](Input::Type type, const std::string &details) {
+		inputs.back().m_type = type;
+		inputs.back().m_details = details;
+	};
+	auto set_color = [&](const std::string &c) {
+		inputs.back().m_plot_color = std::strtol(c.c_str(), NULL, 10);
+	};
 
-	std::vector<std::string> wrong;
 	auto cli = (
-		head_cli ,
-		"Output" % output_cli,
-		"Modifier" % modifier_cli,
-		"Input" % input_cli,
-		clipp::any_other(wrong)
+		head_cli |
+		clipp::repeatable(
+			/* select a plot type */
+
+			clipp::command("scatter").call([&]() { start_input(BLOT_SCATTER); }).doc("Add a scatter plot") |
+			clipp::command("line")   .call([&]() { start_input(BLOT_LINE);    }).doc("Add a line/curve plot") |
+			clipp::command("bar")    .call([&]() { start_input(BLOT_BAR);     }).doc("Add a bar plot"),
+
+			/* augment this plots chracteristics */
+
+			clipp::option("-c", "--color").doc("Set plot color")
+			& clipp::value("color").call([&](const char *c) { set_color(c); }),
+
+			/* source data from file or command */
+
+			clipp::option("-f", "--file").doc("Read from a file")
+			& clipp::value("file")   .call([&](const char *f) { set_source(Input::FILE, f); })
+			|
+			clipp::option("-x", "--exec").doc("Run command")
+			& clipp::value("command").call([&](const char *x) { set_source(Input::EXEC, x); })
+
+		),
+		wrong_cli
 	);
 
 	if(!parse(argc, argv, cli) || wrong.size()) {
 		spdlog::error("Failed to parse options.");
 		for (const auto &w : wrong) {
-			spdlog::error(" {}", w);
+			spdlog::error("Unexpected: {}", w);
 		}
-		spdlog::error("Usage: {}", clipp::usage_lines(cli, self).str());
+		spdlog::error("Usage:\n{}", clipp::usage_lines(cli, self).str());
 		return 1;
 	}
 
@@ -114,10 +120,10 @@ int main(int argc, char *argv[])
 
 	for (auto &input : inputs) {
 		std::cout << std::format("-> {} {} {} {}",
-			(int)input.type,
-			input.details,
-			(int)input.plot_type,
-			(int)input.plot_color)
+			(int)input.m_type,
+			input.m_details,
+			(int)input.m_plot_type,
+			(int)input.m_plot_color)
 		<< std::endl;
 	}
 }
