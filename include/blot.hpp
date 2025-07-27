@@ -1,16 +1,7 @@
 /* blot C++ wrapper */
 /* vim: set noet sw=8 ts=8 tw=120: */
 #pragma once
-#include "blot_canvas.h"
-#include "blot_color.h"
-#include "blot_error.h"
-#include "blot_figure.h"
-#include "blot_layer.h"
-#include "blot_screen.h"
-#include "blot_terminal.h"
-#include "blot_time.h"
-#include "blot_types.h"
-#include "blot_utils.h"
+#include "blot.h"
 
 #include <cassert>
 #include <iostream>
