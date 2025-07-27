@@ -14,6 +14,7 @@ FetchContent_MakeAvailable(spdlog clipp)
 ADD_EXECUTABLE(blot
         main.cpp
         config.cpp
+        reader.cpp
 )
 
 TARGET_INCLUDE_DIRECTORIES(blot PRIVATE

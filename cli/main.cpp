@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "config.hpp"
+#include "reader.hpp"
 #include "blot.hpp"
 #include "spdlog/spdlog.h"
 
@@ -13,10 +14,19 @@ int main(int argc, char *argv[])
 	std::cout << std::format("interval = {}\n", config.m_interval);
 
 	for (auto &input : config.m_inputs) {
+		std::cout << "---------------------------------------------\n";
 		std::cout << std::format("-> {} {} {} {}\n",
 			input.plot_name(),
 			input.source_name(),
 			input.m_details,
 			input.m_plot_color);
+
+
+		auto reader = Reader::from(input);
+		while (*reader) {
+			auto line = reader->line();
+			if (line.has_value())
+				std::cout << *line << std::endl;
+		}
 	}
 }
