@@ -10,6 +10,12 @@
 
 #include "spdlog/spdlog.h"
 
+static bool signaled = false;
+static void sighandler(int sig)
+{
+	signaled = true;
+}
+
 int main(int argc, char *argv[])
 {
 	Config config(argc, argv);
@@ -18,11 +24,14 @@ int main(int argc, char *argv[])
 
 	std::vector<std::unique_ptr<Reader>> readers;
 
+	signal(SIGINT, sighandler);
+
 	auto keep_going = [&]{
-		return std::any_of(readers.begin(), readers.end(),
-		     [](auto &reader)->bool {
-			return *reader;
-		     });
+		return !signaled
+			&& std::any_of(readers.begin(), readers.end(),
+				[](auto &reader)->bool {
+					return *reader;
+				});
 	};
 
 	for (size_t i=0; i<config.m_inputs.size(); i++) {
@@ -35,11 +44,6 @@ int main(int argc, char *argv[])
 			   input.m_interval);
 
 		readers.push_back(Reader::from(input));
-	}
-
-	if (config.m_using_interval) {
-		spdlog::error("hang on");
-		std::exit(1);
 	}
 
 	Plotter<double,double> plotter(config);
@@ -76,6 +80,7 @@ int main(int argc, char *argv[])
 		double idle = std::ranges::min(idle_view);
 
 		if (idle > 0) {
+			plotter.plot();
 			std::this_thread::sleep_for(std::chrono::duration<double>(idle));
 		}
 	}

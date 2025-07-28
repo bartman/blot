@@ -39,7 +39,7 @@ public:
 		fig.set_axis_color(8);
 
 		Blot::Dimensions term;
-		fig.set_screen_size(term.cols/2, term.rows/2);
+		fig.set_screen_size(term.cols, term.rows/2);
 
 		for (size_t i=0; i<m_data.size(); i++) {
 			const auto &data = m_data[i];
@@ -53,7 +53,8 @@ public:
 
 		blot_render_flags flags
 			= BLOT_RENDER_BRAILLE
-			| BLOT_RENDER_LEGEND_BELOW;
+			| BLOT_RENDER_LEGEND_BELOW
+			| BLOT_RENDER_CLEAR;
 
 		Blot::Screen scr = fig.render(flags);
 
