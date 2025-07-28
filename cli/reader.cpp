@@ -16,13 +16,14 @@
 namespace fs = std::filesystem;
 
 // used by Input::READ and Input::FOLLOW
-struct FileReader : public Reader {
+class FileReader : public Reader {
 
 	fs::path m_path;
 	bool m_follow{};
 	std::ifstream m_stream;
 	size_t m_line_number{};
 
+public:
 	FileReader(const std::string &details, bool follow = false)
 	: m_path(details), m_follow(follow)
 	{
@@ -96,13 +97,14 @@ struct FileReader : public Reader {
 };
 
 // used by Input::POLL
-struct FilePoller : public Reader {
+class FilePoller : public Reader {
 	fs::path m_path;
 	double m_interval;
 	bool m_fail = false;
 	std::chrono::steady_clock::time_point m_last_read{};
 	size_t m_line_number{};
 
+public:
 	FilePoller(const std::string &details, double interval)
 	: m_path(details), m_interval(interval)
 	{
@@ -183,7 +185,7 @@ struct FilePoller : public Reader {
 };
 
 // used by Input::EXEC
-struct ExecStreamReader : public Reader {
+class ExecStreamReader : public Reader {
 	std::string m_command;
 	FILE* m_pipe = nullptr;
 	int m_fd = -1;
@@ -192,6 +194,7 @@ struct ExecStreamReader : public Reader {
 	bool m_eof = false;
 	bool m_fail = false;
 
+public:
 	ExecStreamReader(const std::string& command) : m_command(command) {
 		m_pipe = popen(m_command.c_str(), "r");
 		if (!m_pipe) {
@@ -271,13 +274,14 @@ struct ExecStreamReader : public Reader {
 };
 
 // used by Input::WATCH
-struct ExecWatcher : public Reader {
+class ExecWatcher : public Reader {
 	std::string m_command;
 	double m_interval;
 	bool m_fail = false;
 	size_t m_line_number{};
 	std::chrono::steady_clock::time_point m_last_exec{};
 
+public:
 	ExecWatcher(const std::string &command, double interval)
 	: m_command(command), m_interval(interval)
 	{
@@ -367,24 +371,24 @@ struct ExecWatcher : public Reader {
 
 std::unique_ptr<Reader> Reader::from(const Input &input)
 {
-	switch (input.m_source) {
+	switch (input.source()) {
 		case Input::READ:
-			return std::make_unique<FileReader>(input.m_details);
+			return std::make_unique<FileReader>(input.details());
 
 		case Input::FOLLOW:
-			return std::make_unique<FileReader>(input.m_details, true);
+			return std::make_unique<FileReader>(input.details(), true);
 
 		case Input::POLL:
-			return std::make_unique<FilePoller>(input.m_details, input.m_interval);
+			return std::make_unique<FilePoller>(input.details(), input.interval());
 
 		case Input::EXEC:
-			return std::make_unique<ExecStreamReader>(input.m_details);
+			return std::make_unique<ExecStreamReader>(input.details());
 
 		case Input::WATCH:
-			 return std::make_unique<ExecWatcher>(input.m_details, input.m_interval);
+			 return std::make_unique<ExecWatcher>(input.details(), input.interval());
 
 		default:
-			spdlog::error("invalid input source value {}", (int)input.m_source);
+			spdlog::error("invalid input source value {}", (int)input.source());
 			std::terminate();
 	}
 }

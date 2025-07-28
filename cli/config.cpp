@@ -40,7 +40,10 @@ Config::Config(int argc, char *argv[])
 	auto cli_wrong = clipp::any_other(wrong);
 
 	auto start_input = [&](blot_plot_type plot_type) {
-		m_inputs.push_back(Input{plot_type});
+		blot_color color = m_inputs.empty()
+			? m_first_color
+			: m_inputs.back().plot_color() + 1;
+		m_inputs.push_back(Input{plot_type, color});
 	};
 
 	auto cli = (
@@ -153,8 +156,8 @@ Config::Config(int argc, char *argv[])
 			spdlog::error("incomplete plot definition");
 			std::exit(1);
 		}
-		with_interval |= !!(input.m_interval);
-		no_interval |= !(input.m_interval);
+		with_interval |= !!(input.interval());
+		no_interval |= !(input.interval());
 	}
 	if (with_interval && no_interval) {
 		spdlog::error("cannot mix interval and non-interval sources");

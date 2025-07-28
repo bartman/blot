@@ -34,14 +34,14 @@ int main(int argc, char *argv[])
 				});
 	};
 
-	for (size_t i=0; i<config.m_inputs.size(); i++) {
-		const auto &input = config.m_inputs[i];
+	for (size_t i=0; i<config.inputs(); i++) {
+		const auto &input = config.input(i);
 		spdlog::debug("source[{}] {} {} '{}' {} {}", i,
 			   input.plot_name(),
 			   input.source_name(),
-			   input.m_details,
-			   input.m_plot_color,
-			   input.m_interval);
+			   input.details(),
+			   input.plot_color(),
+			   input.interval());
 
 		readers.push_back(Reader::from(input));
 	}
@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
 	while(keep_going()) {
 
 		for (size_t i=0; i<readers.size(); i++) {
-			const auto &input = config.m_inputs[i];
+			const auto &input = config.input(i);
 			auto &reader = readers[i];
 			if (reader->idle())
 				continue;
@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
 			if (!line.has_value())
 				continue;
 
-			spdlog::trace("{}:{}: {}", input.m_details, line->number, line->text);
+			spdlog::trace("{}:{}: {}", input.details(), line->number, line->text);
 
 			double value;
 			auto [_,ec] = std::from_chars(line->text.data(),

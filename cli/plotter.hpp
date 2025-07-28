@@ -21,7 +21,7 @@ protected:
 
 public:
 	explicit Plotter(const Config &config)
-	: m_config(config), m_max_layers(m_config.m_inputs.size())
+	: m_config(config), m_max_layers(m_config.inputs())
 	{
 		m_data.resize(m_max_layers);
 	}
@@ -43,12 +43,10 @@ public:
 
 		for (size_t i=0; i<m_data.size(); i++) {
 			const auto &data = m_data[i];
-			const auto &input = m_config.m_inputs[i];
+			const auto &input = m_config.input(i);
 
-			int color = input.m_plot_color;
-			const char *label = input.m_details.c_str();
-
-			fig.plot(input.m_plot_type, data.m_xs, data.m_ys, color, label);
+			fig.plot(input.plot_type(), data.m_xs, data.m_ys,
+				input.plot_color(), input.details());
 		}
 
 		blot_render_flags flags

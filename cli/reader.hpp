@@ -11,7 +11,8 @@ struct Line {
 	std::string text;
 };
 
-struct Reader {
+class Reader {
+public:
 	virtual ~Reader() {}
 
 	virtual bool fail() const = 0;
