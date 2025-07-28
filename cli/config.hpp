@@ -4,6 +4,8 @@
 #include <vector>
 #include <string>
 
+#include "extract.hpp"
+
 #include "blot.hpp"
 #include "spdlog/spdlog.h"
 
@@ -22,6 +24,7 @@ protected:
 	blot_plot_type m_plot_type{BLOT_LINE};
 	Source m_source{NONE};
 	std::string m_details{};
+	Extract m_extract;
 	blot_color m_plot_color;
 	double m_interval{0};
 
@@ -57,6 +60,7 @@ public:
 	}
 
 	const char * details() const { return m_details.c_str(); }
+	const Extract& extract() const { return m_extract; }
 	blot_color plot_color() const { return m_plot_color; }
 	double interval() const { return m_interval; }
 
@@ -64,6 +68,8 @@ public:
 	operator bool() const;
 
 	void set_source (Input::Source source, const std::string &details);
+	void set_position (const std::string &txt);
+	void set_regex (const std::string &txt);
 	void set_color (const std::string &txt);
 	void set_interval (double interval);
 	void set_interval (const std::string &txt);

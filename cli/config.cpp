@@ -54,52 +54,60 @@ Config::Config(int argc, char *argv[])
 
 				"Plot type:" % (
 
-				clipp::command("scatter")
-					.call([&]() { start_input(BLOT_SCATTER); })
-					.doc("Add a scatter plot") |
-				clipp::command("line")
-					.call([&]() { start_input(BLOT_LINE); })
-					.doc("Add a line/curve plot") |
-				clipp::command("bar")
-					.call([&]() { start_input(BLOT_BAR); })
-					.doc("Add a bar plot")
+					clipp::command("scatter")
+						.call([&]() { start_input(BLOT_SCATTER); })
+						.doc("Add a scatter plot") |
+					clipp::command("line")
+						.call([&]() { start_input(BLOT_LINE); })
+						.doc("Add a line/curve plot") |
+					clipp::command("bar")
+						.call([&]() { start_input(BLOT_BAR); })
+						.doc("Add a bar plot")
 				),
 
 				/* modifiers - no heading because there is a --help bug in clipp */
 
+				one_of(
+					/* source data from file or command */
+
+					clipp::option("-R", "--read").doc("Read file to the end, each line is a record")
+					& clipp::value("file")
+						.call([&](const char *f) { m_inputs.back().set_source(Input::READ, f); }),
+					clipp::option("-F", "--follow").doc("Read file waiting for more, each line is a record")
+					& clipp::value("file")
+						.call([&](const char *f) { m_inputs.back().set_source(Input::FOLLOW, f); }),
+					clipp::option("-P", "--poll").doc("Read file at interval, each read is one record")
+					& clipp::value("file")
+						.call([&](const char *f) { m_inputs.back().set_source(Input::POLL, f); }),
+					clipp::option("-X", "--exec").doc("Run command, each line is a record")
+					& clipp::value("command")
+						.call([&](const char *x) { m_inputs.back().set_source(Input::EXEC, x); }),
+					clipp::option("-W", "--watch").doc("Run command at interval, each read is one record")
+					& clipp::value("command")
+						.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); })
+				),
+
 				(
+					/* how to extract values from lines */
 
-				/* source data from file or command */
+					clipp::option("-p", "--position").doc("Use the Nth number from input line")
+					& clipp::value("number")
+						.call([&](const char *txt) { m_inputs.back().set_position(txt); }),
+					clipp::option("-r", "--regex").doc("Regex to match numbers from input line")
+					& clipp::value("regex")
+						.call([&](const char *txt) { m_inputs.back().set_regex(txt); })
 
-				clipp::option("-r", "--read").doc("Read file to the end, each line is a record")
-				& clipp::value("file")
-					.call([&](const char *f) { m_inputs.back().set_source(Input::READ, f); })
-				|
-				clipp::option("-f", "--follow").doc("Read file waiting for more, each line is a record")
-				& clipp::value("file")
-					.call([&](const char *f) { m_inputs.back().set_source(Input::FOLLOW, f); })
-				|
-				clipp::option("-p", "--poll").doc("Read file at interval, each read is one record")
-				& clipp::value("file")
-					.call([&](const char *f) { m_inputs.back().set_source(Input::POLL, f); })
-				|
-				clipp::option("-x", "--exec").doc("Run command, each line is a record")
-				& clipp::value("command")
-					.call([&](const char *x) { m_inputs.back().set_source(Input::EXEC, x); })
-				|
-				clipp::option("-w", "--watch").doc("Run command at interval, each read is one record")
-				& clipp::value("command")
-					.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); }),
+				),
 
-				/* augment this plots characteristics */
+				(
+					/* augment this plots characteristics */
 
-				clipp::option("-c", "--color").doc("Set plot color (1..255)")
-				& clipp::value("color")
-					.call([&](const char *txt) { m_inputs.back().set_color(txt); }),
-				clipp::option("-i", "--interval").doc("Set interval in seconds")
-				& clipp::value("seconds")
-					.call([&](const char *txt) { m_inputs.back().set_interval(txt); })
-
+					clipp::option("-c", "--color").doc("Set plot color (1..255)")
+					& clipp::value("color")
+						.call([&](const char *txt) { m_inputs.back().set_color(txt); }),
+					clipp::option("-i", "--interval").doc("Set interval in seconds")
+					& clipp::value("seconds")
+						.call([&](const char *txt) { m_inputs.back().set_interval(txt); })
 				)
 
 			),
@@ -135,12 +143,17 @@ Config::Config(int argc, char *argv[])
 			.append_section("EXAMPE",
 		   "\n"
 		   "    blot --braille \\\n"
-		   "        line    --color 10 --file x_y1_values \\\n"
-		   "        scatter --color 11 --file x_y2_values\n"
+		   "        line    --color 10 --read x_y1_values \\\n"
+		   "        scatter --color 11 --read x_y2_values\n"
 		   "\n"
 		   "    blot --braille \\\n"
 		   "        line    --color 10 --exec 'seq 1 100' \\\n"
-		   "        scatter --color 11 --file x_y_values\n"
+		   "        scatter --color 11 --read x_y_values\n"
+		   "\n"
+		   "    blot --braille \\\n"
+		   "        line --poll /proc/loadavg --position 1 \\\n"
+		   "        line --poll /proc/loadavg --position 2 \\\n"
+		   "        line --poll /proc/loadavg --position 3\n"
 		   )
 			<< std::endl;
 		std::exit(0);
@@ -184,6 +197,23 @@ void Input::set_source (Input::Source source, const std::string &details)
 	}
 	m_source = source;
 	m_details = details;
+}
+
+void Input::set_position (const std::string &txt)
+{
+	unsigned number;
+	auto [_,ec] = std::from_chars(txt.data(), txt.data()+txt.size(), number);
+	if (ec != std::errc{}) {
+		spdlog::error("failed to parse position from '{}': {}",
+			txt, std::make_error_code(ec).message());
+		std::exit(1);
+	}
+	m_extract.set(number);
+}
+
+void Input::set_regex (const std::string &txt)
+{
+	m_extract.set(std::regex(txt));
 }
 
 void Input::set_color (const std::string &txt)
