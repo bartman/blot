@@ -6,9 +6,11 @@
 #include <optional>
 #include <memory>
 
-struct Line {
+struct Line final {
 	size_t number;
 	std::string text;
+
+	explicit Line(size_t n, std::string t) : number(n), text(t) {}
 };
 
 class Reader {
