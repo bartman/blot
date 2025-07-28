@@ -49,6 +49,7 @@ struct FileReader : public Reader {
 
 	bool fail() const override { return m_stream.fail(); }
 	bool eof() const override { return m_stream.eof(); }
+	double idle() const override { return 0; }
 	operator bool() const override {
 		return !fail() && (!eof() || m_follow);
 	}
@@ -122,6 +123,22 @@ struct FilePoller : public Reader {
 	bool eof() const override { return false; }
 	operator bool() const override { return !m_fail; }
 
+	double idle() const override {
+		if (m_fail) {
+			return 0.0;
+		}
+		auto now = std::chrono::steady_clock::now();
+		if (m_last_read == std::chrono::steady_clock::time_point{}) {
+			return 0.0;
+		}
+		double elapsed = std::chrono::duration<double>(now - m_last_read).count();
+		if (elapsed >= m_interval) {
+			return 0.0;
+		} else {
+			return m_interval - elapsed;
+		}
+	}
+
 	std::optional<std::string> line() override
 	{
 		if (m_fail) {
@@ -189,17 +206,10 @@ struct ExecStreamReader : public Reader {
 		}
 	}
 
-	bool fail() const override {
-		return m_fail;
-	}
-
-	bool eof() const override {
-		return m_eof;
-	}
-
-	operator bool() const override {
-		return !m_fail && !m_eof;
-	}
+	bool fail() const override { return m_fail; }
+	bool eof() const override { return m_eof; }
+	double idle() const override { return 0; }
+	operator bool() const override { return !m_fail && !m_eof; }
 
 	std::optional<std::string> line() override {
 		if (m_fail || m_eof) {
@@ -249,6 +259,97 @@ struct ExecStreamReader : public Reader {
 	}
 };
 
+// used by Input::WATCH
+struct ExecWatcher : public Reader {
+	std::string m_command;
+	double m_interval;
+	bool m_fail = false;
+	std::chrono::steady_clock::time_point m_last_exec{};
+
+	ExecWatcher(const std::string &command, double interval)
+	: m_command(command), m_interval(interval)
+	{
+		if (m_interval <= 0.0) {
+			spdlog::error("invalid watching interval: {}", m_interval);
+			std::exit(1);
+		}
+	}
+
+	~ExecWatcher() override {}
+
+	bool fail() const override { return m_fail; }
+	bool eof() const override { return false; }
+	operator bool() const override { return !m_fail; }
+
+	double idle() const override {
+		if (m_fail) {
+			return 0.0;
+		}
+		auto now = std::chrono::steady_clock::now();
+		if (m_last_exec == std::chrono::steady_clock::time_point{}) {
+			return 0.0;
+		}
+		double elapsed = std::chrono::duration<double>(now - m_last_exec).count();
+		if (elapsed >= m_interval) {
+			return 0.0;
+		} else {
+			return m_interval - elapsed;
+		}
+	}
+
+	std::optional<std::string> line() override
+	{
+		if (m_fail) {
+			return {};
+		}
+
+		auto now = std::chrono::steady_clock::now();
+		if (m_last_exec != std::chrono::steady_clock::time_point{} &&
+			std::chrono::duration<double>(now - m_last_exec).count() < m_interval) {
+			return {};
+		}
+
+		FILE* pipe = popen(m_command.c_str(), "r");
+		if (!pipe) {
+			spdlog::error("failed to execute command '{}': {}", m_command, std::strerror(errno));
+			m_fail = true;
+			return {};
+		}
+
+		char buf[4096];
+		if (fgets(buf, sizeof(buf), pipe) == nullptr) {
+			if (ferror(pipe)) {
+				spdlog::warn("error reading from command '{}'", m_command);
+				m_fail = true;
+			} else {
+				spdlog::trace("no output from command '{}'", m_command);
+			}
+			pclose(pipe);
+			m_last_exec = now;
+			return {};
+		}
+
+		std::string line(buf);
+		size_t pos = line.find_last_not_of("\r\n");
+		if (pos != std::string::npos) {
+			line.erase(pos + 1);
+		} else {
+			line.clear();
+		}
+
+		spdlog::debug("{}: {}", m_command, line);
+
+		int status = pclose(pipe);
+		if (status != 0) {
+			spdlog::warn("command '{}' exited with status {}", m_command, status);
+			// Note: Not setting fail here, as we still got a line
+		}
+
+		m_last_exec = now;
+		return line;
+	}
+};
+
 std::unique_ptr<Reader> Reader::from(const Input &input)
 {
 	switch (input.m_source) {
@@ -265,21 +366,7 @@ std::unique_ptr<Reader> Reader::from(const Input &input)
 			return std::make_unique<ExecStreamReader>(input.m_details);
 
 		case Input::WATCH:
-			/* TODO:
-			 *
-			 * return std::make_unique<ExecWatcher>(input.m_details, input.m_interval);
-			 *
-			 * Implement ExecWatcher
-			 * ExecWatcher::ExecWatcher(path, interval);
-			 *
-			 * ExecWatcher::eof() is always false
-			 * ExecWatcher::fail() can be true, if there is a exec/read error
-			 *
-			 * ExecWatcher::line() will execute a program, read one line, close pipe, return the line read
-			 */
-			spdlog::error("watch source value {} not yet supported",
-				(int)input.m_source);
-			std::terminate();
+			 return std::make_unique<ExecWatcher>(input.m_details, input.m_interval);
 
 		default:
 			spdlog::error("invalid input source value {}", (int)input.m_source);
