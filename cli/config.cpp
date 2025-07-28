@@ -1,12 +1,12 @@
 #include "config.hpp"
 
-#include <format>
 #include <iostream>
 #include <charconv>
 #include <system_error>
 
 #include "blot.hpp"
 #include "spdlog/spdlog.h"
+#include "fmt/format.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"

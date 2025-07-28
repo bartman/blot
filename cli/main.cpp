@@ -1,4 +1,3 @@
-#include <format>
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -9,6 +8,7 @@
 #include "plotter.hpp"
 
 #include "spdlog/spdlog.h"
+#include "fmt/format.h"
 
 static bool signaled = false;
 static void sighandler(int sig)
