@@ -147,7 +147,7 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 		ytick = blot_axis_get_tick_at(y_axs, c_y, error);
 
 		const char *ytick_label = ytick ? ytick->label : "";
-		char axis_char = ytick ? '*' : '-';
+		char axis_char = ytick ? '*' : '|';
 		len = swprintf(p, end-p, L"%*s %c",
 			       dsp_lft-2, ytick_label, axis_char);
 
