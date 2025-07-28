@@ -184,12 +184,44 @@ std::unique_ptr<Reader> Reader::from(const Input &input)
 	switch (input.m_source) {
 		case Input::READ:
 			return std::make_unique<FileReader>(input.m_details);
+
 		case Input::FOLLOW:
 			return std::make_unique<FileReader>(input.m_details, true);
+
+		case Input::POLL:
+			/* TODO:
+			 *
+			 * return std::make_unique<FilePoller>(input.m_details, input.m_interval);
+			 *
+			 * Implement FilePoller
+			 * FilePoller::FilePoller(path, interval);
+			 *
+			 * FilePoller::eof() is always false
+			 * FilePoller::fail() can be true, if there is a read error
+			 *
+			 * FilePoller::line() will open the file, read one line, close file, return the line read
+			 */
+			spdlog::error("poll source value {} not yet supported",
+					(int)input.m_source);
+			std::terminate();
+
 		case Input::EXEC:
 			return std::make_unique<ExecStreamReader>(input.m_details);
+
 		case Input::WATCH:
-			spdlog::error("input source value {} not yet supported",
+			/* TODO:
+			 *
+			 * return std::make_unique<ExecWatcher>(input.m_details, input.m_interval);
+			 *
+			 * Implement ExecWatcher
+			 * ExecWatcher::ExecWatcher(path, interval);
+			 *
+			 * ExecWatcher::eof() is always false
+			 * ExecWatcher::fail() can be true, if there is a exec/read error
+			 *
+			 * ExecWatcher::line() will execute a program, read one line, close pipe, return the line read
+			 */
+			spdlog::error("watch source value {} not yet supported",
 					(int)input.m_source);
 			std::terminate();
 
