@@ -54,7 +54,9 @@ struct FileReader : public Reader {
 		return !fail() && (!eof() || m_follow);
 	}
 
-	std::optional<std::string> line() override
+	size_t lines() const override { return m_line_number; }
+
+	std::optional<Line> line() override
 	{
 		if (m_stream.fail())
 			// reached failed state
@@ -66,7 +68,7 @@ struct FileReader : public Reader {
 			m_line_number ++;
 			// successfully read next line
 			spdlog::debug("{}:{}: {}", m_path.string(), m_line_number, line);
-			return line;
+			return Line(m_line_number, line);
 		}
 
 		spdlog::trace("{}:{}: follow={} fail={} eof={}", m_path.string(), m_line_number,
@@ -99,6 +101,7 @@ struct FilePoller : public Reader {
 	double m_interval;
 	bool m_fail = false;
 	std::chrono::steady_clock::time_point m_last_read{};
+	size_t m_line_number{};
 
 	FilePoller(const std::string &details, double interval)
 	: m_path(details), m_interval(interval)
@@ -139,7 +142,9 @@ struct FilePoller : public Reader {
 		}
 	}
 
-	std::optional<std::string> line() override
+	size_t lines() const override { return m_line_number; }
+
+	std::optional<Line> line() override
 	{
 		if (m_fail) {
 			return {};
@@ -160,9 +165,10 @@ struct FilePoller : public Reader {
 
 		std::string line;
 		if (std::getline(stream, line)) {
+			m_line_number ++;
 			spdlog::debug("{}: {}", m_path.string(), line);
 			m_last_read = now;
-			return line;
+			return Line(m_line_number, line);
 		} else {
 			if (stream.fail() && !stream.eof()) {
 				spdlog::warn("{}: failed reading", m_path.string());
@@ -182,6 +188,7 @@ struct ExecStreamReader : public Reader {
 	FILE* m_pipe = nullptr;
 	int m_fd = -1;
 	std::string m_buffer;
+	size_t m_line_number{};
 	bool m_eof = false;
 	bool m_fail = false;
 
@@ -211,7 +218,9 @@ struct ExecStreamReader : public Reader {
 	double idle() const override { return 0; }
 	operator bool() const override { return !m_fail && !m_eof; }
 
-	std::optional<std::string> line() override {
+	size_t lines() const override { return m_line_number; }
+
+	std::optional<Line> line() override {
 		if (m_fail || m_eof) {
 			return {};
 		}
@@ -220,10 +229,11 @@ struct ExecStreamReader : public Reader {
 		while (true) {
 			size_t pos = m_buffer.find('\n');
 			if (pos != std::string::npos) {
+				m_line_number ++;
 				std::string l = m_buffer.substr(0, pos);
 				m_buffer.erase(0, pos + 1);
 				spdlog::debug("{}: {}", m_command, l);
-				return l;
+				return Line(m_line_number, l);
 			}
 
 			// Read more data non-blockingly
@@ -238,10 +248,11 @@ struct ExecStreamReader : public Reader {
 				spdlog::trace("command '{}' reached EOF", m_command);
 				if (!m_buffer.empty()) {
 					// Return any remaining data as the last (unterminated) line
+					m_line_number ++;
 					std::string l = std::move(m_buffer);
 					m_buffer.clear();
 					spdlog::debug("{}: {}", m_command, l);
-					return l;
+					return Line(m_line_number, l);
 				}
 				return {};
 			} else {
@@ -264,6 +275,7 @@ struct ExecWatcher : public Reader {
 	std::string m_command;
 	double m_interval;
 	bool m_fail = false;
+	size_t m_line_number{};
 	std::chrono::steady_clock::time_point m_last_exec{};
 
 	ExecWatcher(const std::string &command, double interval)
@@ -297,7 +309,9 @@ struct ExecWatcher : public Reader {
 		}
 	}
 
-	std::optional<std::string> line() override
+	size_t lines() const override { return m_line_number; }
+
+	std::optional<Line> line() override
 	{
 		if (m_fail) {
 			return {};
@@ -345,8 +359,9 @@ struct ExecWatcher : public Reader {
 			// Note: Not setting fail here, as we still got a line
 		}
 
+		m_line_number ++;
 		m_last_exec = now;
-		return line;
+		return Line(m_line_number, line);
 	}
 };
 

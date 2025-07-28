@@ -147,12 +147,20 @@ Config::Config(int argc, char *argv[])
 		spdlog::error("no plots defined");
 		std::exit(1);
 	}
+	bool with_interval{}, no_interval{};
 	for (auto &input : m_inputs) {
 		if (!input) {
 			spdlog::error("incomplete plot definition");
 			std::exit(1);
 		}
+		with_interval |= !!(input.m_interval);
+		no_interval |= !(input.m_interval);
 	}
+	if (with_interval && no_interval) {
+		spdlog::error("cannot mix interval and non-interval sources");
+		std::exit(1);
+	}
+	m_using_interval = with_interval;
 }
 
 void Input::set_source (Input::Source source, const std::string &details)

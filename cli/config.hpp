@@ -53,6 +53,7 @@ struct Config {
 	const char *m_self{};
 	enum output_type { ASCII, UNICODE, BRAILLE } m_output_type;
 	std::vector<Input> m_inputs;
+	bool m_using_interval{};
 
 	Config(int argc, char *argv[]);
 	~Config() {}
