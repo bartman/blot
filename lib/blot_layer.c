@@ -216,11 +216,14 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **error)
 {
-	double x_range = lim->x_max - lim->x_min + 1;
-	double y_range = lim->y_max - lim->y_min + 1;
+	double x_range = lim->x_max - lim->x_min;
+	double y_range = lim->y_max - lim->y_min;
 
 	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
 	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+
+	double per_col = (double)(can->dim.cols-1) / x_range;
+	double per_row = (double)(can->dim.rows-1) / y_range;
 
 	bool visible = false;
 	double px=0, py=0;
@@ -234,8 +237,8 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 			return false;
 
 		// compute location
-		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
-		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
+		double dx = (double)(rx - lim->x_min) * per_col;
+		double dy = (double)(ry - lim->y_min) * per_row;
 
 		// plot it
 		if (likely (visible)) {
