@@ -51,6 +51,9 @@ int main(int argc, char *argv[])
 	while(keep_going()) {
 
 		for (size_t i=0; i<readers.size(); i++) {
+			if (signaled)
+				return 1;
+
 			const auto &input = config.input(i);
 			auto &reader = readers[i];
 			if (reader->idle())
@@ -74,6 +77,9 @@ int main(int argc, char *argv[])
 			plotter.add(i, line->number, value);
 		}
 
+		if (signaled)
+			return 1;
+
 		/* wait for the next time we have data */
 
 		auto idle_view = readers | std::views::transform([](const auto& reader) { return reader->idle(); });
@@ -81,7 +87,12 @@ int main(int argc, char *argv[])
 
 		if (idle > 0) {
 			plotter.plot();
-			std::this_thread::sleep_for(std::chrono::duration<double>(idle));
+
+			// unfortunately std::this_thread::sleep_for() cannot be used,
+			// as it will complete the sleep even if SIGINT is raised.
+
+			double useconds = idle * 1000000;
+			usleep(useconds);
 		}
 	}
 
