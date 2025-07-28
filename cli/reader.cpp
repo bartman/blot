@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <filesystem>
+#include <chrono>
 
 #include <cstdio>    // for popen, pclose
 #include <unistd.h>  // for read, fileno
@@ -14,6 +15,7 @@
 
 namespace fs = std::filesystem;
 
+// used by Input::READ and Input::FOLLOW
 struct FileReader : public Reader {
 
 	fs::path m_path;
@@ -90,6 +92,74 @@ struct FileReader : public Reader {
 	}
 };
 
+// used by Input::POLL
+struct FilePoller : public Reader {
+	fs::path m_path;
+	double m_interval;
+	bool m_fail = false;
+	std::chrono::steady_clock::time_point m_last_read{};
+
+	FilePoller(const std::string &details, double interval)
+	: m_path(details), m_interval(interval)
+	{
+		if (m_interval <= 0.0) {
+			spdlog::error("invalid polling interval: {}", m_interval);
+			std::exit(1);
+		}
+		if (!fs::exists(m_path)) {
+			spdlog::error("{}: does not exist", m_path.string());
+			std::exit(1);
+		}
+		if (!fs::is_regular_file(m_path) && !fs::is_character_file(m_path) && !fs::is_other(m_path)) {
+			spdlog::error("{}: unsupported file type for polling", m_path.string());
+			std::exit(1);
+		}
+	}
+
+	~FilePoller() override {}
+
+	bool fail() const override { return m_fail; }
+	bool eof() const override { return false; }
+	operator bool() const override { return !m_fail; }
+
+	std::optional<std::string> line() override
+	{
+		if (m_fail) {
+			return {};
+		}
+
+		auto now = std::chrono::steady_clock::now();
+		if (m_last_read != std::chrono::steady_clock::time_point{} &&
+			std::chrono::duration<double>(now - m_last_read).count() < m_interval) {
+			return {};
+		}
+
+		std::ifstream stream(m_path);
+		if (!stream.is_open()) {
+			spdlog::error("{}: failed to open", m_path.string());
+			m_fail = true;
+			return {};
+		}
+
+		std::string line;
+		if (std::getline(stream, line)) {
+			spdlog::debug("{}: {}", m_path.string(), line);
+			m_last_read = now;
+			return line;
+		} else {
+			if (stream.fail() && !stream.eof()) {
+				spdlog::warn("{}: failed reading", m_path.string());
+				m_fail = true;
+			} else {
+				spdlog::trace("{}: no data available", m_path.string());
+			}
+			m_last_read = now;  // Update timestamp even on empty read to maintain polling interval
+			return {};
+		}
+	}
+};
+
+// used by Input::EXEC
 struct ExecStreamReader : public Reader {
 	std::string m_command;
 	FILE* m_pipe = nullptr;
@@ -189,21 +259,7 @@ std::unique_ptr<Reader> Reader::from(const Input &input)
 			return std::make_unique<FileReader>(input.m_details, true);
 
 		case Input::POLL:
-			/* TODO:
-			 *
-			 * return std::make_unique<FilePoller>(input.m_details, input.m_interval);
-			 *
-			 * Implement FilePoller
-			 * FilePoller::FilePoller(path, interval);
-			 *
-			 * FilePoller::eof() is always false
-			 * FilePoller::fail() can be true, if there is a read error
-			 *
-			 * FilePoller::line() will open the file, read one line, close file, return the line read
-			 */
-			spdlog::error("poll source value {} not yet supported",
-					(int)input.m_source);
-			std::terminate();
+			return std::make_unique<FilePoller>(input.m_details, input.m_interval);
 
 		case Input::EXEC:
 			return std::make_unique<ExecStreamReader>(input.m_details);
@@ -222,7 +278,7 @@ std::unique_ptr<Reader> Reader::from(const Input &input)
 			 * ExecWatcher::line() will execute a program, read one line, close pipe, return the line read
 			 */
 			spdlog::error("watch source value {} not yet supported",
-					(int)input.m_source);
+				(int)input.m_source);
 			std::terminate();
 
 		default:
