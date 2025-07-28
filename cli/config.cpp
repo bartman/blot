@@ -30,7 +30,7 @@ Config::Config(int argc, char *argv[])
 		}).doc("Enable debug output")
 	);
 
-	auto cli_output = (
+	auto cli_output = "Output:" % (
 		clipp::option("-A", "--ascii").set(m_output_type,ASCII).doc("ASCII output") |
 		clipp::option("-U", "--unicode").set(m_output_type,UNICODE).doc("Unicode output") |
 		clipp::option("-B", "--braille").set(m_output_type,BRAILLE).doc("Braille output")
@@ -49,6 +49,8 @@ Config::Config(int argc, char *argv[])
 			clipp::repeatable(
 				/* select a plot type */
 
+				"Plot type:" % (
+
 				clipp::command("scatter")
 					.call([&]() { start_input(BLOT_SCATTER); })
 					.doc("Add a scatter plot") |
@@ -57,16 +59,12 @@ Config::Config(int argc, char *argv[])
 					.doc("Add a line/curve plot") |
 				clipp::command("bar")
 					.call([&]() { start_input(BLOT_BAR); })
-					.doc("Add a bar plot"),
+					.doc("Add a bar plot")
+				),
 
-				/* augment this plots characteristics */
+				/* modifiers - no heading because there is a --help bug in clipp */
 
-				clipp::option("-c", "--color").doc("Set plot color (1..255)")
-				& clipp::value("color")
-					.call([&](const char *txt) { m_inputs.back().set_color(txt); }),
-				clipp::option("-i", "--interval").doc("Set interval in seconds")
-				& clipp::value("seconds")
-					.call([&](const char *txt) { m_inputs.back().set_interval(txt); }),
+				(
 
 				/* source data from file or command */
 
@@ -88,7 +86,18 @@ Config::Config(int argc, char *argv[])
 				|
 				clipp::option("-w", "--watch").doc("Run command at interval, each read is one record")
 				& clipp::value("command")
-					.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); })
+					.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); }),
+
+				/* augment this plots characteristics */
+
+				clipp::option("-c", "--color").doc("Set plot color (1..255)")
+				& clipp::value("color")
+					.call([&](const char *txt) { m_inputs.back().set_color(txt); }),
+				clipp::option("-i", "--interval").doc("Set interval in seconds")
+				& clipp::value("seconds")
+					.call([&](const char *txt) { m_inputs.back().set_interval(txt); })
+
+				)
 
 			),
 			cli_wrong
