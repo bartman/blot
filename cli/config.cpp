@@ -150,8 +150,17 @@ Config::Config(int argc, char *argv[])
 		spdlog::error("no plots defined");
 		std::exit(1);
 	}
+
 	bool with_interval{}, no_interval{};
+	double prev_interval = 1;
 	for (auto &input : m_inputs) {
+		if (input.needs_interval()) {
+			if (!input.interval()) {
+				input.set_interval(prev_interval);
+			} else {
+				prev_interval = input.interval();
+			}
+		}
 		if (!input) {
 			spdlog::error("incomplete plot definition");
 			std::exit(1);
@@ -193,6 +202,16 @@ void Input::set_color (const std::string &txt)
 	m_plot_color = number;
 }
 
+void Input::set_interval (double interval)
+{
+	if (needs_interval() && !interval) {
+		spdlog::warn("{} {} plot cannot have zero interval",
+			blot_plot_type_to_string(m_plot_type), source_name());
+		std::exit(1);
+	}
+	m_interval = interval;
+}
+
 void Input::set_interval (const std::string &txt)
 {
 	auto [_,ec] = std::from_chars(txt.data(), txt.data()+txt.size(), m_interval);
@@ -214,30 +233,27 @@ Input::operator bool() const
 			spdlog::warn("invalid plot type: {}", (int)m_plot_type);
 			return false;
 	}
-	bool need_interval = false;
 	switch (m_source) {
+		case READ:
+		case FOLLOW:
+		case EXEC:
+		case POLL:
+		case WATCH:
+			break;
 		case NONE:
 			spdlog::warn("{} plot does not defined an input (file or command)",
 				blot_plot_type_to_string(m_plot_type));
 			return false;
-		case READ:
-		case FOLLOW:
-		case EXEC:
-			break;
-		case POLL:
-		case WATCH:
-			need_interval = true;
-			break;
 		default:
 			spdlog::warn("{} plot has invalid type: {}",
 				blot_plot_type_to_string(m_plot_type), (int)m_source);
 			return false;
 	}
-	if (need_interval && !m_interval) {
+	if (needs_interval() && !m_interval) {
 		spdlog::warn("{} plot has zero {} interval",
 			blot_plot_type_to_string(m_plot_type), source_name());
 		return false;
-	} else if (!need_interval && m_interval) {
+	} else if (!needs_interval() && m_interval) {
 		spdlog::warn("{} plot has non-zero {} interval (%f)",
 			blot_plot_type_to_string(m_plot_type), source_name(), m_interval);
 		return false;

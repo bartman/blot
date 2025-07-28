@@ -46,6 +46,16 @@ public:
 		}
 	}
 
+	bool needs_interval() const {
+		switch (m_source) {
+			case POLL:
+			case WATCH:
+				return true;
+			default:
+				return false;
+		}
+	}
+
 	const char * details() const { return m_details.c_str(); }
 	blot_color plot_color() const { return m_plot_color; }
 	double interval() const { return m_interval; }
@@ -55,6 +65,7 @@ public:
 
 	void set_source (Input::Source source, const std::string &details);
 	void set_color (const std::string &txt);
+	void set_interval (double interval);
 	void set_interval (const std::string &txt);
 
 
