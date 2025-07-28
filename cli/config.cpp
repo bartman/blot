@@ -13,6 +13,7 @@
 #include "clipp.h"
 #pragma GCC diagnostic pop
 
+#pragma GCC diagnostic ignored "-Wunused-variable"
 
 Config::Config(int argc, char *argv[])
 : m_self(basename(argv[0]))
@@ -26,17 +27,7 @@ Config::Config(int argc, char *argv[])
 		}).doc("Enable verbose output"),
 		clipp::option("--debug").call([]{
 			spdlog::set_level(spdlog::level::trace);
-		}).doc("Enable debug output"),
-		clipp::option("-i", "--interval").doc("Interval in seconds")
-		& clipp::value("seconds").call([&](const char *txt){
-			auto len = strlen(txt);
-			auto [_,ec] = std::from_chars(txt, txt+len, m_interval);
-			if (ec != std::errc{}) {
-				spdlog::error("failed to parse '{}': {}",
-					txt, std::make_error_code(ec).message());
-				std::exit(1);
-			}
-		})
+		}).doc("Enable debug output")
 	);
 
 	auto cli_output = (
@@ -53,47 +44,55 @@ Config::Config(int argc, char *argv[])
 	};
 
 	auto cli = (
-		cli_head |
-		cli_output,
-		clipp::repeatable(
-			/* select a plot type */
+		cli_head | (
+			cli_output,
+			clipp::repeatable(
+				/* select a plot type */
 
-			clipp::command("scatter")
-				.call([&]() { start_input(BLOT_SCATTER); })
-				.doc("Add a scatter plot") |
-			clipp::command("line")
-				.call([&]() { start_input(BLOT_LINE); })
-				.doc("Add a line/curve plot") |
-			clipp::command("bar")
-				.call([&]() { start_input(BLOT_BAR); })
-				.doc("Add a bar plot"),
+				clipp::command("scatter")
+					.call([&]() { start_input(BLOT_SCATTER); })
+					.doc("Add a scatter plot") |
+				clipp::command("line")
+					.call([&]() { start_input(BLOT_LINE); })
+					.doc("Add a line/curve plot") |
+				clipp::command("bar")
+					.call([&]() { start_input(BLOT_BAR); })
+					.doc("Add a bar plot"),
 
-			/* augment this plots characteristics */
+				/* augment this plots characteristics */
 
-			clipp::option("-c", "--color").doc("Set plot color")
-			& clipp::value("color")
-				.call([&](const char *c) { m_inputs.back().set_color(c); }),
+				clipp::option("-c", "--color").doc("Set plot color (1..255)")
+				& clipp::value("color")
+					.call([&](const char *txt) { m_inputs.back().set_color(txt); }),
+				clipp::option("-i", "--interval").doc("Set interval in seconds")
+				& clipp::value("seconds")
+					.call([&](const char *txt) { m_inputs.back().set_interval(txt); }),
 
-			/* source data from file or command */
+				/* source data from file or command */
 
-			clipp::option("-r", "--read").doc("Read file to the end")
-			& clipp::value("file")
-				.call([&](const char *f) { m_inputs.back().set_source(Input::READ, f); })
-			|
-			clipp::option("-f", "--follow").doc("Read file waiting for more")
-			& clipp::value("file")
-				.call([&](const char *f) { m_inputs.back().set_source(Input::FOLLOW, f); })
-			|
-			clipp::option("-x", "--exec").doc("Run command, one value per line")
-			& clipp::value("command")
-				.call([&](const char *x) { m_inputs.back().set_source(Input::EXEC, x); })
-			|
-			clipp::option("-w", "--watch").doc("Run command, one value per call")
-			& clipp::value("command")
-				.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); })
+				clipp::option("-r", "--read").doc("Read file to the end, each line is a record")
+				& clipp::value("file")
+					.call([&](const char *f) { m_inputs.back().set_source(Input::READ, f); })
+				|
+				clipp::option("-f", "--follow").doc("Read file waiting for more, each line is a record")
+				& clipp::value("file")
+					.call([&](const char *f) { m_inputs.back().set_source(Input::FOLLOW, f); })
+				|
+				clipp::option("-p", "--poll").doc("Read file at interval, each read is one record")
+				& clipp::value("file")
+					.call([&](const char *f) { m_inputs.back().set_source(Input::POLL, f); })
+				|
+				clipp::option("-x", "--exec").doc("Run command, each line is a record")
+				& clipp::value("command")
+					.call([&](const char *x) { m_inputs.back().set_source(Input::EXEC, x); })
+				|
+				clipp::option("-w", "--watch").doc("Run command at interval, each read is one record")
+				& clipp::value("command")
+					.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); })
 
-		),
-		cli_wrong
+			),
+			cli_wrong
+		)
 	);
 
 	if(!parse(argc, argv, cli) || wrong.size()) {
@@ -146,3 +145,88 @@ Config::Config(int argc, char *argv[])
 		}
 	}
 }
+
+void Input::set_source (Input::Source source, const std::string &details)
+{
+	if (m_source != NONE || m_details.size()) {
+		spdlog::error("Input source being set twice");
+		std::exit(1);
+	}
+	m_source = source;
+	m_details = details;
+}
+
+void Input::set_color (const std::string &txt)
+{
+	unsigned number;
+	auto [_,ec] = std::from_chars(txt.data(), txt.data()+txt.size(), number);
+	if (ec != std::errc{}) {
+		spdlog::error("failed to parse color from '{}': {}",
+			txt, std::make_error_code(ec).message());
+		std::exit(1);
+	}
+	if (number < 1 || number > 255) {
+		spdlog::error("color {} is not valid", txt);
+		std::exit(1);
+	}
+	m_plot_color = number;
+}
+
+void Input::set_interval (const std::string &txt)
+{
+	auto [_,ec] = std::from_chars(txt.data(), txt.data()+txt.size(), m_interval);
+	if (ec != std::errc{}) {
+		spdlog::error("failed to parse interval from '{}': {}",
+			txt, std::make_error_code(ec).message());
+		std::exit(1);
+	}
+}
+
+Input::operator bool() const
+{
+	switch (m_plot_type) {
+		case BLOT_SCATTER:
+		case BLOT_LINE:
+		case BLOT_BAR:
+			break;
+		default:
+			spdlog::warn("invalid plot type: {}", (int)m_plot_type);
+			return false;
+	}
+	bool need_interval = false;
+	switch (m_source) {
+		case NONE:
+			spdlog::warn("{} plot does not defined an input (file or command)",
+				blot_plot_type_to_string(m_plot_type));
+			return false;
+		case READ:
+		case FOLLOW:
+		case EXEC:
+			break;
+		case POLL:
+		case WATCH:
+			need_interval = true;
+			break;
+		default:
+			spdlog::warn("{} plot has invalid type: {}",
+				blot_plot_type_to_string(m_plot_type), (int)m_source);
+			return false;
+	}
+	if (need_interval && !m_interval) {
+		spdlog::warn("{} plot has zero {} interval",
+			blot_plot_type_to_string(m_plot_type), source_name());
+		return false;
+	} else if (!need_interval && m_interval) {
+		spdlog::warn("{} plot has non-zero {} interval (%f)",
+			blot_plot_type_to_string(m_plot_type), source_name(), m_interval);
+		return false;
+	}
+	if (!std::any_of(m_details.begin(), m_details.end(), [](auto c){ return !std::isspace(c); })) {
+		spdlog::warn("{} plot has empty {} argument '{}'",
+			blot_plot_type_to_string(m_plot_type), source_name(), m_details);
+		return false;
+	}
+
+	return true;
+}
+

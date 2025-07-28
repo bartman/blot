@@ -8,12 +8,20 @@
 #include "spdlog/spdlog.h"
 
 struct Input final {
-	enum Source {NONE,READ,FOLLOW,EXEC,WATCH};
+	enum Source {
+		NONE,		// not yet initialized
+		READ,		// read from a file, each line is an entry
+		FOLLOW,		// like READ, but wait for more data
+		POLL,		// read a file repetitively at interval, each read is an entry
+		EXEC,		// run program, read from stdout, each line is an entry
+		WATCH		// run program repetitively at interval, each run is one entry
+	};
 
 	blot_plot_type m_plot_type;
 	Source m_source;
 	std::string m_details;
 	blot_color m_plot_color{9};
+	double m_interval{0};
 
 	explicit Input(blot_plot_type plot_type) : m_plot_type(plot_type) {}
 	~Input() {}
@@ -32,44 +40,19 @@ struct Input final {
 		}
 	}
 
-	operator bool() const {
-		switch (m_plot_type) {
-			case BLOT_SCATTER:
-			case BLOT_LINE:
-			case BLOT_BAR:
-				break;
-			default:
-				spdlog::warn("invalid plot type: {}", (int)m_plot_type);
-				return false;
-		}
-		if (m_source == NONE) {
-			spdlog::warn("{} plot does not defined an input (file or command)",
-				blot_plot_type_to_string(m_plot_type));
-			return false;
-		}
-		if (m_details.empty()) {
-			spdlog::warn("{} plot has empty {} argument",
-				blot_plot_type_to_string(m_plot_type), source_name());
-			return false;
-		}
+	/* validate if the configuration looks sane */
+	operator bool() const;
 
-		return true;
-	}
+	void set_source (Input::Source source, const std::string &details);
+	void set_color (const std::string &txt);
+	void set_interval (const std::string &txt);
 
-	void set_source (Input::Source source, const std::string &details) {
-		m_source = source;
-		m_details = details;
-	};
-	void set_color (const std::string &c) {
-		m_plot_color = std::strtol(c.c_str(), NULL, 10);
-	};
 };
 
 struct Config {
 	const char *m_self{};
 	enum output_type { ASCII, UNICODE, BRAILLE } m_output_type;
 	std::vector<Input> m_inputs;
-	double m_interval{0};
 
 	Config(int argc, char *argv[]);
 	~Config() {}
