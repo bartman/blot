@@ -17,9 +17,9 @@ struct Input final {
 		WATCH		// run program repetitively at interval, each run is one entry
 	};
 
-	blot_plot_type m_plot_type;
-	Source m_source;
-	std::string m_details;
+	blot_plot_type m_plot_type{BLOT_LINE};
+	Source m_source{NONE};
+	std::string m_details{};
 	blot_color m_plot_color{9};
 	double m_interval{0};
 

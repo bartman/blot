@@ -158,7 +158,8 @@ Config::Config(int argc, char *argv[])
 void Input::set_source (Input::Source source, const std::string &details)
 {
 	if (m_source != NONE || m_details.size()) {
-		spdlog::error("Input source being set twice");
+		spdlog::error("Input source being set twice, m_source={}/{}, m_details='{}'",
+			int(m_source), source_name(), m_details);
 		std::exit(1);
 	}
 	m_source = source;
