@@ -143,15 +143,15 @@ Config::Config(int argc, char *argv[])
 			.doc_column(doc_start)
 			.last_column(term.cols);
 		std::cout << clipp::make_man_page(cli, m_self, fmt)
-			.append_section("EXAMPE",
+			.append_section("EXAMPLES",
 		   "\n"
 		   "    blot --braille \\\n"
-		   "        line    --color 10 --read x_y1_values \\\n"
-		   "        scatter --color 11 --read x_y2_values\n"
+		   "        line    --color 10 --read x_y1_values -p 1,2 \\\n"
+		   "        scatter --color 11 --read x_y2_values -p 1,2\n"
 		   "\n"
 		   "    blot --braille \\\n"
-		   "        line    --color 10 --exec 'seq 1 100' \\\n"
-		   "        scatter --color 11 --read x_y_values\n"
+		   "        scatter --color 11 --read y_values \\\n"
+		   "        line    --color 10 --exec 'seq 1 100'\n"
 		   "\n"
 		   "    blot --braille \\\n"
 		   "        line --poll /proc/loadavg --position 1 \\\n"
