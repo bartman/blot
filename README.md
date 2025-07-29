@@ -1,29 +1,30 @@
 # blot
 
-Blot is a plotting library written in C (with a C++ wrapper), that plots data onto a string buffer.
+Blot is a plotting library written in C, that plots data onto a string buffer.
 
 That's right, there are no images, just text -- see examples below.
+
+There is a C++ wrapper provided, as well as a CLI tool.
 
 Site: [bartman.github.io/blot](https://bartman.github.io/blot/)
 
 GitHub: [github.com/bartman/blot](https://github.com/bartman/blot/)
 
-Copyright © 2021 Bart Trojanowski
+Copyright © 2021-2025 Bart Trojanowski
 
 Licensed under LGPL v2.1, or any later version.
 
 
 ## Noteworthy features
 
-  * plots to the console as text (by calling `puts()`)
+  * plots to the console as text (by calling `puts()`/`printf()`)
   * very very fast (compared to python alternatives)
   * very very memory usage friendly
   * can plot multiple datasets on one canvas
   * uses familiar figure based API (similar to existing python plotting frameworks)
   * supports braille plotting (like [plotille](https://github.com/tammoippen/plotille))
-  * 256 colour support
   * data arrays can be provided in various types (`int16`, `int32`, `int64`, `double`, or `float`)
-  * there is a C++ wrapper, for convenience
+  * there is a C++ wrapper, with limited features, for convenience
   * there is a CLI tool that can plot from files or using output of commands
 
 ## Prerequisites
@@ -47,11 +48,14 @@ You can build debug (with `ASAN`) using
 
     make TYPE=Debug
 
+Run `make help` for a full list.
+
 ## blot CLI
 
 The easiest say to use `blot` is to use the CLI, which is able to read from files
 or launch programs, then plot the numbers it finds.
 
+See the online help for a full list of features...
 <details>
 <summary> ❯ blot --help </summary>
 
@@ -112,8 +116,8 @@ EXAMPE
 ```
 </details>
 
-You need to pick a plotting mode, there are 3 choices: `scatter`, `line`, and `bar`.
-You overlay multiple plots.
+First, pick a plotting mode, there are 3 choices: `scatter`, `line`, and `bar`.
+Multiple plots can be overlayed.
 
 Each plot needs to get data from a file or process, and there are 5 options:
 - `--read <file>` to read lines data from a file, stop at the end.
@@ -146,7 +150,7 @@ The values 1 and 2 are positions in each line where `blot` will find the X,Y coo
 
 ### plot numbers from a log file (follow file mode)
 
-Let's say that we have a lot file, where we can find some magnitude values.
+Let's say that we have a log file, with some magnitude values.
 Let's just make something up with a script...
 ```sh
 #!/usr/bin/env bash
@@ -161,6 +165,8 @@ While the above is running, we can plot the data being generated...
 ```
 The file contains only one number per line, and `blot` will use the line number as the Y coordinate.
 ![blot line --follow](images/blot-line-follow.png)
+
+Plot will update continuously, until `Ctrl-C` is used to stop.
 
 ### plot the system load (poll file mode)
 
@@ -194,8 +200,8 @@ blot --timing line --watch 'nvidia-smi --id=0 -q | grep -m1 "Average Power Draw"
 
 ## Source code examples
 
-`blot` is being used in other projects as a library, but it comes with some
-examples.
+`blot` is being used in other projects as a library, and it comes with many
+examples for the C and C++ usage.
 
 Generated from [simple.c](examples/c/c-simple.c) (see also [simple.cpp](examples/cpp/cpp-simple.cpp) for C++ wrapper usage)
 
@@ -217,6 +223,7 @@ Generated from [trig.c](examples/c/c-trig.c) (see also [trig.cpp](examples/cpp/c
   * improve axis line and numbering (currently not very accurate)
   * add axis labels and minor ticks (configurable)
   * draw origin lines and minor tick lines (configurable)
+  * better 256 colour support
 
 ### Ideas:
 
