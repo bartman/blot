@@ -127,4 +127,5 @@ int main(int argc, char *argv[])
 	}
 
 	plotter.plot();
+	std::puts("");
 }
