@@ -84,3 +84,5 @@
 #if !__has_builtin(__builtin_constant_p)
 #define __builtin_constant_p(x) (0)
 #endif
+
+BLOT_EXTERN unsigned blot_env_to_uint(const char *name, unsigned dflt);
