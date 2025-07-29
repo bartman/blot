@@ -204,7 +204,6 @@ void Input::set_source (Input::Source source, const std::string &details)
 
 void Input::set_position (const std::string &txt)
 {
-
 	auto result = std::views::split(txt, ',')
 		| std::views::transform([](auto&& sr) {
 			std::string_view sv{sr.begin(), sr.end()};
@@ -220,8 +219,6 @@ void Input::set_position (const std::string &txt)
 		});
 
 	std::vector<unsigned> positions(result.begin(), result.end());
-
-	printf("got %zu positions\n", positions.size());
 
 	switch (positions.size()) {
 		case 1:
