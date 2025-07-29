@@ -67,7 +67,7 @@ protected:
 		if (!y_position || y_position == pos) {
 			auto [yvalue, _] = __parse<Y>(text, end);
 
-			return ParseResult<X,Y>(line, yvalue);
+			return ParseResult<X,Y>{X(line), yvalue};
 		}
 
 		return {};
@@ -113,7 +113,7 @@ protected:
 			}
 
 			if (have == 2)
-				return ParseResult<X,Y>(xvalue, yvalue);
+				return ParseResult<X,Y>{xvalue, yvalue};
 
 			if (!next)
 				next = __skip_over(text, end);
@@ -146,7 +146,7 @@ protected:
 				const char *end = start + matches.length(1);
 				auto [value, _] = __parse<Y>(start, end);
 
-				return ParseResult<X,Y>(line, value);
+				return ParseResult<X,Y>{X(line), value};
 			}
 			default: {
 				const char *xstart = text + matches.position(1);
@@ -157,7 +157,7 @@ protected:
 				const char *yend = ystart + matches.length(1);
 				auto [yvalue, _2] = __parse<Y>(ystart, yend);
 
-				return ParseResult<X,Y>(xvalue, yvalue);
+				return ParseResult<X,Y>{xvalue, yvalue};
 			}
 		}
 	}
