@@ -97,7 +97,8 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 				  blot_canvas *const*cans,
 				  GError **error)
 {
-	bool reset_after = false;
+	const int PREV_COLOR_UNUSED = -1;
+	int prev_color = PREV_COLOR_UNUSED;
 	wchar_t *p = scr->data + scr->data_used,
 		 *end = scr->data + scr->data_size;
 	int len;
@@ -144,11 +145,13 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 
 		/* apply Y-axis color */
 
-		const char *colstr = fg(y_axs->color);
-		len = swprintf(p, end-p, L"%s", colstr);
-		RETURN_ERROR(len<0, false, error, "swprintf");
-		p += len;
-		reset_after = true;
+		if (!(scr->flags & BLOT_RENDER_NO_COLOR) && prev_color != y_axs->color) {
+			const char *colstr = fg(y_axs->color);
+			len = swprintf(p, end-p, L"%s", colstr);
+			RETURN_ERROR(len<0, false, error, "swprintf");
+			p += len;
+			prev_color = y_axs->color;
+		}
 
 		/* the next dsp_lft characters are the Y-axis label + line */
 
@@ -191,12 +194,12 @@ plot_cells:
 			}
 
 			if (top_cell) {
-				if (!(scr->flags & BLOT_RENDER_NO_COLOR)) {
+				if (!(scr->flags & BLOT_RENDER_NO_COLOR) && prev_color != top_col) {
 					const char *colstr = fg(top_col);
 					len = swprintf(p, end-p, L"%s", colstr);
 					RETURN_ERROR(len<0, false, error, "swprintf");
 					p += len;
-					reset_after = true;
+					prev_color = top_col;
 				}
 				wch = top_cell;
 			}
@@ -206,11 +209,11 @@ skip_cell:
 			g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
 		}
 
-		if (reset_after) {
+		if (prev_color != PREV_COLOR_UNUSED) {
 			len = swprintf(p, end-p, L"%s", COL_RESET);
 			RETURN_ERROR(len<0, false, error, "swprintf");
 			p += len;
-			reset_after = false;
+			prev_color = PREV_COLOR_UNUSED;
 		}
 
 		*(p++) = L'\n';
@@ -222,11 +225,13 @@ skip_cell:
 		if (!draw_x_axis)
 			goto done_bot_line;
 
-		const char *colstr = fg(x_axs->color);
-		len = swprintf(p, end-p, L"%s", colstr);
-		RETURN_ERROR(len<0, false, error, "swprintf");
-		p += len;
-		reset_after = true;
+		if (!(scr->flags & BLOT_RENDER_NO_COLOR) && prev_color != x_axs->color) {
+			const char *colstr = fg(x_axs->color);
+			len = swprintf(p, end-p, L"%s", colstr);
+			RETURN_ERROR(len<0, false, error, "swprintf");
+			p += len;
+			prev_color = x_axs->color;
+		}
 
 		if (s_y == dsp_bot) {
 			/* this line is the X-axis line */
@@ -275,11 +280,11 @@ skip_cell:
 		}
 
 done_bot_line:
-		if (reset_after) {
+		if (prev_color != PREV_COLOR_UNUSED) {
 			len = swprintf(p, end-p, L"%s", COL_RESET);
 			RETURN_ERROR(len<0, false, error, "swprintf");
 			p += len;
-			reset_after = false;
+			prev_color = PREV_COLOR_UNUSED;
 		}
 
 		*(p++) = L'\n';
