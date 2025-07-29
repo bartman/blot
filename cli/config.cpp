@@ -204,6 +204,8 @@ void Input::set_source (Input::Source source, const std::string &details)
 
 void Input::set_position (const std::string &txt)
 {
+	/* ranges and views are fun, but not all standard libraries support it */
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L && defined(__GLIBCXX__) && __GLIBCXX__ >= 20230601
 	auto result = std::views::split(txt, ',')
 		| std::views::transform([](auto&& sr) {
 			std::string_view sv{sr.begin(), sr.end()};
@@ -229,9 +231,49 @@ void Input::set_position (const std::string &txt)
 			break;
 		default:
 			spdlog::error("unexpected count ({}) of positions found in '{}'",
+		 positions.size(), txt);
+			std::exit(1);
+	}
+#else
+	std::vector<unsigned> positions;
+	std::string_view sv = txt;
+	size_t start = 0;
+
+	while (true) {
+		size_t comma_pos = sv.find(',', start);
+		std::string_view part = (comma_pos == std::string_view::npos)
+			? sv.substr(start)
+			: sv.substr(start, comma_pos - start);
+
+		unsigned number;
+		auto [ptr, ec] = std::from_chars(part.begin(), part.end(), number);
+		if (ec != std::errc{}) {
+			spdlog::error("failed to parse position from '{}': {}",
+				part, std::make_error_code(ec).message());
+			std::exit(1);
+		}
+		positions.push_back(number);
+
+		if (comma_pos == std::string_view::npos) {
+			break;
+		}
+		start = comma_pos + 1;
+	}
+
+	switch (positions.size()) {
+		case 1:
+			m_extract.set(positions[0]);
+			break;
+		case 2:
+			m_extract.set(std::pair<unsigned, unsigned>{positions[0], positions[1]});
+			break;
+		default:
+			spdlog::error("unexpected count ({}) of positions found in '{}'",
 				positions.size(), txt);
 			std::exit(1);
 	}
+
+#endif
 }
 
 void Input::set_regex (const std::string &txt)
