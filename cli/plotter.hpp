@@ -14,6 +14,7 @@ protected:
 		std::vector<Y> m_ys;
 	};
 	std::vector<Data> m_data;
+	size_t m_count{};
 
 	const Config &m_config;
 	size_t m_max_layers{};
@@ -39,7 +40,10 @@ public:
 	void add(size_t layer, X x, Y y) {
 		m_data[layer].m_xs.push_back(x);
 		m_data[layer].m_ys.push_back(y);
+		m_count ++;
 	}
+
+	bool have_data() const { return m_count > 0; }
 
 	void plot() {
 

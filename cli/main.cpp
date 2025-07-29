@@ -52,8 +52,6 @@ int main(int argc, char *argv[])
 
 	while(keep_going()) {
 
-		bool have_data = false;
-
 		for (size_t i=0; i<readers.size(); i++) {
 			if (signaled)
 				return 1;
@@ -75,12 +73,10 @@ int main(int argc, char *argv[])
 					spdlog::error("failed to parse value from source {} line {} '{}'", i, line->number, line->text);
 					std::exit(1);
 				case 1:
-					have_data = true;
 					plotter.add(i, line->number, result.array[0]);
 					break;
 				case 2:
 				default:
-					have_data = true;
 					plotter.add(i, result.array[0], result.array[1]);
 					break;
 			}
@@ -113,7 +109,7 @@ int main(int argc, char *argv[])
 			sleep_after_seconds = idle;
 		}
 
-		if (do_show_plot && have_data)
+		if (do_show_plot && plotter.have_data())
 			plotter.plot();
 
 		if (double useconds = sleep_after_seconds * 1000000) {

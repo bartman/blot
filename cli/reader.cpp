@@ -181,6 +181,9 @@ public:
 
 // used by Input::EXEC
 class ExecStreamReader : public Reader {
+	static constexpr const size_t g_reserve_space = 4096;
+	static constexpr const size_t g_read_chunk = 4096;
+
 	std::string m_command;
 	FILE* m_pipe = nullptr;
 	int m_fd = -1;
@@ -203,6 +206,8 @@ public:
 			spdlog::error("failed to set non-blocking mode for command '{}': {}", m_command, std::strerror(errno));
 			std::exit(1);
 		}
+
+		m_buffer.reserve(g_reserve_space);
 	}
 
 	~ExecStreamReader() override {
@@ -235,7 +240,7 @@ public:
 			}
 
 			// Read more data non-blockingly
-			char buf[4096];
+			char buf[g_read_chunk];
 			ssize_t bytes_read = read(m_fd, buf, sizeof(buf));
 			if (bytes_read > 0) {
 				m_buffer.append(buf, bytes_read);
