@@ -23,6 +23,7 @@ bool blot_terminal_set_size(blot_dimensions dims, GError **error)
 	return true;
 }
 
+
 // caller should call blot_terminal_set_size() if the terminal size cannot be determine
 bool blot_terminal_get_size(blot_dimensions *dims, GError **error)
 {
@@ -30,6 +31,14 @@ bool blot_terminal_get_size(blot_dimensions *dims, GError **error)
 
 	if (blot_fixed_dims.cols && blot_fixed_dims.rows) {
 		*dims = blot_fixed_dims;
+		return true;
+	}
+
+	dims->cols = blot_env_to_uint("COLUMNS", 0);
+	dims->rows = blot_env_to_uint("LINES", 0);
+
+	if (dims->cols && dims->rows) {
+		blot_fixed_dims = *dims;
 		return true;
 	}
 

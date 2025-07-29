@@ -6,6 +6,7 @@
 #include "blot_error.h"
 #include "blot_figure.h"
 #include "blot_layer.h"
+#include "blot_names.h"
 #include "blot_screen.h"
 #include "blot_terminal.h"
 #include "blot_time.h"

@@ -74,6 +74,7 @@ typedef enum blot_render_flags {
 	BLOT_RENDER_LEGEND_BELOW        = 0x00000040,
 	BLOT_RENDER_NO_X_AXIS           = 0x00000080,
 	BLOT_RENDER_NO_Y_AXIS           = 0x00000100,
+	BLOT_RENDER_LEGEND_DETAILS      = 0x00000200,
 } blot_render_flags;
 DEFINE_ENUM_OPERATORS_FOR(blot_render_flags)
 
