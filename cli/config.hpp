@@ -84,6 +84,7 @@ protected:
 	const static blot_color m_first_color{9};
 	std::vector<Input> m_inputs;
 	bool m_using_interval{};
+	bool m_timing{};
 
 public:
 	explicit Config(int argc, char *argv[]);
@@ -102,6 +103,8 @@ public:
 
 	const Input& input(size_t n) const { return m_inputs.at(n); }
 	Input& input(size_t n) { return m_inputs.at(n); }
+
+	bool timing() const { return m_timing; }
 };
 
 

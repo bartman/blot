@@ -96,7 +96,8 @@ int main(int argc, char *argv[])
 			// as it will complete the sleep even if SIGINT is raised.
 
 			double useconds = idle * 1000000;
-			usleep(useconds);
+			if (useconds)
+				usleep(useconds);
 		}
 	}
 

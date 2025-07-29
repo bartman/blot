@@ -27,7 +27,8 @@ Config::Config(int argc, char *argv[])
 		}).doc("Enable verbose output"),
 		clipp::option("--debug").call([]{
 			spdlog::set_level(spdlog::level::trace);
-		}).doc("Enable debug output")
+		}).doc("Enable debug output"),
+		clipp::option("--timing").set(m_timing).doc("Show timing statitiscs")
 	);
 
 	auto cli_output = "Output:" % (

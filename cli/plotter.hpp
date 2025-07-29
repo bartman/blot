@@ -19,6 +19,16 @@ protected:
 	size_t m_max_layers{};
 	size_t m_data_history{};
 
+	struct {
+		size_t count{};
+		double init{};
+		double add{};
+		double render{};
+		double print{};
+		double total{};
+	} m_stats;
+
+
 public:
 	explicit Plotter(const Config &config)
 	: m_config(config), m_max_layers(m_config.inputs())
@@ -31,9 +41,13 @@ public:
 		m_data[layer].m_ys.push_back(y);
 	}
 
-	void plot() const {
+	void plot() {
 
 		setlocale(LC_CTYPE, "");
+
+		bool timing = m_config.timing();
+
+		double t_start = timing ? blot_double_time() : 0;
 
 		Blot::Figure fig;
 		fig.set_axis_color(8);
@@ -43,6 +57,8 @@ public:
 		fig.set_screen_size(term.cols, term.rows/2);
 		#endif
 
+		double t_init = timing ? blot_double_time() : 0;
+
 		for (size_t i=0; i<m_data.size(); i++) {
 			const auto &data = m_data[i];
 			const auto &input = m_config.input(i);
@@ -50,6 +66,8 @@ public:
 			fig.plot(input.plot_type(), data.m_xs, data.m_ys,
 				input.plot_color(), input.details());
 		}
+
+		double t_add = timing ? blot_double_time() : 0;
 
 		blot_render_flags flags
 			= BLOT_RENDER_BRAILLE
@@ -59,6 +77,8 @@ public:
 
 		Blot::Screen scr = fig.render(flags);
 
+		double t_render = timing ? blot_double_time() : 0;
+
 		gsize txt_size = 0;
 		const wchar_t *txt = scr.get_text(txt_size);
 
@@ -66,5 +86,24 @@ public:
 
 		printf("%ls\n", txt);
 		fflush(stdout);
+
+		double t_print = timing ? blot_double_time() : 0;
+
+		if (timing) {
+			m_stats.count ++;
+			m_stats.init   += t_init   - t_start;
+			m_stats.add    += t_add    - t_init;
+			m_stats.render += t_render - t_add;
+			m_stats.print  += t_print  - t_render;
+			m_stats.total  += t_print  - t_start;
+
+			fmt::println("time: count={} init={:.6f} add={:.6f} render={:.6f} print={:.6f} [{:.6f}]",
+				m_stats.count,
+				m_stats.init / m_stats.count,
+				m_stats.add / m_stats.count,
+				m_stats.render / m_stats.count,
+				m_stats.print / m_stats.count,
+				m_stats.total / m_stats.count);
+		}
 	}
 };
