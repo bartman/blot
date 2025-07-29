@@ -272,19 +272,24 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 
 		/* add 3 digits of precision */
 		mrg.left += 4;
-
-		// Ensure margins don't exceed dimensions
-		mrg.left = min_t(unsigned, mrg.left, dim->cols / 2);
-		mrg.bottom = min_t(unsigned, mrg.bottom, dim->rows / 2);
-		mrg.right = min_t(unsigned, mrg.right, dim->cols / 2);
-		mrg.top = min_t(unsigned, mrg.top, dim->rows / 2);
 	}
 
+	if (flags & BLOT_RENDER_LEGEND_ABOVE)
+		mrg.top += fig->layer_count;
+	if (flags & BLOT_RENDER_LEGEND_BELOW)
+		mrg.top += fig->layer_count;
+
 #if 0
-	/* for testing only */
+	/* don't use the top or right edge */
 	mrg.right += 1;
 	mrg.top += 1;
 #endif
+
+	// Ensure margins don't exceed dimensions
+	mrg.left = min_t(unsigned, mrg.left, dim->cols / 2);
+	mrg.bottom = min_t(unsigned, mrg.bottom, dim->rows / 2);
+	mrg.right = min_t(unsigned, mrg.right, dim->cols / 2);
+	mrg.top = min_t(unsigned, mrg.top, dim->rows / 2);
 
 	return mrg;
 }
