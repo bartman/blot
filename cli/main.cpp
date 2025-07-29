@@ -48,6 +48,8 @@ int main(int argc, char *argv[])
 
 	Plotter<double,double> plotter(config);
 
+	double next_display = 0;
+
 	while(keep_going()) {
 
 		for (size_t i=0; i<readers.size(); i++) {
@@ -84,20 +86,38 @@ int main(int argc, char *argv[])
 		if (signaled)
 			return 1;
 
+		bool do_show_plot = false;
+		double sleep_after_seconds = 0;
+
+		/* display periodically */
+
+		if (double interval = config.display_interval()) {
+			double now = blot_double_time();
+			if (now > next_display) {
+				next_display = now + interval;
+				do_show_plot = true;
+			}
+		}
+
 		/* wait for the next time we have data */
 
 		auto idle_view = readers | std::views::transform([](const auto& reader) { return reader->idle(); });
 		double idle = std::ranges::min(idle_view);
 
 		if (idle > 0) {
+			do_show_plot = true;
+			sleep_after_seconds = idle;
+		}
+
+		if (do_show_plot)
 			plotter.plot();
+
+		if (double useconds = sleep_after_seconds * 1000000) {
 
 			// unfortunately std::this_thread::sleep_for() cannot be used,
 			// as it will complete the sleep even if SIGINT is raised.
 
-			double useconds = idle * 1000000;
-			if (useconds)
-				usleep(useconds);
+			usleep(useconds);
 		}
 	}
 

@@ -28,7 +28,10 @@ Config::Config(int argc, char *argv[])
 		clipp::option("--debug").call([]{
 			spdlog::set_level(spdlog::level::trace);
 		}).doc("Enable debug output"),
-		clipp::option("--timing").set(m_timing).doc("Show timing statitiscs")
+		clipp::option("--timing").set(m_show_timing).doc("Show timing statitiscs"),
+		clipp::option("-i", "--interval").doc("Display interval in seconds")
+		& clipp::value("seconds")
+			.call([&](const char *txt) { m_display_interval = txt; })
 	);
 
 	auto cli_output = "Output:" % (
@@ -66,49 +69,47 @@ Config::Config(int argc, char *argv[])
 						.doc("Add a bar plot")
 				),
 
-				/* modifiers - no heading because there is a --help bug in clipp */
-
-				one_of(
+				"Plot data source:" % one_of(
 					/* source data from file or command */
 
-					clipp::option("-R", "--read").doc("Read file to the end, each line is a record")
-					& clipp::value("file")
-						.call([&](const char *f) { m_inputs.back().set_source(Input::READ, f); }),
-					clipp::option("-F", "--follow").doc("Read file waiting for more, each line is a record")
-					& clipp::value("file")
-						.call([&](const char *f) { m_inputs.back().set_source(Input::FOLLOW, f); }),
-					clipp::option("-P", "--poll").doc("Read file at interval, each read is one record")
-					& clipp::value("file")
-						.call([&](const char *f) { m_inputs.back().set_source(Input::POLL, f); }),
-					clipp::option("-X", "--exec").doc("Run command, each line is a record")
-					& clipp::value("command")
-						.call([&](const char *x) { m_inputs.back().set_source(Input::EXEC, x); }),
-					clipp::option("-W", "--watch").doc("Run command at interval, each read is one record")
-					& clipp::value("command")
-						.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); })
+					(clipp::option("-R", "--read") & clipp::value("file")
+						.call([&](const char *f) { m_inputs.back().set_source(Input::READ, f); }))
+						.doc("Read file to the end, each line is a record"),
+					(clipp::option("-F", "--follow") & clipp::value("file")
+						.call([&](const char *f) { m_inputs.back().set_source(Input::FOLLOW, f); }))
+						.doc("Read file waiting for more, each line is a record"),
+					(clipp::option("-P", "--poll") & clipp::value("file")
+						.call([&](const char *f) { m_inputs.back().set_source(Input::POLL, f); }))
+						.doc("Read file at interval, each read is one record"),
+					(clipp::option("-X", "--exec") & clipp::value("command")
+						.call([&](const char *x) { m_inputs.back().set_source(Input::EXEC, x); }))
+						.doc("Run command, each line is a record"),
+					(clipp::option("-W", "--watch") & clipp::value("command")
+						.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); }))
+						.doc("Run command at interval, each read is one record")
 				),
 
-				(
+				"Data source parsing:" % (
 					/* how to extract values from lines */
 
-					clipp::option("-p", "--position").doc("Use the Nth number from input line")
-					& clipp::value("number")
-						.call([&](const char *txt) { m_inputs.back().set_position(txt); }),
-					clipp::option("-r", "--regex").doc("Regex to match numbers from input line")
-					& clipp::value("regex")
-						.call([&](const char *txt) { m_inputs.back().set_regex(txt); })
+					(clipp::option("-p", "--position") & clipp::value("number")
+						.call([&](const char *txt) { m_inputs.back().set_position(txt); }))
+						.doc("Use the Nth number from input line"),
+					(clipp::option("-r", "--regex") & clipp::value("regex")
+						.call([&](const char *txt) { m_inputs.back().set_regex(txt); }))
+						.doc("Regex to match numbers from input line")
 
 				),
 
-				(
+				"Plot modifiers:" % (
 					/* augment this plots characteristics */
 
-					clipp::option("-c", "--color").doc("Set plot color (1..255)")
-					& clipp::value("color")
-						.call([&](const char *txt) { m_inputs.back().set_color(txt); }),
-					clipp::option("-i", "--interval").doc("Set interval in seconds")
-					& clipp::value("seconds")
-						.call([&](const char *txt) { m_inputs.back().set_interval(txt); })
+					(clipp::option("-c", "--color") & clipp::value("color")
+						.call([&](const char *txt) { m_inputs.back().set_color(txt); }))
+						.doc("Set plot color (1..255)"),
+					(clipp::option("-i", "--interval") & clipp::value("seconds")
+						.call([&](const char *txt) { m_inputs.back().set_interval(txt); }))
+						.doc("Set sampling interval in seconds")
 				)
 
 			),
@@ -134,7 +135,7 @@ Config::Config(int argc, char *argv[])
 
 	if (show_help) {
 		Blot::Dimensions term;
-		unsigned doc_start = std::min(30u, term.cols/2);
+		unsigned doc_start = std::min(40u, term.cols/2);
 		auto fmt = clipp::doc_formatting{}
 			.indent_size(4)
 			.first_column(4)
@@ -186,7 +187,7 @@ Config::Config(int argc, char *argv[])
 		spdlog::error("cannot mix interval and non-interval sources");
 		std::exit(1);
 	}
-	m_using_interval = with_interval;
+	m_using_input_interval = with_interval;
 }
 
 void Input::set_source (Input::Source source, const std::string &details)

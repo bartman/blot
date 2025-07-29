@@ -45,7 +45,7 @@ public:
 
 		setlocale(LC_CTYPE, "");
 
-		bool timing = m_config.timing();
+		bool timing = m_config.show_timing();
 
 		double t_start = timing ? blot_double_time() : 0;
 
