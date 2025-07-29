@@ -51,7 +51,7 @@ protected:
 
 	template <typename X, typename Y>
 	static std::optional<ParseResult<X,Y>> parse_y_position(size_t line, const char *text, unsigned y_position) {
-		spdlog::trace("line={} text={} x_position={} y_position",
+		spdlog::trace("line={} text='{}' x_position={} y_position",
 				line, text, y_position);
 
 		const char *end = text+std::strlen(text);
@@ -76,7 +76,7 @@ protected:
 	template <typename X, typename Y>
 	static std::optional<ParseResult<X,Y>> parse_xy_position(const char *text, unsigned x_position, unsigned y_position) {
 
-		spdlog::trace("text={} x_position={} y_position",
+		spdlog::trace("text='{}' x_position={} y_position={}",
 				text, x_position, y_position);
 
 		const char *end = text+std::strlen(text);
@@ -96,20 +96,22 @@ protected:
 		Y yvalue{};
 		unsigned have = 0;
 
-		while (text < end && pos < last_position) {
+		while (text < end && pos <= last_position) {
 
 			const char *next = nullptr;
 
 			if (pos == x_position) {
-				auto [xvalue, xptr] = __parse<X>(text, end);
+				auto [val, ptr] = __parse<X>(text, end);
 				have ++;
-				next = xptr;
+				xvalue = val;
+				next = ptr;
 			}
 
 			if (pos == y_position) {
-				auto [yvalue, yptr] = __parse<Y>(text, end);
+				auto [val, ptr] = __parse<Y>(text, end);
 				have ++;
-				next = yptr;
+				yvalue = val;
+				next = ptr;
 			}
 
 			if (have == 2)
@@ -130,7 +132,7 @@ protected:
 
 		std::string str(text);
 
-		spdlog::trace("text={}", text);
+		spdlog::trace("line={} text='{}'", line, text);
 
 		std::smatch matches;
 		if (!std::regex_search(str, matches, re))

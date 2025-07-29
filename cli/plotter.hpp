@@ -76,8 +76,10 @@ public:
 		blot_render_flags flags
 			= BLOT_RENDER_BRAILLE
 			| BLOT_RENDER_LEGEND_BELOW
-			| BLOT_RENDER_CLEAR
-			| BLOT_RENDER_LEGEND_DETAILS;
+			| BLOT_RENDER_CLEAR;
+
+		if (timing)
+			flags = flags | BLOT_RENDER_LEGEND_DETAILS;
 
 		Blot::Screen scr = fig.render(flags);
 

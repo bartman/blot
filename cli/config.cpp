@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <charconv>
+#include <ranges>
 #include <system_error>
 
 #include "blot.hpp"
@@ -29,9 +30,9 @@ Config::Config(int argc, char *argv[])
 			spdlog::set_level(spdlog::level::trace);
 		}).doc("Enable debug output"),
 		clipp::option("--timing").set(m_show_timing).doc("Show timing statitiscs"),
-		clipp::option("-i", "--interval").doc("Display interval in seconds")
-		& clipp::value("seconds")
-			.call([&](const char *txt) { m_display_interval = txt; })
+		(clipp::option("-i", "--interval") & clipp::value("sec")
+			.call([&](const char *txt) { m_display_interval = txt; }))
+			.doc("Display interval in seconds")
 	);
 
 	auto cli_output = "Output:" % (
@@ -81,10 +82,10 @@ Config::Config(int argc, char *argv[])
 					(clipp::option("-P", "--poll") & clipp::value("file")
 						.call([&](const char *f) { m_inputs.back().set_source(Input::POLL, f); }))
 						.doc("Read file at interval, each read is one record"),
-					(clipp::option("-X", "--exec") & clipp::value("command")
+					(clipp::option("-X", "--exec") & clipp::value("cmd")
 						.call([&](const char *x) { m_inputs.back().set_source(Input::EXEC, x); }))
 						.doc("Run command, each line is a record"),
-					(clipp::option("-W", "--watch") & clipp::value("command")
+					(clipp::option("-W", "--watch") & clipp::value("cmd")
 						.call([&](const char *x) { m_inputs.back().set_source(Input::WATCH, x); }))
 						.doc("Run command at interval, each read is one record")
 				),
@@ -92,9 +93,9 @@ Config::Config(int argc, char *argv[])
 				"Data source parsing:" % (
 					/* how to extract values from lines */
 
-					(clipp::option("-p", "--position") & clipp::value("number")
+					(clipp::option("-p", "--position") & clipp::value("y-pos|x-pos,y-pos")
 						.call([&](const char *txt) { m_inputs.back().set_position(txt); }))
-						.doc("Use the Nth number from input line"),
+						.doc("Find numbers in input line, pick 1 or 2 positions for X and Y values"),
 					(clipp::option("-r", "--regex") & clipp::value("regex")
 						.call([&](const char *txt) { m_inputs.back().set_regex(txt); }))
 						.doc("Regex to match numbers from input line")
@@ -107,7 +108,7 @@ Config::Config(int argc, char *argv[])
 					(clipp::option("-c", "--color") & clipp::value("color")
 						.call([&](const char *txt) { m_inputs.back().set_color(txt); }))
 						.doc("Set plot color (1..255)"),
-					(clipp::option("-i", "--interval") & clipp::value("seconds")
+					(clipp::option("-i", "--interval") & clipp::value("sec")
 						.call([&](const char *txt) { m_inputs.back().set_interval(txt); }))
 						.doc("Set sampling interval in seconds")
 				)
@@ -135,7 +136,7 @@ Config::Config(int argc, char *argv[])
 
 	if (show_help) {
 		Blot::Dimensions term;
-		unsigned doc_start = std::min(40u, term.cols/2);
+		unsigned doc_start = std::min(32u, term.cols/2);
 		auto fmt = clipp::doc_formatting{}
 			.indent_size(4)
 			.first_column(4)
@@ -203,14 +204,37 @@ void Input::set_source (Input::Source source, const std::string &details)
 
 void Input::set_position (const std::string &txt)
 {
-	unsigned number;
-	auto [_,ec] = std::from_chars(txt.data(), txt.data()+txt.size(), number);
-	if (ec != std::errc{}) {
-		spdlog::error("failed to parse position from '{}': {}",
-			txt, std::make_error_code(ec).message());
-		std::exit(1);
+
+	auto result = std::views::split(txt, ',')
+		| std::views::transform([](auto&& sr) {
+			std::string_view sv{sr.begin(), sr.end()};
+
+			unsigned number;
+			auto [_,ec] = std::from_chars(sv.begin(), sv.end(), number);
+			if (ec != std::errc{}) {
+				spdlog::error("failed to parse position from '{}': {}",
+						sv, std::make_error_code(ec).message());
+				std::exit(1);
+			}
+			return number;
+		});
+
+	std::vector<unsigned> positions(result.begin(), result.end());
+
+	printf("got %zu positions\n", positions.size());
+
+	switch (positions.size()) {
+		case 1:
+			m_extract.set(positions[0]);
+			break;
+		case 2:
+			m_extract.set(std::pair<unsigned,unsigned>{positions[0], positions[1]});
+			break;
+		default:
+			spdlog::error("unexpected count ({}) of positions found in '{}'",
+				positions.size(), txt);
+			std::exit(1);
 	}
-	m_extract.set(number);
 }
 
 void Input::set_regex (const std::string &txt)
