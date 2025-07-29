@@ -74,9 +74,19 @@ public:
 		double t_add = timing ? blot_double_time() : 0;
 
 		blot_render_flags flags
-			= BLOT_RENDER_BRAILLE
-			| BLOT_RENDER_LEGEND_BELOW
+			= BLOT_RENDER_LEGEND_BELOW
 			| BLOT_RENDER_CLEAR;
+
+		switch (m_config.output_type()) {
+			case Config::ASCII:
+				flags = flags | BLOT_RENDER_NO_UNICODE;
+				break;
+			case Config::BRAILLE:
+				flags = flags | BLOT_RENDER_BRAILLE;
+				break;
+			default: // UNICODE
+				break;
+		}
 
 		if (timing)
 			flags = flags | BLOT_RENDER_LEGEND_DETAILS;

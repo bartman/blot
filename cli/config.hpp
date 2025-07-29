@@ -78,9 +78,12 @@ public:
 };
 
 class  Config final {
+public:
+	using OutputType = enum output_type { ASCII, UNICODE, BRAILLE };
+
 protected:
 	const char *m_self{};
-	enum output_type { ASCII, UNICODE, BRAILLE } m_output_type;
+	OutputType  m_output_type;
 	const static blot_color m_first_color{9};
 	std::vector<Input> m_inputs;
 	bool m_display_interval{1};
@@ -100,8 +103,9 @@ public:
 		}
 	}
 
-	size_t inputs() const { return m_inputs.size(); }
+	OutputType output_type() const { return m_output_type; }
 
+	size_t inputs() const { return m_inputs.size(); }
 	const Input& input(size_t n) const { return m_inputs.at(n); }
 	Input& input(size_t n) { return m_inputs.at(n); }
 
