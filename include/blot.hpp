@@ -13,8 +13,8 @@
 namespace Blot {
 
 /* the C code already allocated a "GError", this class just
- * carries it throught the exception mechanism, then cleans up. */
-class Exception final {
+ * carries it through the exception mechanism, then cleans up. */
+class Exception final : public std::exception {
 protected:
 	GError *m_error;
 public:
@@ -48,7 +48,10 @@ public:
 	operator bool() const { return m_error != nullptr; }
 	int code() const { return m_error ? m_error->code : 0; }
 	std::string str() const { if (m_error) return m_error->message; return {}; }
-	const char * c_str() const { return m_error ? m_error->message : nullptr; }
+
+	const char * what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW override {
+		return m_error ? m_error->message : nullptr;
+	}
 };
 
 
