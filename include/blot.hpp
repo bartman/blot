@@ -64,7 +64,7 @@ public:
 })
 #else
 #define BLOT_THROW(code,format,args...) \
-	throw Exception(g_error_new(G_UNIX_ERROR, code, "%s:%u:%s: " format, \
+	throw Blot::Exception(g_error_new(G_UNIX_ERROR, code, "%s:%u:%s: " format, \
 			     basename(__FILE__), __LINE__, __func__, ##args))
 #endif
 
