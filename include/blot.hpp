@@ -60,7 +60,7 @@ public:
 	GError *error = g_error_new(G_UNIX_ERROR, code, "%s:%u:%s: " format, \
 			     basename(__FILE__), __LINE__, __func__, ##args); \
 	std::cerr << error->message << std::endl; \
-	throw Exception(error); \
+	throw Blot::Exception(error); \
 })
 #else
 #define BLOT_THROW(code,format,args...) \
