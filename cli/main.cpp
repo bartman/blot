@@ -67,20 +67,15 @@ int main(int argc, char *argv[])
 
 			spdlog::trace("{}:{}: {}", input.details(), line->number, line->text);
 
-			auto result = input.extract().parse<double,2>(line->text.data());
-			switch (result.count) {
-				case 0:
-					spdlog::error("failed to parse value from source {} line {} '{}'", i, line->number, line->text);
-					std::exit(1);
-				case 1:
-					plotter.add(i, line->number, result.array[0]);
-					break;
-				case 2:
-				default:
-					plotter.add(i, result.array[0], result.array[1]);
-					break;
+			auto result = input.extract().parse<double,double>(line->number,
+						 line->text.data());
+			if (result.has_value()) {
+					plotter.add(i, result->x, result->y);
+			} else {
+				spdlog::error("failed to parse value from source {} line {} '{}'",
+					i, line->number, line->text);
+				std::exit(1);
 			}
-
 		}
 
 		if (signaled)
@@ -101,8 +96,18 @@ int main(int argc, char *argv[])
 
 		/* wait for the next time we have data */
 
+		#if 0
+		/* Debian 12 has an older standard library that cannot do this */
 		auto idle_view = readers | std::views::transform([](const auto& reader) { return reader->idle(); });
 		double idle = std::ranges::min(idle_view);
+		#else
+		double idle = 0;
+		for (size_t i=0; i<readers.size(); i++) {
+			const auto &reader = readers[i];
+			double reader_idle = reader->idle();
+			idle = i ? std::min(idle, reader_idle) : reader_idle;
+		}
+		#endif
 
 		if (idle > 0) {
 			do_show_plot = true;

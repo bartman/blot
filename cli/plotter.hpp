@@ -88,7 +88,7 @@ public:
 
 		spdlog::debug("rendered size = %zu", txt_size);
 
-		printf("%ls\n", txt);
+		printf("%ls", txt);
 		fflush(stdout);
 
 		double t_print = timing ? blot_double_time() : 0;
@@ -101,13 +101,14 @@ public:
 			m_stats.print  += t_print  - t_render;
 			m_stats.total  += t_print  - t_start;
 
-			fmt::println("time: count={} init={:.6f} add={:.6f} render={:.6f} print={:.6f} [{:.6f}]",
+			fmt::print("time: count={} init={:.6f} add={:.6f} render={:.6f} print={:.6f} [{:.6f}]",
 				m_stats.count,
 				m_stats.init / m_stats.count,
 				m_stats.add / m_stats.count,
 				m_stats.render / m_stats.count,
 				m_stats.print / m_stats.count,
 				m_stats.total / m_stats.count);
+			std::flush(std::cout);
 		}
 	}
 };
