@@ -56,7 +56,7 @@ protected:
 
 		const char *end = text+std::strlen(text);
 		text = __find_start(text, end);
-		auto pos = 1;
+		auto pos = 1u ;
 
 		while (text < end && pos < y_position) {
 			text = __skip_over(text, end);
@@ -81,7 +81,7 @@ protected:
 
 		const char *end = text+std::strlen(text);
 		text = __find_start(text, end);
-		auto pos = 1;
+		auto pos = 1u;
 
 		auto first_position = std::min(x_position, y_position);
 		auto last_position = std::max(x_position, y_position);
