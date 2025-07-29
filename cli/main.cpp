@@ -66,13 +66,19 @@ int main(int argc, char *argv[])
 			spdlog::trace("{}:{}: {}", input.details(), line->number, line->text);
 
 			auto result = input.extract().parse<double,2>(line->text.data());
-			if (!result.count) {
-				spdlog::error("failed to parse value from source {} line {} '{}'",
-					i, line->number, line->text);
-				std::exit(1);
+			switch (result.count) {
+				case 0:
+					spdlog::error("failed to parse value from source {} line {} '{}'", i, line->number, line->text);
+					std::exit(1);
+				case 1:
+					plotter.add(i, line->number, result.array[0]);
+					break;
+				case 2:
+				default:
+					plotter.add(i, result.array[0], result.array[1]);
+					break;
 			}
 
-			plotter.add(i, line->number, result.array[0]);
 		}
 
 		if (signaled)

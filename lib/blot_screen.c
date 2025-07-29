@@ -67,9 +67,18 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 
 		//wchar_t star = 0x2605; // does not show up in Terminus font
 		wchar_t symbol = 0x25D8; // inverse bullet ◘
-		int len = swprintf(p, end-p, L"%s%lc %s %s\n",
+		int len;
+
+		if (scr->flags & BLOT_RENDER_LEGEND_DETAILS) {
+			len = swprintf(p, end-p, L"%s%lc %s %s   \tcount=%u\n",
+				   colstr, symbol, COL_RESET,
+				   lay->label,
+				   lay->count);
+		} else {
+			len = swprintf(p, end-p, L"%s%lc %s %s\n",
 				   colstr, symbol, COL_RESET,
 				   lay->label);
+		}
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
 	}
