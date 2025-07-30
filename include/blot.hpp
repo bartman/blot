@@ -185,7 +185,7 @@ public:
 	/* add layers */
 
 	template <typename T, typename U>
-	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<U> &data_ys, blot_color data_color, const char *data_label) {
+	void plot(blot_plot_type plot_type, const std::span<T> &data_xs, const std::span<U> &data_ys, blot_color data_color, const char *data_label) {
 		GError *error = nullptr;
 		size_t data_count = data_ys.size();
 
@@ -205,6 +205,11 @@ public:
 		if (!blot_figure_plot(this, plot_type, data_type, data_count, ptr_xs, ptr_ys, data_color, data_label, &error)) {
 			throw Exception(error);
 		}
+	}
+
+	template <typename T, typename U>
+	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<U> &data_ys, blot_color data_color, const char *data_label) {
+		plot(plot_type, data_xs, data_ys, data_color, data_label);
 	}
 
 	template <typename T, typename U>
