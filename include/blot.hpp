@@ -209,7 +209,10 @@ public:
 
 	template <typename T, typename U>
 	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<U> &data_ys, blot_color data_color, const char *data_label) {
-		plot(plot_type, data_xs, data_ys, data_color, data_label);
+		plot(plot_type,
+		       std::span<const T>(data_xs.data(), data_xs.size()),
+		       std::span<const U>(data_ys.data(), data_ys.size()),
+		       data_color, data_label);
 	}
 
 	template <typename T, typename U>
