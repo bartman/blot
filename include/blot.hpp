@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <iostream>
+#include <span>
 #include <stdexcept>
 #include <algorithm>
 #include <utility>
@@ -86,15 +87,15 @@ public:
 
 template <typename T>
 constexpr blot_data_type data_type() {
-	if constexpr (std::is_same_v<T, int16_t>)
+	if constexpr (std::is_same_v<std::remove_const_t<T>, int16_t>)
 		return BLOT_DATA_INT16;
-	else if constexpr (std::is_same_v<T, int32_t>)
+	else if constexpr (std::is_same_v<std::remove_const_t<T>, int32_t>)
 		return BLOT_DATA_INT32;
-	else if constexpr (std::is_same_v<T, int64_t>)
+	else if constexpr (std::is_same_v<std::remove_const_t<T>, int64_t>)
 		return BLOT_DATA_INT64;
-	else if constexpr (std::is_same_v<T, float>)
+	else if constexpr (std::is_same_v<std::remove_const_t<T>, float>)
 		return BLOT_DATA_FLOAT;
-	else if constexpr (std::is_same_v<T, double>)
+	else if constexpr (std::is_same_v<std::remove_const_t<T>, double>)
 		return BLOT_DATA_DOUBLE;
 	else
 		BLOT_THROW(EINVAL, "unsupported type");
@@ -184,7 +185,7 @@ public:
 	/* add layers */
 
 	template <typename T, typename U>
-	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<U> &data_ys, blot_color data_color, const char *data_label) {
+	void plot(blot_plot_type plot_type, const std::span<T> &data_xs, const std::span<U> &data_ys, blot_color data_color, const char *data_label) {
 		GError *error = nullptr;
 		size_t data_count = data_ys.size();
 
@@ -204,6 +205,14 @@ public:
 		if (!blot_figure_plot(this, plot_type, data_type, data_count, ptr_xs, ptr_ys, data_color, data_label, &error)) {
 			throw Exception(error);
 		}
+	}
+
+	template <typename T, typename U>
+	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<U> &data_ys, blot_color data_color, const char *data_label) {
+		plot(plot_type,
+		       std::span<const T>(data_xs.data(), data_xs.size()),
+		       std::span<const U>(data_ys.data(), data_ys.size()),
+		       data_color, data_label);
 	}
 
 	template <typename T, typename U>

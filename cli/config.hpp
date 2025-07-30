@@ -20,6 +20,8 @@ public:
 		WATCH		// run program repetitively at interval, each run is one entry
 	};
 
+	static constexpr const size_t g_default_data_limit = 1000000;
+
 protected:
 	blot_plot_type m_plot_type{BLOT_LINE};
 	Source m_source{NONE};
@@ -27,6 +29,7 @@ protected:
 	Extract m_extract;
 	blot_color m_plot_color;
 	double m_interval{0};
+	size_t m_data_limit{g_default_data_limit};
 
 public:
 	explicit Input(blot_plot_type plot_type, blot_color color)
@@ -63,6 +66,7 @@ public:
 	const Extract& extract() const { return m_extract; }
 	blot_color plot_color() const { return m_plot_color; }
 	double interval() const { return m_interval; }
+	size_t data_limit() const { return m_data_limit; }
 
 	/* validate if the configuration looks sane */
 	operator bool() const;
@@ -73,14 +77,19 @@ public:
 	void set_color (const std::string &txt);
 	void set_interval (double interval);
 	void set_interval (const std::string &txt);
+	void set_data_limit (size_t);
+	void set_data_limit (const std::string &txt);
 
 
 };
 
 class  Config final {
+public:
+	using OutputType = enum output_type { ASCII, UNICODE, BRAILLE };
+
 protected:
 	const char *m_self{};
-	enum output_type { ASCII, UNICODE, BRAILLE } m_output_type;
+	OutputType  m_output_type;
 	const static blot_color m_first_color{9};
 	std::vector<Input> m_inputs;
 	bool m_display_interval{1};
@@ -100,8 +109,9 @@ public:
 		}
 	}
 
-	size_t inputs() const { return m_inputs.size(); }
+	OutputType output_type() const { return m_output_type; }
 
+	size_t inputs() const { return m_inputs.size(); }
 	const Input& input(size_t n) const { return m_inputs.at(n); }
 	Input& input(size_t n) { return m_inputs.at(n); }
 
