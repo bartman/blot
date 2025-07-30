@@ -61,16 +61,20 @@ See the online help for a full list of features...
 
 ```sh
 SYNOPSIS
-    blot [-h] [-V] [-v] [--debug] [--timing] [-i <sec>]
-    blot [-A|-U|-B] ((scatter|line|bar) ([-R <file>] | [-F <file>] | [-P <file>] | [-X <cmd>] | [-W <cmd>]) [-p <y-pos|x-pos,y-pos>] [-r <regex>] [-c <color>] [-i <sec>])...
+    blot [-h] [-V]
+    blot [-v] [--debug] [--timing] [-i <sec>] [-A|-U|-B] ((scatter|line|bar)
+         ([-R <file>] | [-F <file>] | [-P <file>] | [-X <cmd>] | [-W <cmd>])
+         [-p <y-pos|x-pos,y-pos>] [-r <regex>] [-l <count>] [-c <color>] [-i <sec>])...
 
 OPTIONS
     -h, --help                  This help
     -V, --version               Version
-    -v, --verbose               Enable verbose output
-    --debug                     Enable debug output
-    --timing                    Show timing statitiscs
-    -i, --interval <sec>        Display interval in seconds
+
+    Run modifiers:
+        -v, --verbose           Enable verbose output
+        --debug                 Enable debug output
+        --timing                Show timing statitiscs
+        -i, --interval <sec>    Display interval in seconds
 
     Output:
         -A, --ascii             ASCII output
@@ -94,12 +98,13 @@ OPTIONS
                                 Find numbers in input line, pick 1 or 2 positions for X and Y values
 
         -r, --regex <regex>     Regex to match numbers from input line
+        -l, --limit <count>     How many historical values to retain for plotting
 
     Plot modifiers:
         -c, --color <color>     Set plot color (1..255)
         -i, --interval <sec>    Set sampling interval in seconds
 
-EXAMPE
+EXAMPLES
 
     blot --braille \
         line    --color 10 --read x_y1_values -p 1,2 \
