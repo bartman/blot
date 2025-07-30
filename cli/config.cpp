@@ -22,7 +22,9 @@ Config::Config(int argc, char *argv[])
 	bool show_help{}, show_version{};
 	auto cli_head = (
 		clipp::option("-h", "--help").set(show_help).doc("This help"),
-		clipp::option("-V", "--version").set(show_version).doc("Version"),
+		clipp::option("-V", "--version").set(show_version).doc("Version")
+	);
+	auto cli_mod = "Run modifiers:" % (
 		clipp::option("-v", "--verbose").call([]{
 			spdlog::set_level(spdlog::level::debug);
 		}).doc("Enable verbose output"),
@@ -35,9 +37,9 @@ Config::Config(int argc, char *argv[])
 			.doc("Display interval in seconds")
 	);
 
-	auto cli_output = "Output:" % (
-		clipp::option("-A", "--ascii").set(m_output_type,ASCII).doc("ASCII output") |
-		clipp::option("-U", "--unicode").set(m_output_type,UNICODE).doc("Unicode output") |
+	auto cli_output = "Output:" % one_of (
+		clipp::option("-A", "--ascii").set(m_output_type,ASCII).doc("ASCII output"),
+		clipp::option("-U", "--unicode").set(m_output_type,UNICODE).doc("Unicode output"),
 		clipp::option("-B", "--braille").set(m_output_type,BRAILLE).doc("Braille output")
 	);
 
@@ -53,6 +55,7 @@ Config::Config(int argc, char *argv[])
 
 	auto cli = (
 		cli_head | (
+			cli_mod,
 			cli_output,
 			clipp::repeatable(
 				/* select a plot type */
@@ -98,8 +101,10 @@ Config::Config(int argc, char *argv[])
 						.doc("Find numbers in input line, pick 1 or 2 positions for X and Y values"),
 					(clipp::option("-r", "--regex") & clipp::value("regex")
 						.call([&](const char *txt) { m_inputs.back().set_regex(txt); }))
-						.doc("Regex to match numbers from input line")
-
+						.doc("Regex to match numbers from input line"),
+					(clipp::option("-l", "--limit") & clipp::value("count")
+						.call([&](const char *txt) { m_inputs.back().set_data_limit(txt); }))
+						.doc("How many historical values to retain for plotting")
 				),
 
 				"Plot modifiers:" % (
@@ -169,6 +174,7 @@ Config::Config(int argc, char *argv[])
 
 	bool with_interval{}, no_interval{};
 	double prev_interval = 1;
+	size_t prev_data_limit = Input::g_default_data_limit;
 	for (auto &input : m_inputs) {
 		if (input.needs_interval()) {
 			if (!input.interval()) {
@@ -176,6 +182,11 @@ Config::Config(int argc, char *argv[])
 			} else {
 				prev_interval = input.interval();
 			}
+		}
+		if (!input.data_limit()) {
+			input.set_data_limit(prev_data_limit);
+		} else {
+			prev_data_limit = input.data_limit();
 		}
 		if (!input) {
 			spdlog::error("incomplete plot definition");
@@ -312,6 +323,19 @@ void Input::set_interval (const std::string &txt)
 	auto [_,ec] = std::from_chars(txt.data(), txt.data()+txt.size(), m_interval);
 	if (ec != std::errc{}) {
 		spdlog::error("failed to parse interval from '{}': {}",
+			txt, std::make_error_code(ec).message());
+		std::exit(1);
+	}
+}
+void Input::set_data_limit (size_t value)
+{
+	m_data_limit = value;
+}
+void Input::set_data_limit (const std::string &txt)
+{
+	auto [_,ec] = std::from_chars(txt.data(), txt.data()+txt.size(), m_data_limit);
+	if (ec != std::errc{}) {
+		spdlog::error("failed to parse data limit from '{}': {}",
 			txt, std::make_error_code(ec).message());
 		std::exit(1);
 	}

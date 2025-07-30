@@ -9,9 +9,49 @@
 template <typename X, typename Y>
 class Plotter final {
 protected:
+	template <typename T>
+	class Storage {
+	protected:
+		std::vector<T> m_data;
+		size_t m_offset{};
+
+		void relocation_check() {
+			bool full = m_data.size() == m_data.capacity();
+			if (full && m_offset && m_offset > (m_data.capacity()/2)) {
+				// full but most is empty, so we should relocate the data
+				m_data.erase(m_data.begin(), m_data.begin() + m_offset);
+				m_offset = 0;
+			}
+		}
+
+	public:
+		void push_back(const T &v) {
+			relocation_check();
+			m_data.push_back(v);
+		}
+
+		void erase_front(size_t count = 1) {
+			if (count > size())
+				BLOT_THROW(ERANGE, "count=%zu exceeds size=%zu", count, size());
+			m_offset += count;
+		}
+
+		T* data() noexcept { return m_data.data() + m_offset; }
+		const T* data() const noexcept { return m_data.data() + m_offset; }
+		size_t size() const { return m_data.size() - m_offset; }
+
+		std::span<T> span() {
+			return std::span<const T>(data(), size());
+		}
+		std::span<const T> span() const {
+			return std::span<const T>(data(), size());
+		}
+
+	};
+
 	struct Data {
-		std::vector<X> m_xs;
-		std::vector<Y> m_ys;
+		Storage<X> m_xs;
+		Storage<Y> m_ys;
 	};
 	std::vector<Data> m_data;
 	size_t m_count{};
@@ -41,6 +81,11 @@ public:
 		m_data[layer].m_xs.push_back(x);
 		m_data[layer].m_ys.push_back(y);
 		m_count ++;
+
+		if (m_data[layer].m_xs.size() > m_config.input(layer).data_limit()) {
+			m_data[layer].m_xs.erase_front();
+			m_data[layer].m_ys.erase_front();
+		}
 	}
 
 	bool have_data() const { return m_count > 0; }
@@ -67,7 +112,7 @@ public:
 			const auto &data = m_data[i];
 			const auto &input = m_config.input(i);
 
-			fig.plot(input.plot_type(), data.m_xs, data.m_ys,
+			fig.plot(input.plot_type(), data.m_xs.span(), data.m_ys.span(),
 				input.plot_color(), input.details());
 		}
 
