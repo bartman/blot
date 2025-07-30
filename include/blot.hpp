@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <iostream>
+#include <span>
 #include <stdexcept>
 #include <algorithm>
 #include <utility>
@@ -86,15 +87,15 @@ public:
 
 template <typename T>
 constexpr blot_data_type data_type() {
-	if constexpr (std::is_same_v<T, int16_t>)
+	if constexpr (std::is_same_v<std::remove_const_t<T>, int16_t>)
 		return BLOT_DATA_INT16;
-	else if constexpr (std::is_same_v<T, int32_t>)
+	else if constexpr (std::is_same_v<std::remove_const_t<T>, int32_t>)
 		return BLOT_DATA_INT32;
-	else if constexpr (std::is_same_v<T, int64_t>)
+	else if constexpr (std::is_same_v<std::remove_const_t<T>, int64_t>)
 		return BLOT_DATA_INT64;
-	else if constexpr (std::is_same_v<T, float>)
+	else if constexpr (std::is_same_v<std::remove_const_t<T>, float>)
 		return BLOT_DATA_FLOAT;
-	else if constexpr (std::is_same_v<T, double>)
+	else if constexpr (std::is_same_v<std::remove_const_t<T>, double>)
 		return BLOT_DATA_DOUBLE;
 	else
 		BLOT_THROW(EINVAL, "unsupported type");
