@@ -40,7 +40,8 @@ add_definitions(-DBLOT_GIT_REFSPEC="${GIT_REFSPEC}")
 add_definitions(-DBLOT_GIT_REVISION="${GIT_REVISION}")
 add_definitions(-DBLOT_GIT_SHA1="${GIT_SHA1}")
 
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
+#INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/include)
+INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/include)
 
 add_subdirectory(lib)
 add_subdirectory(cli)
