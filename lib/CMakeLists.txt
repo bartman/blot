@@ -36,15 +36,17 @@ foreach(blot blot_a blot_so)
 
     TARGET_INCLUDE_DIRECTORIES(${blot} INTERFACE
         ${CMAKE_SOURCE_DIR}/blot/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
     )
 
     TARGET_INCLUDE_DIRECTORIES(${blot} PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
         ${GLIB2_INCLUDE_DIRS}
     )
 
     TARGET_INCLUDE_DIRECTORIES(${blot} PRIVATE
         ${CMAKE_SOURCE_DIR}/blot/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
     )
 
     TARGET_LINK_DIRECTORIES(${blot} PUBLIC
