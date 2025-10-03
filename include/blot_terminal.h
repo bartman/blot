@@ -8,6 +8,10 @@
 #include "blot_compiler.h"
 #include "blot_types.h"
 
-BLOT_EXTERN bool blot_terminal_set_size(blot_dimensions dims, GError **);
-BLOT_EXTERN bool blot_terminal_get_size(blot_dimensions *dims, GError **);
+BLOT_EXTERN_C_START
+
+BLOT_API bool blot_terminal_set_size(blot_dimensions dims, GError **);
+BLOT_API bool blot_terminal_get_size(blot_dimensions *dims, GError **);
+
+BLOT_EXTERN_C_END
 

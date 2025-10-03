@@ -48,7 +48,11 @@
 #define COL_RESET    ESC "0" COL_SUFFIX
 #define CLR_SCR      ESC "2J" ESC "H"
 
-BLOT_EXTERN bool have_color_support;
+BLOT_EXTERN_C_START
+
+extern BLOT_API bool have_color_support;
+
+BLOT_EXTERN_C_END
 
 /* runtime support */
 static inline char *mkcol_runtime(char *buf, size_t size, const char *fmt, int col)

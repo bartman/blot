@@ -24,9 +24,15 @@ ADD_LIBRARY(blot_so SHARED ${LIBBLOT_SRCS})
 
 foreach(blot blot_a blot_so)
 
-    SET_TARGET_PROPERTIES(${blot} PROPERTIES OUTPUT_NAME blot)
+    SET_TARGET_PROPERTIES(${blot} PROPERTIES
+        OUTPUT_NAME blot
+        POSITION_INDEPENDENT_CODE ON
+        C_VISIBILITY_PRESET "hidden"
+        CXX_VISIBILITY_PRESET "hidden"
+        VISIBILITY_INLINES_HIDDEN "YES"
+    )
 
-    SET_PROPERTY(TARGET ${blot} PROPERTY POSITION_INDEPENDENT_CODE ON)
+    TARGET_COMPILE_DEFINITIONS(${blot} PRIVATE BLOT_LIB_BUILD=1)
 
     TARGET_INCLUDE_DIRECTORIES(${blot} INTERFACE
         ${CMAKE_SOURCE_DIR}/blot/include
@@ -50,3 +56,9 @@ foreach(blot blot_a blot_so)
     )
 
 endforeach(blot)
+
+# only do whole file optimization if building a shared library
+if (ENABLE_IPO)
+    check_ipo_supported()
+    SET_PROPERTY(TARGET blot_so PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()

@@ -32,6 +32,9 @@ else()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DNDEBUG=1")
 endif()
 
+include(CheckIPOSupported)
+option(ENABLE_IPO "Enable IPO" ON)
+
 include(GetGitRevisionDescription)
 get_git_head_revision(GIT_REFSPEC GIT_SHA1)
 git_describe(GIT_REVISION)

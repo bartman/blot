@@ -18,16 +18,18 @@ typedef struct blot_screen {
 	wchar_t data[] __aligned64;    // must be at end of structure
 } blot_screen;
 
+BLOT_EXTERN_C_START
+
 /* create/delete */
 
-BLOT_EXTERN blot_screen * blot_screen_new(const blot_dimensions *dim,
+BLOT_API blot_screen * blot_screen_new(const blot_dimensions *dim,
 				     const blot_margins *mrg,
 				     blot_render_flags flags, GError **);
-BLOT_EXTERN void blot_screen_delete(blot_screen *scr);
+BLOT_API void blot_screen_delete(blot_screen *scr);
 
 /* render */
 
-BLOT_EXTERN bool blot_screen_render(blot_screen *scr,
+BLOT_API bool blot_screen_render(blot_screen *scr,
 			       const blot_xy_limits *lim,
 			       const struct blot_axis * x_axs,
 			       const struct blot_axis * y_axs,
@@ -36,5 +38,7 @@ BLOT_EXTERN bool blot_screen_render(blot_screen *scr,
 			       struct blot_canvas *const*cans,
 			       GError **);
 
-BLOT_EXTERN const wchar_t * blot_screen_get_text(const blot_screen *scr,
+BLOT_API const wchar_t * blot_screen_get_text(const blot_screen *scr,
 					     gsize *txt_size, GError**);
+
+BLOT_EXTERN_C_END

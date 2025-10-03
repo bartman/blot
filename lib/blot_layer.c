@@ -8,7 +8,7 @@
 
 /* create/delete */
 
-BLOT_EXTERN blot_layer * blot_layer_new(blot_plot_type plot_type,
+blot_layer * blot_layer_new(blot_plot_type plot_type,
 				   blot_data_type data_type,
 				   size_t count,
 				   const void *xs,

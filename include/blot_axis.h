@@ -28,14 +28,18 @@ typedef struct blot_axis blot_axis;
 
 /* create/delete */
 
-BLOT_EXTERN blot_axis * blot_axis_new(bool is_vertical,
+BLOT_EXTERN_C_START
+
+BLOT_API blot_axis * blot_axis_new(bool is_vertical,
 				 bool is_visible,
 				 blot_color color,
 				 unsigned screen_length,
 				 double data_min, double data_max,
 				 const blot_strv *labels,
 				 GError **);
-BLOT_EXTERN void blot_axis_delete(blot_axis *axs);
+BLOT_API void blot_axis_delete(blot_axis *axs);
+
+BLOT_EXTERN_C_END
 
 /* access */
 

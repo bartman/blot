@@ -23,7 +23,9 @@ typedef struct blot_layer {
 
 /* create/delete */
 
-BLOT_EXTERN blot_layer * blot_layer_new(blot_plot_type plot_type,
+BLOT_EXTERN_C_START
+
+BLOT_API blot_layer * blot_layer_new(blot_plot_type plot_type,
 				   blot_data_type data_type,
 				   size_t data_count,
 				   const void *data_xs,
@@ -31,7 +33,9 @@ BLOT_EXTERN blot_layer * blot_layer_new(blot_plot_type plot_type,
 				   blot_color data_color,
 				   const char *data_label,
 				   GError **);
-BLOT_EXTERN void blot_layer_delete(blot_layer *fig);
+BLOT_API void blot_layer_delete(blot_layer *fig);
+
+BLOT_EXTERN_C_END
 
 /* data */
 
@@ -114,15 +118,17 @@ static inline bool blot_layer_get_x_y(const blot_layer *lay, unsigned index,
 	return blot_layer_get_y(lay, index, y, error);
 }
 
-BLOT_EXTERN bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim,
+BLOT_EXTERN_C_START
+
+BLOT_API bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim,
 			       GError **);
 
 /* render */
 
-BLOT_EXTERN struct blot_canvas * blot_layer_render(blot_layer *lay,
+BLOT_API struct blot_canvas * blot_layer_render(blot_layer *lay,
 					      const blot_xy_limits *lim,
 					      const blot_dimensions *dim,
 					      blot_render_flags flags,
 					      GError **);
 
-
+BLOT_EXTERN_C_END

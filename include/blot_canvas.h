@@ -36,10 +36,14 @@ typedef struct blot_canvas {
 
 /* create/delete */
 
-BLOT_EXTERN blot_canvas * blot_canvas_new(unsigned cols, unsigned rows,
+BLOT_EXTERN_C_START
+
+BLOT_API blot_canvas * blot_canvas_new(unsigned cols, unsigned rows,
 				     blot_render_flags flags, blot_color color,
 				     GError **);
-BLOT_EXTERN void blot_canvas_delete(blot_canvas *fig);
+BLOT_API void blot_canvas_delete(blot_canvas *fig);
+
+BLOT_EXTERN_C_END
 
 /* render */
 
