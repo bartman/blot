@@ -10,7 +10,7 @@
 #include "spdlog/spdlog.h"
 #include "fmt/format.h"
 
-class Extract {
+class Extract final {
 public:
 	template <typename X, typename Y>
 	struct ParseResult {
