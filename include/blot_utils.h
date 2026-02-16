@@ -88,5 +88,6 @@
 BLOT_EXTERN_C_START
 
 BLOT_API unsigned blot_env_to_uint(const char *name, unsigned dflt);
+BLOT_API int blot_format_number(char *p, unsigned room, double d_val);
 
 BLOT_EXTERN_C_END

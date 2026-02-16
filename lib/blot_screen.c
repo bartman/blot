@@ -69,15 +69,31 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 		wchar_t symbol = 0x25D8; // inverse bullet ◘
 		int len;
 
-		if (scr->flags & BLOT_RENDER_LEGEND_DETAILS) {
+		if (!(scr->flags & BLOT_RENDER_LEGEND_DETAILS)) {
+			len = swprintf(p, end-p, L"%s%lc %s %s\n",
+				   colstr, symbol, COL_RESET,
+				   lay->label);
+		} else if (lay->summary.enabled) {
+			char tavg[32], tmin[32], tmax[32];
+			int ravg = blot_format_number(tavg, sizeof(tavg),
+				   lay->summary.yttl / lay->count);
+			int rmin = blot_format_number(tmin, sizeof(tmin),
+				   lay->summary.ymin);
+			int rmax = blot_format_number(tmax, sizeof(tmax),
+				   lay->summary.ymax);
+
+			len = swprintf(p, end-p, L"%s%lc %s %s   \tavg=%s min=%s max=%s count=%u\n",
+				   colstr, symbol, COL_RESET,
+				   lay->label,
+				   ravg>0 ? tavg : "?",
+				   rmin>0 ? tmin : "?",
+				   rmax>0 ? tmax : "?",
+				   lay->count);
+		} else {
 			len = swprintf(p, end-p, L"%s%lc %s %s   \tcount=%u\n",
 				   colstr, symbol, COL_RESET,
 				   lay->label,
 				   lay->count);
-		} else {
-			len = swprintf(p, end-p, L"%s%lc %s %s\n",
-				   colstr, symbol, COL_RESET,
-				   lay->label);
 		}
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;

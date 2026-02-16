@@ -9,6 +9,13 @@
 #include "blot_types.h"
 #include "blot_error.h"
 
+typedef struct blot_layer_summary {
+	double xmin, xmax, xttl;
+	double ymin, ymax, yttl;
+	size_t count;
+	bool enabled; // when (render_flags & BLOT_RENDER_LEGEND_DETAILS)
+} blot_layer_summary;
+
 typedef struct blot_layer {
 
 	blot_plot_type plot_type;
@@ -18,6 +25,7 @@ typedef struct blot_layer {
 	const void *ys;
 	blot_color color;
 	const char *label;
+	blot_layer_summary summary;
 
 } blot_layer;
 

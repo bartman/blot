@@ -97,18 +97,55 @@ bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim, GError **err
 	return true;
 }
 
+/* summary */
+
+static inline void blot_layer_summary_init(struct blot_layer_summary *sum, blot_render_flags flags)
+{
+	if (!(flags & BLOT_RENDER_LEGEND_DETAILS)) {
+		sum->enabled = false;
+		return;
+	}
+
+	memset(sum, 0, sizeof(*sum));
+	sum->enabled = true;
+}
+
+static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, double y)
+{
+	if (!sum->enabled) [[clang::likely]]
+		return;
+
+	if (sum->count) [[clang::likely]] {
+		if (sum->xmax < x) sum->xmax = x;
+		if (sum->xmin > x) sum->xmin = x;
+		sum->xttl += x;
+		if (sum->ymax < y) sum->ymax = y;
+		if (sum->ymin > y) sum->ymin = y;
+		sum->yttl += y;
+		sum->count ++;
+	} else {
+		sum->xmax = x;
+		sum->xmin = x;
+		sum->xttl = x;
+		sum->ymax = y;
+		sum->ymin = y;
+		sum->yttl = y;
+		sum->count = 1;
+	}
+}
+
 /* render */
 
-static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_scatter(blot_layer *lay, const blot_xy_limits *lim,
 			 blot_canvas *can, GError **);
-static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_scatter_int64(blot_layer *lay, const blot_xy_limits *lim,
 			       blot_canvas *can, GError **);
-static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **);
-static bool blot_layer_bar(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_bar(blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **);
 
-typedef bool (*layer_to_canvas_fn)(const blot_layer *lay, const blot_xy_limits *lim,
+typedef bool (*layer_to_canvas_fn)(blot_layer *lay, const blot_xy_limits *lim,
 				   blot_canvas *can, GError **);
 static layer_to_canvas_fn blot_layer_to_canvas_type_fns[BLOT_PLOT_TYPE_MAX][BLOT_DATA_TYPE_MAX] = {
 	[BLOT_SCATTER] = {
@@ -134,6 +171,8 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 	blot_canvas *can = blot_canvas_new(dim->cols, dim->rows, flags, lay->color, error);
 	RETURN_IF(!can, NULL);
 
+	blot_layer_summary_init(&lay->summary, flags);
+
 	layer_to_canvas_fn fn;
 	/* try to find function specialized for this type */
 	fn = blot_layer_to_canvas_type_fns[lay->plot_type][lay->data_type];
@@ -155,7 +194,7 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 
 /* scatter */
 
-static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_scatter(blot_layer *lay, const blot_xy_limits *lim,
 			 blot_canvas *can, GError **error)
 {
 	double x_range = lim->x_max - lim->x_min + 1;
@@ -172,6 +211,8 @@ static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 		if (unlikely (!ok))
 			return false;
 
+		blot_layer_summary_update(&lay->summary, rx, ry);
+
 		// compute location
 		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
 		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
@@ -182,7 +223,7 @@ static bool blot_layer_scatter(const blot_layer *lay, const blot_xy_limits *lim,
 	return true;
 }
 
-static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_scatter_int64(blot_layer *lay, const blot_xy_limits *lim,
 			       blot_canvas *can, GError **error)
 {
 	/* this function should never be called with any other data type */
@@ -203,6 +244,8 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 		rx = xs ? xs[di] : di;
 		ry = ys[di];
 
+		blot_layer_summary_update(&lay->summary, rx, ry);
+
 		// compute location
 		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
 		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
@@ -213,7 +256,7 @@ static bool blot_layer_scatter_int64(const blot_layer *lay, const blot_xy_limits
 	return true;
 }
 
-static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **error)
 {
 	double x_range = lim->x_max - lim->x_min;
@@ -236,6 +279,8 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 		if (unlikely (!ok))
 			return false;
 
+		blot_layer_summary_update(&lay->summary, rx, ry);
+
 		// compute location
 		double dx = (double)(rx - lim->x_min) * per_col;
 		double dy = (double)(ry - lim->y_min) * per_row;
@@ -253,7 +298,7 @@ static bool blot_layer_line(const blot_layer *lay, const blot_xy_limits *lim,
 	return true;
 }
 
-static bool blot_layer_bar(const blot_layer *lay, const blot_xy_limits *lim,
+static bool blot_layer_bar(blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **error)
 {
 	double x_range = lim->x_max - lim->x_min + 1;
@@ -273,6 +318,8 @@ static bool blot_layer_bar(const blot_layer *lay, const blot_xy_limits *lim,
 		gboolean ok = blot_layer_get_x_y(lay, di, &rx, &ry, error);
 		if (unlikely (!ok))
 			return false;
+
+		blot_layer_summary_update(&lay->summary, rx, ry);
 
 		// compute location
 		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;

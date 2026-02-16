@@ -139,14 +139,7 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 			size_t room = min_t(size_t, end-p, BLOT_AXIS_LABEL_MAX);
 			if (!is_vertical)
 				room = min_t(size_t, end-p, floor(s_jump));
-			int rc;
-			const char **ff, *formats[] = {
-				"%.3f", "%.2f", "%.1f", "%g", "%.3g", "%3.g", NULL };
-			for (ff = formats; *ff; ff++) {
-				rc = snprintf(p, (unsigned)room, *ff, d_val);
-				if (rc>0 && rc < BLOT_AXIS_LABEL_MAX)
-					break;
-			}
+			int rc = blot_format_number(p, (unsigned)room, d_val);
 			RETURN_ERROR(rc<0, NULL, error,
 				     "axis label for %f format", d_val);
 			g_assert_cmpuint(rc, <=, BLOT_AXIS_LABEL_MAX);

@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
 			auto result = input.extract().parse<double,double>(line->number,
 						 line->text.data());
 			if (result.has_value()) {
-					plotter.add(i, result->x, result->y);
+				plotter.add(i, result->x, result->y);
 			} else {
 				spdlog::error("failed to parse value from source {} line {} '{}'",
 					i, line->number, line->text);
