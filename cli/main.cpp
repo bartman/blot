@@ -96,22 +96,16 @@ int main(int argc, char *argv[])
 
 		/* wait for the next time we have data */
 
-		#if 0
-		/* Debian 12 has an older standard library that cannot do this */
-		auto idle_view = readers | std::views::transform([](const auto& reader) { return reader->idle(); });
-		double idle = std::ranges::min(idle_view);
-		#else
-		double idle = 0;
+		double max_idle = 0;
 		for (size_t i=0; i<readers.size(); i++) {
 			const auto &reader = readers[i];
 			double reader_idle = reader->idle();
-			idle = i ? std::min(idle, reader_idle) : reader_idle;
+			max_idle = i ? std::max(max_idle, reader_idle) : reader_idle;
 		}
-		#endif
 
-		if (idle > 0) {
+		if (max_idle > 0) {
 			do_show_plot = true;
-			sleep_after_seconds = idle;
+			sleep_after_seconds = max_idle;
 		}
 
 		if (do_show_plot && plotter.have_data())
