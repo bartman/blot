@@ -112,10 +112,10 @@ static inline void blot_layer_summary_init(struct blot_layer_summary *sum, blot_
 
 static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, double y)
 {
-	if (!sum->enabled) [[clang::likely]]
+	if (likely (!sum->enabled))
 		return;
 
-	if (sum->count) [[clang::likely]] {
+	if (likely (sum->count)) {
 		if (sum->xmax < x) sum->xmax = x;
 		if (sum->xmin > x) sum->xmin = x;
 		sum->xttl += x;
