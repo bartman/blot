@@ -184,6 +184,18 @@ Recall that `/proc/loadavg` has 3 load values (1,5,15 minutes).  We can plot the
 ```
 ![blot line --poll](images/blot-line-poll.png)
 
+### plot temperature over time
+
+Here is a script I use to plot the highest 7 temperatures in the system:
+
+```sh
+INPUTS=( $( grep . /sys/class/hwmon/hwmon*/temp*_input | sort -t : -k 2 -n -r | head -n 7 | cut -d : -f 1 ) )
+blot --timing --braille $( for f in "${INPUTS[@]}" ; do echo "line --poll $f --interval 0.5 --limit 1000" ; done )
+```
+
+![blot scatter --exec](images/blot-temp.png )
+
+
 ### read X,Y from command line (exec mode)
 
 Here is a cool way to test your random number generator, generate two consecutive numbers and plot them against one another.
