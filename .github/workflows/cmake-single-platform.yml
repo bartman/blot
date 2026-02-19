@@ -24,7 +24,9 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Dependencies
-      run: ./dependencies.sh ${{ matrix.compiler }}
+      run: |
+        sudo apt update
+        ./dependencies.sh ${{ matrix.compiler }}
 
     - name: Setup compiler
       run: |
