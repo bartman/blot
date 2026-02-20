@@ -56,7 +56,7 @@ The easiest say to use `blot` is to use the CLI, which is able to read from file
 or launch programs, then plot the numbers it finds.
 
 See the online help for a full list of features...
-<details>
+<details markdown="1">
 <summary> ❯ blot --help </summary>
 
 ```sh
