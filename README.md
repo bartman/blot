@@ -1,5 +1,7 @@
 # blot
 
+[![CI](https://github.com/bartman/blot/actions/workflows/cmake-single-platform.yml/badge.svg)](https://github.com/bartman/blot/actions)
+
 Blot is a plotting library written in C, that plots data onto a string buffer.
 
 That's right, there are no images, just text -- see examples below.
