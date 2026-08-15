@@ -1,3 +1,5 @@
+
+
 # blot
 
 [![CI](https://github.com/bartman/blot/actions/workflows/cmake-single-platform.yml/badge.svg)](https://github.com/bartman/blot/actions)
@@ -54,7 +56,7 @@ Run `make help` for a full list.
 
 ## blot CLI
 
-The easiest say to use `blot` is to use the CLI, which is able to read from files
+The easiest way to use `blot` is to use the CLI, which is able to read from files
 or launch programs, then plot the numbers it finds.
 
 See the online help for a full list of features...
@@ -257,4 +259,3 @@ Allow for swapping data from layer to allow for even faster plotting (allow `blo
 
   * [plotille](https://github.com/tammoippen/plotille) - Python, "plot, scatter plots and histograms in the terminal using braille dots"
   * [Tables-and-Graphs](https://github.com/tdulcet/Tables-and-Graphs) - "C++ Console Table and Graph/Plot Libraries"
-
