@@ -10,15 +10,17 @@ SUDO=
 die() { echo >&2 "ERROR: $*" ; exit 1 ; }
 
 YES=
+CI_ONLY=
 
 show_help() {
     cat <<END
 $self ...
 
-    -h      this help
-    -y      answer yes to package manager questions
-    gcc     use gcc as the compiler
-    clang   use clang as the compiler
+    -h          this help
+    -y          answer yes to package manager questions
+    --ci-only   install only what CI needs to build/test (implies -y)
+    gcc         use gcc as the compiler
+    clang       use clang as the compiler
 
 END
 }
@@ -30,6 +32,10 @@ while [ -n "$1" ] ; do
             exit 0
             ;;
         -y|--yes)
+            YES=-y
+            ;;
+        --ci-only)
+            CI_ONLY=1
             YES=-y
             ;;
         gcc|clang)
@@ -62,7 +68,11 @@ elif [ -f /etc/debian_version ]; then
     case "$CC" in
         *gcc*) compiler=( gcc g++ ) ;;
         *clang*) compiler=( clang ) ;;
-        *) compiler=( gcc g++ clang ) ;;
+        *) if [ -n "$CI_ONLY" ] ; then
+               compiler=( gcc g++ )             # CI builds with the default cc
+           else
+               compiler=( gcc g++ clang )
+           fi ;;
     esac
 
     run apt install $YES make ninja-build cmake libglib2.0-dev git libgtest-dev "${compiler[@]}"

@@ -9,13 +9,13 @@ stages:
   image: debian:bookworm
   before_script:
     - bash .gitlab/ci/prepare-apt-proxy.sh
-    - bash dependencies.sh -y
+    - bash dependencies.sh --ci-only
 
 .deb13-job: &deb13-job
   image: debian:trixie
   before_script:
     - bash .gitlab/ci/prepare-apt-proxy.sh
-    - bash dependencies.sh -y
+    - bash dependencies.sh --ci-only
 
 # ---
 
