@@ -30,6 +30,7 @@
 #endif
 
 /* macro that will perform a block only once */
+#undef ONCE
 #define ONCE(block) ({                                          \
 	static bool done = false;                               \
 	if (unlikely (__sync_bool_compare_and_swap(&done,false,true))) {   \
