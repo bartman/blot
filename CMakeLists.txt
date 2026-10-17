@@ -58,10 +58,15 @@ add_definitions(-DBLOT_GIT_SHA1="${GIT_SHA1}")
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_subdirectory(lib)
-add_subdirectory(cli)
-add_subdirectory(examples/c)
-add_subdirectory(examples/cpp)
 
-enable_testing()
-include(CTest)
-add_subdirectory(tests)
+# cli, examples, and tests are only built when blot is the top-level project,
+# not when it is embedded (e.g. via add_subdirectory) and only the lib is needed
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_subdirectory(cli)
+    add_subdirectory(examples/c)
+    add_subdirectory(examples/cpp)
+
+    enable_testing()
+    include(CTest)
+    add_subdirectory(tests)
+endif()
