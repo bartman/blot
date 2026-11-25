@@ -1400,14 +1400,15 @@ TEST(Layer, summary_skips_non_finite)
 }
 
 /* #22: the mean of finite values whose sum overflows stays finite, and
- * between ymin and ymax even where the scaled sum rounds up */
+ * between ymin and ymax even where the scaled sum rounds up; the sums
+ * are compensated */
 TEST(Layer, summary_yavg_overflow)
 {
     const blot_xy_limits lim = { 0, 5, 0, 9 };
-    const double xs[] = { 0, 1, 2, 3 };
+    const double xs[] = { 0, 1, 2, 3, 4 };
     const struct {
         size_t n;
-        double ys[4];
+        double ys[5];
         double avg;
     } cases[] = {
         { 3, { DBL_MAX, DBL_MAX, DBL_MAX }, DBL_MAX },
@@ -1415,6 +1416,11 @@ TEST(Layer, summary_yavg_overflow)
         { 2, { -DBL_MAX, -DBL_MAX }, -DBL_MAX },
         { 2, { 1e308, 1e308 }, 1e308 },
         { 3, { 1, 2, 4 }, 7.0 / 3 },
+        /* compensated: plain and scaled sums keep the 1 */
+        { 3, { 1e17, 1, -1e17 }, 1.0 / 3 },
+        { 5, { 1e308, 1, 1e308, -1e308, -1e308 }, 0.2 },
+        /* the clamp on the plain path: 0.3 / 3 is 0.10000000000000002 */
+        { 3, { 0.1, 0.1, 0.1 }, 0.1 },
         /* the scaled sum's mean rounds past max, or below min: the
          * true means round to max and min */
         { 3, { 0x1.fffffffffffeap+1023, 0x1.fffffffffffe9p+1023, 0x1.fffffffffffeap+1023 },

@@ -74,8 +74,18 @@ typedef enum blot_render_flags {
 	BLOT_RENDER_LEGEND_BELOW        = 0x00000040,
 	BLOT_RENDER_NO_X_AXIS           = 0x00000080,
 	BLOT_RENDER_NO_Y_AXIS           = 0x00000100,
-	BLOT_RENDER_LEGEND_DETAILS      = 0x00000200,
+	BLOT_RENDER_LEGEND_DETAILS      = 0x00000200,   // see below
 } blot_render_flags;
+/* BLOT_RENDER_LEGEND_DETAILS adds the Y statistics of each layer to its
+ * legend line, after a tab:
+ *
+ *	avg=<mean> min=<min> max=<max> count=<N>[ (+<M> non-finite)]
+ *
+ * They are of the N points whose X and Y are both finite, whether drawn
+ * or not.  M counts the other points, and the suffix is left out when M
+ * is 0.  With N = 0, avg, min and max are "-".  Numbers are formatted by
+ * blot_format_number(); one that can't be is "?".  A legend never shows
+ * nan or inf.  The line is cut at the screen width. */
 DEFINE_ENUM_OPERATORS_FOR(blot_render_flags)
 
 typedef struct blot_xy_limits {

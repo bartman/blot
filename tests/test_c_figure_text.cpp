@@ -699,7 +699,8 @@ const double NF_X[] = { 0, 1, 2 };
 
 std::wstring details_line(blot_plot_type t, size_t n, const double *xs, const double *ys)
 {
-    Fig f(80, 14);
+    /* wide enough for the longest line: #11 cuts it at the screen width */
+    Fig f(120, 14);
     f.lim(0, 9, 0, 9);
     f.plot(t, BLOT_DATA_DOUBLE, n, xs, ys, 1, "data");
     Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_DETAILS);
@@ -781,4 +782,47 @@ TEST(Text, legend_details_finite_unchanged)
     const double ys[] = { 1, 2, 4 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
               L"◘  data   \tavg=2.333 min=1.000 max=4.000 count=3");
+}
+
+/* #22 (review note 35657): the mean is of a compensated sum, so a small
+ * value next to large ones isn't lost; a plain sum gives avg=0.000 */
+TEST(Text, legend_details_compensated_sum)
+{
+    const double ys[] = { 1e17, 1, -1e17 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=0.333 min=-100000000000000000.000 max=100000000000000000.000 count=3");
+
+    /* the same past the overflow, on the scaled sum */
+    const double big[] = { 1e308, 1, 1e308, -1e308, -1e308 };
+    const double big_x[] = { 0, 1, 2, 3, 4 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 5, big_x, big),
+              L"◘  data   \tavg=0.200 min=-1e+308 max=1e+308 count=5");
+}
+
+TEST(Text, legend_details_compensated_long_series)
+{
+    /* 3000 points: 1000 times 1e16, 1, -1e16; a plain sum loses
+     * every 1 (ulp(1e16) is 2), the true mean is 1/3 */
+    std::vector<double> xs, ys;
+    for (int i = 0; i < 1000; i++) {
+        for (double y : { 1e16, 1.0, -1e16 }) {
+            xs.push_back(xs.size());
+            ys.push_back(y);
+        }
+    }
+    EXPECT_EQ(details_line(BLOT_SCATTER, ys.size(), xs.data(), ys.data()),
+              L"◘  data   \tavg=0.333 min=-10000000000000000.000 max=10000000000000000.000 count=3000");
+
+    /* 10000 points: 2500 times 1e16, 0.5, -1e16, 0.5; a plain sum
+     * loses the 0.5 after each 1e16, the true mean is 0.25 */
+    xs.clear();
+    ys.clear();
+    for (int i = 0; i < 2500; i++) {
+        for (double y : { 1e16, 0.5, -1e16, 0.5 }) {
+            xs.push_back(xs.size());
+            ys.push_back(y);
+        }
+    }
+    EXPECT_EQ(details_line(BLOT_SCATTER, ys.size(), xs.data(), ys.data()),
+              L"◘  data   \tavg=0.250 min=-10000000000000000.000 max=10000000000000000.000 count=10000");
 }

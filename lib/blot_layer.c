@@ -110,12 +110,27 @@ static inline void blot_layer_summary_init(struct blot_layer_summary *sum, blot_
 	sum->enabled = true;
 }
 
+/* Neumaier's compensated sum: add v to *ttl, and what rounding took out
+ * of *ttl to *comp.  Once *ttl overflows, *comp is no longer finite */
+static inline void blot_layer_summary_add(double *ttl, double *comp, double v)
+{
+	double t = *ttl + v;
+
+	if (fabs(*ttl) >= fabs(v))
+		*comp += (*ttl - t) + v;
+	else
+		*comp += (v - t) + *ttl;
+	*ttl = t;
+}
+
 static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, double y)
 {
 	if (likely (!sum->enabled))
 		return;
 
-	/* a point that isn't drawn isn't summarized either */
+	/* only points with a finite X and Y are summarized, whether they
+	 * are drawn or not (one outside the limits isn't); the legend counts
+	 * the others as non-finite */
 	if (unlikely (!isfinite(x) || !isfinite(y)))
 		return;
 
@@ -125,8 +140,9 @@ static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, 
 		sum->xttl += x;
 		if (sum->ymax < y) sum->ymax = y;
 		if (sum->ymin > y) sum->ymin = y;
-		sum->yttl += y;
-		sum->yttl_scaled += y * BLOT_LAYER_SUMMARY_SCALE;
+		blot_layer_summary_add(&sum->yttl, &sum->ycomp, y);
+		blot_layer_summary_add(&sum->yttl_scaled, &sum->ycomp_scaled,
+				       y * BLOT_LAYER_SUMMARY_SCALE);
 		sum->count ++;
 	} else {
 		sum->xmax = x;
@@ -135,7 +151,9 @@ static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, 
 		sum->ymax = y;
 		sum->ymin = y;
 		sum->yttl = y;
+		sum->ycomp = 0;
 		sum->yttl_scaled = y * BLOT_LAYER_SUMMARY_SCALE;
+		sum->ycomp_scaled = 0;
 		sum->count = 1;
 	}
 }
