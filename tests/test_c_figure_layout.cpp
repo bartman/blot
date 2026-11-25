@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <pty.h>
 #include <sys/ioctl.h>
+#include <thread>
 
 using namespace blot_test;
 
@@ -96,6 +97,18 @@ const unsigned SWEEP_COLS[] = { 20, 21, 22, 23, 29, 30, 31, 39, 40, 41, 79, 80, 
 const unsigned SWEEP_ROWS[] = { 12, 13, 14, 15, 16, 17, 23, 24, 25, 50, 99, 100, 101 };
 
 const gint32 DIAG_X[] = { 0, 9 }, DIAG_Y[] = { 0, 9 };
+
+/* stdout is a pty whose size the test sets (an isolated child): read its
+ * master end in the background, so that a child printing more than the
+ * pty buffer (gtest's failure messages) doesn't block until the alarm */
+void drain_pty(int master)
+{
+    std::thread([master]() {
+        char buf[4096];
+        while (read(master, buf, sizeof(buf)) > 0)
+            ;
+    }).detach();
+}
 
 } // namespace
 
@@ -652,6 +665,7 @@ TEST(Layout, terminal_size_is_kept_in_range)
                 ws.ws_col = c.tty_cols;
                 ws.ws_row = c.tty_rows;
                 ASSERT_EQ(openpty(&master, &slave, NULL, NULL, &ws), 0);
+                drain_pty(master);
                 ASSERT_EQ(dup2(slave, STDOUT_FILENO), STDOUT_FILENO);
             }
             Fig f;
@@ -921,7 +935,7 @@ TEST(Layout, x_labels_fit_and_match_their_cells)
         { -0.5, 1e6 }, { 1e9, 5.2e9 },
     };
     for (const auto &rg : RANGES) {
-        for (unsigned cols = 18; cols <= 130; cols++) {
+        for (unsigned cols = BLOT_MIN_COLS; cols <= 130; cols++) {
             SCOPED_TRACE(testing::Message() << "x [" << rg[0] << "," << rg[1] << "] " << cols << "x14");
             const double xs[] = { rg[0], rg[1] }, ys[] = { 1, 2 };
             Fig f(cols, 14);
@@ -940,7 +954,7 @@ TEST(Layout, x_labels_fit_and_match_their_cells_large)
     RUN_ISOLATED(30, {
         const double RANGES[][2] = { { 1e12, 2e12 }, { -2e12, -1e12 }, { 1e17, 2e17 }, { -2e17, -1e17 } };
         for (const auto &rg : RANGES) {
-            for (unsigned cols = 18; cols <= 130; cols++) {
+            for (unsigned cols = BLOT_MIN_COLS; cols <= 130; cols++) {
                 SCOPED_TRACE(testing::Message() << "x [" << rg[0] << "," << rg[1] << "] " << cols << "x14");
                 const double xs[] = { rg[0], rg[1] }, ys[] = { 1, 2 };
                 Fig f(cols, 14);
@@ -955,23 +969,37 @@ TEST(Layout, x_labels_fit_and_match_their_cells_large)
 
 /* #9 and the #13 review: with one X tick (plot widths under 20) the label
  * room was the whole axis, not BLOT_AXIS_LABEL_MAX, and a 17-18 character
- * label (|x| >= 1e12) tripped an assertion and aborted the process */
+ * label (|x| >= 1e12) tripped an assertion and aborted the process.  From
+ * the minimum screen (#17): Y 1..2 (an 8-column margin) gives plot widths
+ * 12 and up, Y -1e6..1e6 (a margin capped at half the screen) 10 and up */
 TEST(Layout, long_x_label_on_one_tick_does_not_abort)
 {
     RUN_ISOLATED(10, {
         const double RANGES[][2] = { { 1e12, 2e12 }, { -2e12, -1e12 }, { 1e17, 2e17 }, { -2e17, -1e17 } };
+        const double YLIMS[][2] = { { 1, 2 }, { -1e6, 1e6 } };
+        std::set<unsigned> one_tick_widths;
         for (const auto &rg : RANGES) {
-            for (unsigned cols = 18; cols <= 40; cols++) {
-                const double xs[] = { rg[0], rg[1] }, ys[] = { 1, 2 };
-                Fig f(cols, 14);
-                f.lim(rg[0], rg[1], 1, 2);
-                f.plot(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys);
-                Rendered r = render(f, F);
-                EXPECT_TRUE(r.ok) << r.message;
-                for (const auto &t : x_ticks(r))
-                    EXPECT_LE(t.second.size(), 16u) << t.second;
+            for (const auto &yl : YLIMS) {
+                for (unsigned cols = BLOT_MIN_COLS; cols <= 40; cols++) {
+                    SCOPED_TRACE(testing::Message() << "x [" << rg[0] << "," << rg[1] << "] y ["
+                                 << yl[0] << "," << yl[1] << "] " << cols << "x14");
+                    const double xs[] = { rg[0], rg[1] }, ys[] = { yl[0], yl[1] };
+                    Fig f(cols, 14);
+                    f.lim(rg[0], rg[1], yl[0], yl[1]);
+                    f.plot(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys);
+                    Rendered r = render(f, F);
+                    EXPECT_TRUE(r.ok) << r.message;
+                    auto ticks = x_ticks(r);
+                    if (r.ok && ticks.size() == 1)
+                        one_tick_widths.insert(r.plot_cols());
+                    for (const auto &t : ticks)
+                        EXPECT_LE(t.second.size(), 16u) << t.second;
+                }
             }
         }
+        /* every one-tick plot width, down to the minimum plot */
+        for (unsigned w = BLOT_MIN_PLOT_COLS; w < 20; w++)
+            EXPECT_TRUE(one_tick_widths.count(w)) << "no one-tick render at plot width " << w;
     });
 }
 
@@ -1040,6 +1068,29 @@ void expect_renders_with_all_flags(blot_figure *f, unsigned cols, unsigned rows)
             ASSERT_LE(lines[i].size(), cols) << "line " << i << " |" << to_utf8(lines[i]) << "|";
         EXPECT_GE(r.plot_rows(), (unsigned)BLOT_MIN_PLOT_ROWS);
         EXPECT_GE(r.plot_cols(), (unsigned)BLOT_MIN_PLOT_COLS);
+
+        /* a requested axis is drawn, not dropped to make room */
+        unsigned top = r.mrg.top, prow = r.plot_rows();
+        if (!(flags & BLOT_RENDER_NO_Y_AXIS)) {
+            ASSERT_GE(r.mrg.left, 2u);
+            for (unsigned y = top; y < top + prow; y++) {
+                ASSERT_GE(lines[y].size(), r.mrg.left) << "line " << y;
+                wchar_t a = lines[y][r.mrg.left - 1];
+                EXPECT_TRUE(a == L'|' || a == L'*') << "line " << y << " |" << to_utf8(lines[y]) << "|";
+            }
+        }
+        if (!(flags & BLOT_RENDER_NO_X_AXIS)) {
+            /* the axis line under the plot, then its label row */
+            ASSERT_GE(r.mrg.bottom, 2u);
+            ASSERT_GT(lines.size(), top + prow + 1);
+            const std::wstring &axis = lines[top + prow];
+            ASSERT_EQ(axis.size(), cols) << "|" << to_utf8(axis) << "|";
+            for (unsigned x = r.mrg.left; x < cols - r.mrg.right; x++)
+                EXPECT_TRUE(axis[x] == L'-' || axis[x] == L'*') << "column " << x << " |" << to_utf8(axis) << "|";
+            if (!(flags & BLOT_RENDER_NO_Y_AXIS))
+                EXPECT_EQ(axis[r.mrg.left - 1], L'+') << "|" << to_utf8(axis) << "|";
+            EXPECT_FALSE(x_ticks(r).empty()) << "no X tick";
+        }
 
         unsigned x_rows = (flags & BLOT_RENDER_NO_X_AXIS) ? 0 : 2;
         unsigned legends = !!(flags & BLOT_RENDER_LEGEND_ABOVE) + !!(flags & BLOT_RENDER_LEGEND_BELOW);
@@ -1147,6 +1198,7 @@ TEST(Layout, clamped_terminal_sizes_render)
                 ws.ws_col = 1;
                 ws.ws_row = 1;
                 ASSERT_EQ(openpty(&master, &slave, NULL, NULL, &ws), 0);
+                drain_pty(master);
                 ASSERT_EQ(dup2(slave, STDOUT_FILENO), STDOUT_FILENO);
             }
             for (bool wide : { false, true }) {
