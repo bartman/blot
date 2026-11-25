@@ -1020,22 +1020,19 @@ TEST(Layer, line_fractional_tiny_huge)
     }
 }
 
-// BUG B4: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Layer, DISABLED_line_draws_last_point)
+TEST(Layer, line_draws_last_point)
 {
     const gint32 xs[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, ys[10] = {};
     EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_INT32, 10, xs, ys), rect(0, 9, 0, 0));
 }
 
-// BUG B4: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Layer, DISABLED_line_single_point)
+TEST(Layer, line_single_point)
 {
     const gint32 xs[] = { 5 }, ys[] = { 5 };
     EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_INT32, 1, xs, ys), Cells({ {5,5} }));
 }
 
-// BUG B5: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Layer, DISABLED_line_shallow_segment_endpoint)
+TEST(Layer, line_shallow_segment_endpoint)
 {
     const gint32 xs[] = { 0, 10 }, ys[] = { 0, 1 };
     Cells got = layer_cells(BLOT_LINE, BLOT_DATA_INT32, 2, xs, ys, { 0, 10, 0, 9 }, { 11, 10 });

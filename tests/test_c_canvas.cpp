@@ -276,8 +276,7 @@ TEST(Canvas, line_diagonals)
     EXPECT_CELLS_EQ(cells(can), expected);
 }
 
-// BUG B5: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Canvas, DISABLED_line_reaches_both_endpoints)
+TEST(Canvas, line_reaches_both_endpoints)
 {
     for (const auto &d : DELTAS) {
         SCOPED_TRACE(testing::Message() << "(12,12) to (" << 12 + d[0] << "," << 12 + d[1] << ")");
@@ -288,8 +287,7 @@ TEST(Canvas, DISABLED_line_reaches_both_endpoints)
     }
 }
 
-// BUG B5: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Canvas, DISABLED_line_direction_independent)
+TEST(Canvas, line_direction_independent)
 {
     for (const auto &d : DELTAS) {
         SCOPED_TRACE(testing::Message() << "(12,12) - (" << 12 + d[0] << "," << 12 + d[1] << ")");
@@ -298,8 +296,7 @@ TEST(Canvas, DISABLED_line_direction_independent)
     }
 }
 
-// BUG B4: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Canvas, DISABLED_line_between_neighbours)
+TEST(Canvas, line_between_neighbours)
 {
     EXPECT_CELLS_EQ(line_cells(5, 5, 0, 0, 1, 1), Cells({ { 0, 0 }, { 1, 1 } }));
     EXPECT_CELLS_EQ(line_cells(5, 5, 0, 0, 1, 0), Cells({ { 0, 0 }, { 1, 0 } }));
@@ -348,10 +345,17 @@ TEST(Canvas, draw_rect_outline)
     EXPECT_CELLS_EQ(cells(can), border);
 }
 
-// BUG B4: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Canvas, DISABLED_draw_rect_smallest)
+TEST(Canvas, draw_rect_smallest)
 {
     Canvas can(6, 6);
     blot_canvas_draw_rect(can, 1, 1, 2, 2);
     EXPECT_CELLS_EQ(cells(can), Cells({ { 1, 1 }, { 1, 2 }, { 2, 1 }, { 2, 2 } }));
+}
+
+TEST(Canvas, line_rounds_fractional_endpoints)
+{
+    /* each end goes to its nearest cell: (0.6,0.4) -> (1,0), (4.4,2.6) -> (4,3) */
+    Cells diag = { { 1, 0 }, { 2, 1 }, { 3, 2 }, { 4, 3 } };
+    EXPECT_CELLS_EQ(line_cells(8, 8, 0.6, 0.4, 4.4, 2.6), diag);
+    EXPECT_CELLS_EQ(line_cells(8, 8, 4.4, 2.6, 0.6, 0.4), diag);
 }
