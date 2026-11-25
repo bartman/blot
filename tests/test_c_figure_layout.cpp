@@ -546,21 +546,10 @@ Lines x_rows(const Rendered &r)
     return { l[ax], l[ax + 1] };
 }
 
-/* half a unit of the last digit of a number label: 1.80 -> 0.005,
- * -9.24e+18 -> 5e+15, 0.000 -> 0.0005 */
-double label_eps(const std::string &label)
-{
-    size_t e = label.find_first_of("eE");
-    std::string mant = label.substr(0, e);
-    int exp = e == std::string::npos ? 0 : atoi(label.c_str() + e + 1);
-    size_t dot = mant.find('.');
-    int decimals = dot == std::string::npos ? 0 : (int)(mant.size() - dot - 1);
-    return 0.5 * std::pow(10.0, exp - decimals) * (1 + 1e-9);
-}
-
-/* Every X tick has a label that starts under it and is a number whose
- * value is in the tick's cell, give or take the label's rounding; the
- * labels are all different; no line is wider than the screen. */
+/* Every X tick has a label that starts under it and is a number that
+ * names a value within half a cell of the tick's cell (the rule of the
+ * axis, #9 review); the labels are all different; no line is wider than
+ * the screen. */
 void expect_x_labels_exact(const Rendered &r, double x_min, double x_max)
 {
     ASSERT_TRUE(r.ok) << r.message;
@@ -575,7 +564,7 @@ void expect_x_labels_exact(const Rendered &r, double x_min, double x_max)
         char *end = NULL;
         double v = strtod(label.c_str(), &end);
         EXPECT_TRUE(!label.empty() && end && *end == 0) << "column " << t.first << " label '" << label << "'";
-        double lo = x_min + t.first * cell, eps = label_eps(label) + 1e-9 * std::fabs(range);
+        double lo = x_min + t.first * cell, eps = 0.5 * cell + 1e-9 * std::fabs(range);
         EXPECT_GE(v, lo - eps) << "column " << t.first << " label '" << label << "'";
         EXPECT_LT(v, lo + cell + eps) << "column " << t.first << " label '" << label << "'";
         EXPECT_TRUE(seen.insert(label).second) << "duplicate label " << label;
@@ -658,9 +647,9 @@ TEST(Layout, x_labels_zero_crossing_exact)
     }
 }
 
-/* #9: long custom labels are cut to the tick spacing less a blank (7 of
- * 8 columns), each starts at its own tick; too many labels for the
- * columns: every k-th gets a tick */
+/* #9: long custom labels are cut before the next tick less a blank (7 of
+ * 8 columns; the last one to the edge), each starts at its own tick; too
+ * many labels for the columns: every k-th gets a tick */
 TEST(Layout, x_custom_labels_exact)
 {
     const gint32 ys[] = { 3, 1, 4, 1 };
@@ -671,7 +660,7 @@ TEST(Layout, x_custom_labels_exact)
         f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, NULL, ys);
         Rendered r = render(f, F);
         EXPECT_LINES_EQ(x_rows(r), Lines({ L"       +*-------*-------*-------*-------",
-                                           L"        first-l second- third-l fourth-" }));
+                                           L"        first-l second- third-l fourth-l" }));
     }
     {
         /* 30 labels on 32 columns: every second one */
@@ -693,14 +682,18 @@ TEST(Layout, x_custom_labels_exact)
 }
 
 /* #9: a sweep of widths and data; every X label row fits the screen, each
- * tick's label is the value of its cell, and no two are the same.  Not
+ * tick's label is the value of its cell, and no two are the same.  The
+ * ranges that abort without the fix are in the isolated test below.  Not
  * [0.001,0.002]: 0.001 for both 0.0010 and 0.0014 is the formatter's
- * precision with all the room it wants (#13, #10), not the layout's. */
+ * precision with all the room it wants (#13, #10), not the layout's; for
+ * the same reason not [-0.01003,0.02003] (Axis.x_labels_within_half_a_cell
+ * has its 52 columns): from 69 columns half a cell is under 0.0002 and
+ * %.3f, the formatter's first choice, is coarser. */
 TEST(Layout, x_labels_fit_and_match_their_cells)
 {
     const double RANGES[][2] = {
         { -200000, -100000 }, { -1, 2 }, { -7, 3 }, { 0, 1 }, { -1e100, 1e100 },
-        { 1e12, 2e12 }, { -2e12, -1e12 }, { 1e17, 2e17 }, { -0.5, 1e6 },
+        { -0.5, 1e6 }, { 1e9, 5.2e9 },
     };
     for (const auto &rg : RANGES) {
         for (unsigned cols = 18; cols <= 130; cols++) {
@@ -713,6 +706,26 @@ TEST(Layout, x_labels_fit_and_match_their_cells)
             expect_x_labels_exact(r, rg[0], rg[1]);
         }
     }
+}
+
+/* #9: the same sweep for |x| >= 1e12, whose 17-18 character labels on a
+ * one-tick axis aborted the process: isolated, so the other tests run */
+TEST(Layout, x_labels_fit_and_match_their_cells_large)
+{
+    RUN_ISOLATED(30, {
+        const double RANGES[][2] = { { 1e12, 2e12 }, { -2e12, -1e12 }, { 1e17, 2e17 }, { -2e17, -1e17 } };
+        for (const auto &rg : RANGES) {
+            for (unsigned cols = 18; cols <= 130; cols++) {
+                SCOPED_TRACE(testing::Message() << "x [" << rg[0] << "," << rg[1] << "] " << cols << "x14");
+                const double xs[] = { rg[0], rg[1] }, ys[] = { 1, 2 };
+                Fig f(cols, 14);
+                f.lim(rg[0], rg[1], 1, 2);
+                f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
+                Rendered r = render(f, F);
+                expect_x_labels_exact(r, rg[0], rg[1]);
+            }
+        }
+    });
 }
 
 /* #9 and the #13 review: with one X tick (plot widths under 20) the label
