@@ -530,6 +530,69 @@ TEST(Golden, bar_with_custom_x_labels)
     });
 }
 
+/* #25: a NULL custom X label is a tick with no text, never a number (a
+ * number under a category axis would read as a category); the render
+ * succeeds and the other labels keep their place */
+static void expect_null_labels_golden(char **labels, const Lines &golden)
+{
+    const gint32 xs[] = { 0, 8, 16, 24 }, ys[] = { 6, 2, 9, 2 };
+    Fig f(41, 14);
+    f.lim(0, 31, 0, 11);
+    ASSERT_TRUE(blot_figure_set_x_axis_labels(f, 4, labels, NULL));
+    f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, xs, ys);
+    expect_golden(f, F, golden);
+}
+
+#define NULL_LABELS_PLOT \
+        L"        |", \
+        L"        |", \
+        L"  8.800 *                **", \
+        L"        |                **", \
+        L"  6.600 *                **", \
+        L"        |**              **", \
+        L"        |**              **", \
+        L"  4.400 ***              **", \
+        L"        |**              **", \
+        L"  2.200 ***      **      **      **", \
+        L"        |**      **      **      **", \
+        L"  0.000 ***      **      **      **", \
+        L"        +*-------*-------*-------*-------"
+
+TEST(Golden, custom_x_labels_null_entry)
+{
+    char *labels[] = { (char *)"jan", NULL, (char *)"mar", (char *)"apr" };
+    expect_null_labels_golden(labels, {
+        NULL_LABELS_PLOT,
+        L"         jan             mar     apr",
+    });
+}
+
+TEST(Golden, custom_x_labels_null_first_and_last)
+{
+    char *first[] = { NULL, (char *)"feb", (char *)"mar", (char *)"apr" };
+    expect_null_labels_golden(first, {
+        NULL_LABELS_PLOT,
+        L"                 feb     mar     apr",
+    });
+    char *last[] = { (char *)"jan", (char *)"feb", (char *)"mar", NULL };
+    expect_null_labels_golden(last, {
+        NULL_LABELS_PLOT,
+        L"         jan     feb     mar",
+    });
+}
+
+TEST(Golden, custom_x_labels_all_null)
+{
+    /* the label row stays, blank */
+    char *labels[] = { NULL, NULL, NULL, NULL };
+    expect_null_labels_golden(labels, {
+        NULL_LABELS_PLOT,
+        L"",
+    });
+}
+
+#undef NULL_LABELS_PLOT
+
 TEST(Golden, bar_with_custom_x_labels_auto_limits)
 {
     /* auto limits (Y 0.997..4.003): bar i sits under label i at full slot

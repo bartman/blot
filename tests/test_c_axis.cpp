@@ -389,6 +389,22 @@ TEST(Axis, custom_labels_evenly_spaced)
     EXPECT_EQ(b.labels(), zip({ 0, 8, 16, 24 }, { "a", "b", "c", "d" }));
 }
 
+/* #25: a NULL custom label is a tick with no text, never a number */
+TEST(Axis, null_custom_labels_have_no_text)
+{
+    char *l[] = { NULL, (char *)"b", NULL, (char *)"d", NULL };
+    blot_strv lv = { 5, l };
+    Axis a(false, 40, 0, 4, &lv);
+    ASSERT_TRUE(a.axs) << a.error;
+    EXPECT_EQ(a.labels(), zip({ 0, 8, 16, 24, 32 }, { "", "b", "", "d", "" }));
+
+    char *n[] = { NULL, NULL, NULL };
+    blot_strv nv = { 3, n };
+    Axis b(false, 30, -5, 5, &nv);
+    ASSERT_TRUE(b.axs) << b.error;
+    EXPECT_EQ(b.labels(), zip({ 0, 10, 20 }, { "", "", "" }));
+}
+
 TEST(Axis, more_custom_labels_than_cells)
 {
     char *ag[] = { (char *)"a", (char *)"b", (char *)"c", (char *)"d", (char *)"e", (char *)"f", (char *)"g" };
