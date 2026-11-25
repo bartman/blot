@@ -1,6 +1,7 @@
 /* blot: internal object that calculates axis tick/text placement */
 /* vim: set noet sw=8 ts=8 tw=120: */
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #include <string.h>
 #include <limits.h>
@@ -187,30 +188,178 @@ static int blot_axis_format(char *text, unsigned room, double d_val, double half
 	return blot_format_number_within(text, room, d_val, half_cell);
 }
 
-/* The text of d_val in room, if it is a good label: one that fits, and
- * that names a value within half a cell (half_cell) of the tick (not 0.02
- * for 0.018036 in 4 columns, nor 2e+09 for 2.4e9).  When even the text
- * with all the room it could want is further off (a value that needs more
- * than 16 characters), the text may be no further off than that. */
-static bool blot_axis_good_text(char *text, unsigned room, double d_val, double half_cell)
+/* What a number label of an axis must say: the limits and length of the
+ * axis, and half a cell. */
+struct blot_axis_label_rule {
+	double data_min, data_max;
+	unsigned screen_length;
+	double half_cell;
+};
+
+static struct blot_axis_label_rule blot_axis_label_rule(double data_min, double data_max,
+							unsigned screen_length)
 {
-	if (blot_axis_format(text, room, d_val, half_cell) < 0)
+	return (struct blot_axis_label_rule) {
+		.data_min = data_min,
+		.data_max = data_max,
+		.screen_length = screen_length,
+		.half_cell = 0.5 * (data_max - data_min) / screen_length,
+	};
+}
+
+/* Is the value of text in the cell of d_val, the cell a data point with
+ * that value is drawn in (#42)?  A d_val off the axis has no cell, so
+ * any text is. */
+static bool blot_axis_text_in_cell(const struct blot_axis_label_rule *rule, const char *text,
+				   double d_val)
+{
+	unsigned cell, text_cell;
+	if (!blot_layer_value_cell(d_val, rule->data_min, rule->data_max, rule->screen_length, &cell))
+		return true;
+	return blot_layer_value_cell(strtod(text, NULL), rule->data_min, rule->data_max,
+				     rule->screen_length, &text_cell)
+		&& text_cell == cell;
+}
+
+/* Does text name a value within half a cell of d_val, and in its cell? */
+static bool blot_axis_text_near(const struct blot_axis_label_rule *rule, const char *text,
+				double d_val)
+{
+	return fabs(strtod(text, NULL) - d_val) <= rule->half_cell
+		&& blot_axis_text_in_cell(rule, text, d_val);
+}
+
+/* The text of v in fewer than room characters in a label's style: fixed
+ * point with prec decimals, or (exp) an exponent with prec decimals; never
+ * a negative zero.  Returns the length, or -1 when it doesn't fit. */
+static int blot_axis_text_as(char *text, unsigned room, bool exp, int prec, double v)
+{
+	const char *fmt = exp ? "%.*e" : "%.*f";
+	int rc = snprintf(NULL, 0, fmt, prec, v);
+	if (rc <= 0 || (unsigned)rc >= room)
+		return -1;
+	snprintf(text, room, fmt, prec, v);
+	if (text[0] == '-' && strtod(text, NULL) == 0)
+		rc = snprintf(text, room, fmt, prec, 0.0);
+	return rc;
+}
+
+/* The text after text in its style (dir 1), or before it (dir -1).  With
+ * an exponent, the step is a unit of the last decimal, and a tenth of it
+ * from a power of ten towards zero: 9.9e-301, not 9.0e-301, before
+ * 1.0e-300. */
+static int blot_axis_text_next(char *text, unsigned room, bool exp, int prec, int dir)
+{
+	const char *e = strchr(text, 'e');
+	double v = strtod(text, NULL);
+	double step = pow(10, (exp && e ? atoi(e + 1) : 0) - prec);
+
+	if (exp && e && (v < 0) != (dir < 0)) {
+		/* is the mantissa 1.000... ? */
+		const char *m = text + (text[0] == '-');
+		bool power = m[0] == '1';
+		for (const char *c = m + 1; power && c < e; c++)
+			power = *c == '.' || *c == '0';
+		if (power)
+			step /= 10;
+	}
+	return blot_axis_text_as(text, room, exp, prec, v + dir * step);
+}
+
+/* The text of d_val in room, if it is a good label: one that fits, that
+ * names a value within half a cell of the tick (not 0.02 for 0.018036 in
+ * 4 columns, nor 2e+09 for 2.4e9), and whose value is in the tick's cell,
+ * where a data point with that value is drawn (#42).  When even the text
+ * with all the room it could want is further than half a cell off (a
+ * value that needs more than 16 characters), the text may be no further
+ * off than that, and must still be in the cell.
+ *
+ * Half a cell around a value near the edge of its cell reaches into the
+ * next cell: 0.00133 (at 49.5) for 0.0013333 at the lower edge of cell 50
+ * of 150 over 0.001..0.002.  When the formatter's text is there, the text
+ * is in its style (fixed point, or an exponent), with its precision or,
+ * where none is good, the least more that has one: the closest to d_val
+ * of the texts of d_val and of the values allowed at either end, and of
+ * their neighbours, that is good (0.001334). */
+static bool blot_axis_good_text(char *text, unsigned room, double d_val,
+				const struct blot_axis_label_rule *rule)
+{
+	if (blot_axis_format(text, room, d_val, rule->half_cell) < 0)
 		return false;
 
-	if (!(fabs(strtod(text, NULL) - d_val) > half_cell))
-		return true;
+	if (!(fabs(strtod(text, NULL) - d_val) > rule->half_cell)) {
+		if (blot_axis_text_in_cell(rule, text, d_val))
+			return true;
+	} else {
+		/* the full text is off too: the shorter one may be no
+		 * further off */
+		char full[BLOT_AXIS_LABEL_MAX + 1];
+		double off = fabs(strtod(text, NULL) - d_val);
+		if (blot_axis_format(full, sizeof(full), d_val, rule->half_cell) >= 0
+		    && off > fabs(strtod(full, NULL) - d_val) * (1 + 1e-9))
+			return false;
+		return blot_axis_text_in_cell(rule, text, d_val);
+	}
 
-	/* the full text is off too: the shorter one may be no further off */
-	char full[BLOT_AXIS_LABEL_MAX + 1];
-	if (blot_axis_format(full, sizeof(full), d_val, half_cell) < 0)
-		return true;
-	return fabs(strtod(text, NULL) - d_val) <= fabs(strtod(full, NULL) - d_val) * (1 + 1e-9);
+	/* the values allowed: within half a cell of d_val and in its cell
+	 * (it has one: else any text is in it), to within the rounding of
+	 * the edges; the texts are checked exactly */
+	unsigned cell;
+	blot_layer_value_cell(d_val, rule->data_min, rule->data_max, rule->screen_length, &cell);
+	double width = (rule->data_max - rule->data_min) / rule->screen_length;
+	double lo = fmax(d_val - rule->half_cell, rule->data_min + cell * width);
+	double hi = fmin(d_val + rule->half_cell, rule->data_min + (cell + 1) * width);
+
+	/* the formatter's style and precision */
+	const char *e = strchr(text, 'e');
+	const char *dot = strchr(text, '.');
+	bool exp = e != NULL;
+	int prec = dot ? (int)((e ? e : text + strlen(text)) - dot - 1) : 0;
+
+	for (int p = prec; p <= prec + 17; p++) {
+		const double ends[] = { d_val, lo, hi };
+		char cand[BLOT_AXIS_LABEL_MAX + 2];
+		double best_err = INFINITY;
+		bool fits = false;
+
+		/* the text of each, and its neighbours: an end that is a
+		 * short decimal can be just outside the cell (0.0013 for the
+		 * lower edge of cell 3 of 10 over 0.001..0.002), and its
+		 * neighbour is then the closest text inside (0.00131) */
+		for (int i = 0; i < 3; i++) {
+			if (blot_axis_text_as(cand, MIN(room, sizeof(cand)), exp, p, ends[i]) < 0)
+				continue;
+			fits = true;
+
+			char base[sizeof(cand)];
+			strcpy(base, cand);
+			for (int dir = -1; dir <= 1; dir++) {
+				strcpy(cand, base);
+				if (dir && blot_axis_text_next(cand, MIN(room, sizeof(cand)), exp, p, dir) < 0)
+					continue;
+				if (!blot_axis_text_near(rule, cand, d_val))
+					continue;
+
+				double err = fabs(strtod(cand, NULL) - d_val);
+				if (err < best_err) {
+					best_err = err;
+					strcpy(text, cand);
+				}
+			}
+		}
+		if (best_err < INFINITY)
+			return true;
+		if (!fits)
+			break;
+	}
+	return false;
 }
 
 int blot_axis_number_label(const blot_axis *axs, char *text, unsigned room, double d_val)
 {
-	double half_cell = 0.5 * (axs->data_max - axs->data_min) / axs->screen_length;
-	if (!blot_axis_good_text(text, room, d_val, half_cell))
+	struct blot_axis_label_rule rule = blot_axis_label_rule(axs->data_min, axs->data_max,
+								axs->screen_length);
+	if (!blot_axis_good_text(text, room, d_val, &rule))
 		return -1;
 	return strlen(text);
 }
@@ -223,7 +372,7 @@ static enum blot_axis_fit blot_axis_numbers_fit(const struct blot_axis_layout *l
 						unsigned screen_length,
 						double data_min, double data_max)
 {
-	double half_cell = 0.5 * (data_max - data_min) / screen_length;
+	struct blot_axis_label_rule rule = blot_axis_label_rule(data_min, data_max, screen_length);
 	g_autofree char *text = g_malloc((size_t)lay->count * (BLOT_AXIS_LABEL_MAX + 1));
 	bool last_fits = true;
 
@@ -231,7 +380,7 @@ static enum blot_axis_fit blot_axis_numbers_fit(const struct blot_axis_layout *l
 	for (unsigned ti=0; ti<lay->count; ti++) {
 		double d_val = blot_axis_tick_value(lay, ti);
 		unsigned room = blot_axis_number_room(lay, ti, screen_length);
-		if (blot_axis_good_text(TEXT(ti), room, d_val, half_cell))
+		if (blot_axis_good_text(TEXT(ti), room, d_val, &rule))
 			continue;
 		if (ti + 1 < lay->count)
 			return BLOT_AXIS_DOES_NOT_FIT;
@@ -246,9 +395,9 @@ static enum blot_axis_fit blot_axis_numbers_fit(const struct blot_axis_layout *l
 
 			char a[BLOT_AXIS_LABEL_MAX + 1], b[BLOT_AXIS_LABEL_MAX + 1];
 			int ra = blot_axis_format(a, sizeof(a), blot_axis_tick_value(lay, ti),
-						  half_cell);
+						  rule.half_cell);
 			int rb = blot_axis_format(b, sizeof(b), blot_axis_tick_value(lay, tj),
-						  half_cell);
+						  rule.half_cell);
 			if (ra >= 0 && rb >= 0 && strcmp(a, b))
 				return BLOT_AXIS_DOES_NOT_FIT;
 		}
@@ -442,15 +591,15 @@ blot_axis * blot_axis_new_with_room(bool is_vertical, bool is_visible,
 	lay.y_room = is_vertical ? min_t(unsigned, y_label_cols, BLOT_AXIS_Y_LABEL_COLS) + 1 : 0;
 
 	/* Number labels must say the value of their own tick to within half
-	 * a cell, in their room: horizontal ones are written side by side, so
-	 * they must fit between the ticks; vertical ones each have a row of
-	 * the margin, y_label_cols wide (#10).  When the zero alignment left
-	 * the last label too little room for that, drop that one tick: the
-	 * others keep their place.  When other labels don't fit, use fewer
-	 * ticks.  One horizontal tick at the start of the axis always has
-	 * room (BLOT_MIN_COLS); on a tiny axis or margin a label that still
-	 * doesn't fit is left empty, never a misleading number, and the render
-	 * never fails on it. */
+	 * a cell, and a value in its cell (#42), in their room: horizontal
+	 * ones are written side by side, so they must fit between the ticks;
+	 * vertical ones each have a row of the margin, y_label_cols wide
+	 * (#10).  When the zero alignment left the last label too little
+	 * room for that, drop that one tick: the others keep their place.
+	 * When other labels don't fit, use fewer ticks.  One horizontal tick
+	 * at the start of the axis always has room (BLOT_MIN_COLS); on a tiny
+	 * axis or margin a label that still doesn't fit is left empty, never
+	 * a misleading number, and the render never fails on it. */
 
 	if (!use_labels_arg) {
 		for (;;) {
@@ -543,8 +692,9 @@ blot_axis * blot_axis_new_with_room(bool is_vertical, bool is_visible,
 			/* the layout above made sure it is good (the last
 			 * resort for a tiny axis is no text) */
 			unsigned room = blot_axis_number_room(&lay, ti, screen_length);
-			double half_cell = 0.5 * (data_max - data_min) / screen_length;
-			int rc = blot_axis_good_text(p, room, d_val, half_cell) ? (int)strlen(p) : -1;
+			struct blot_axis_label_rule rule = blot_axis_label_rule(data_min, data_max,
+										screen_length);
+			int rc = blot_axis_good_text(p, room, d_val, &rule) ? (int)strlen(p) : -1;
 			if (rc < 0)
 				rc = 0;
 			p[rc] = 0;

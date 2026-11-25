@@ -172,7 +172,8 @@ golden scatter-stdin --ascii scatter --read /dev/stdin --position 1,2 < "$here/c
 # X is not the axis mapping but the bar slot model (blot_layer_bar, the
 # open question of #12): 4.006 slots of 30/4.006 columns, a bar in the
 # left half of its slot: columns 0..4, 8..11, 15..19, 22..26, so the
-# bars sit left of the X ticks (0.997, 1.999, 3.001 at columns 0, 10, 20).
+# bars sit left of the X ticks (0.997, 1.999, 3.002 at columns 0, 10, 20;
+# not 3.001, whose double is at 19.999999999999996, in column 19: #42).
 # This golden bakes in the current slot model, which the owner is
 # deciding in #12: a change there regenerates it (SMOKE_UPDATE=1) and
 # re-checks it by hand
@@ -183,7 +184,7 @@ golden bar-file --ascii bar --read bars.txt < /dev/null
 # Y labels are 6 characters), so (1,1) (2,3) (3,2) (4,5) are in columns
 # floor((x - 0.997) * 30 / 3.006) = 0, 10, 19, 29 and rows
 # floor((y - 0.996) * 11 / 4.008) = 0, 5, 2, 10, and the line joins
-# them; the X labels 0.997, 1.999, 3.001, the Y labels 0.996, 2.332, 3.668
+# them; the X labels 0.997, 1.999, 3.002 (3.001 is in column 19: #42), the Y labels 0.996, 2.332, 3.668
 golden line-column --ascii line --read column.txt < /dev/null
 
 # two layers on one figure, the legend lists both: the ramp's line and

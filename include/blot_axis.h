@@ -58,8 +58,10 @@ BLOT_API void blot_axis_delete(blot_axis *axs);
 
 /* The label of the number d_val on this axis in fewer than room
  * characters, by the axis's rule: within half a cell of d_val, or no
- * further off than with all the room it could want.  Returns the length,
- * or -1 when no text is good; nothing is written at or past text[room]. */
+ * further off than with all the room it could want, and in the cell of
+ * d_val, where a point with that value is drawn (#42).  Returns the
+ * length, or -1 when no text is good; nothing is written at or past
+ * text[room]. */
 BLOT_API int blot_axis_number_label(const blot_axis *axs, char *text, unsigned room, double d_val);
 
 BLOT_EXTERN_C_END
