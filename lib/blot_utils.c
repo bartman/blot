@@ -26,7 +26,8 @@ unsigned blot_env_to_uint(const char *name, unsigned dflt)
  * precise of the integer (%.0f) and %.6g down to %.1g, on a tie the first of
  * those.  A text less precise than %.1g (0 for 0.5) isn't used.  So a value
  * keeps at least two significant digits when %.2g fits, and an integer is
- * printed in full when it fits.
+ * printed in full when it fits.  From 2^53 on, the digits of %.0f past the
+ * 16th or 17th are only binary noise, so it is skipped there.
  *
  * Returns the length, or -1 when nothing fits; nothing is written at or
  * past p[room].  No static state, so it's thread-safe. */
@@ -54,6 +55,8 @@ int blot_format_number(char *p, unsigned room, double d_val)
 	const char *best = NULL;
 
 	for (size_t i = 0; i < sizeof(others)/sizeof(others[0]); i++) {
+		if (i == 0 && fabs(d_val) >= 0x1p53)
+			continue;
 		rc = snprintf(NULL, 0, others[i], d_val);
 		if (rc<=0 || (unsigned)rc >= room)
 			continue;
