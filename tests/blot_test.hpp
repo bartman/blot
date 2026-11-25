@@ -20,6 +20,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <csignal>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -29,6 +31,7 @@
 #include <utility>
 #include <vector>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #include "blot_figure.h"
 #include "blot_error.h"
@@ -449,12 +452,36 @@ struct Canvas {
  * after `seconds`, a crash is a normal test failure, and process-wide
  * state (cached terminal size, have_color_support, the environment)
  * can't leak into other tests.  The child exits 0 only when the body
- * recorded no failure of its own. */
+ * recorded no failure of its own.
+ *
+ * What the output shows when the child fails (#26; tests/test_isolated.cpp):
+ * - each failed assertion's file:line and message, which the child writes
+ *   to stderr as it happens, so a later crash or hang doesn't lose them;
+ *   gtest shows the child's stderr under "Actual msg";
+ * - for a child killed by a signal, a second failure naming it (SIGALRM
+ *   is the timeout), since gtest gives only its number;
+ * - in an ASan build, LeakSanitizer's report of a leak in the child. */
 #ifdef BLOT_TEST_GCOV
 /* a --coverage build (tests/CMakeLists.txt): the child writes its
  * counters before _exit() */
 extern "C" void __gcov_dump(void);
 #endif
+
+/* in the child: writes each failure of the body's thread to stderr when
+ * it is recorded, then passes it on as usual (HasFailure() still sees
+ * it).  Not a listener: gtest stops telling them in a death test child.
+ * gtest's own ASSERT_NO_FATAL_FAILURE hooks in the same way. */
+struct IsolatedReporter : ::testing::internal::HasNewFatalFailureHelper {
+    void ReportTestPartResult(const ::testing::TestPartResult &p) override
+    {
+        if (p.failed()) {
+            fprintf(stderr, "%s:%d: %s\n", p.file_name() ? p.file_name() : "?",
+                    p.line_number(), p.message());
+            fflush(stderr);
+        }
+        HasNewFatalFailureHelper::ReportTestPartResult(p);
+    }
+};
 
 template <typename Fn>
 [[noreturn]] void isolated_child(unsigned seconds, Fn body)
@@ -463,19 +490,15 @@ template <typename Fn>
      * recorded before the fork (an earlier case of the same test) */
     const ::testing::TestInfo *ti = ::testing::UnitTest::GetInstance()->current_test_info();
     int before = ti ? ti->result()->total_part_count() : 0;
+    /* never destroyed: the child ends with _exit() */
+    new IsolatedReporter;
     alarm(seconds);
     body();
-    /* the parent shows the child's stderr: repeat the failures there */
     bool failed = false;
     if (ti) {
         const ::testing::TestResult *res = ti->result();
-        for (int i = before; i < res->total_part_count(); i++) {
-            const ::testing::TestPartResult &p = res->GetTestPartResult(i);
-            failed |= p.failed();
-            if (p.failed())
-                fprintf(stderr, "%s:%d: %s\n", p.file_name() ? p.file_name() : "?",
-                        p.line_number(), p.message());
-        }
+        for (int i = before; i < res->total_part_count(); i++)
+            failed |= res->GetTestPartResult(i).failed();
     }
 #ifdef BLOT_TEST_LSAN
     /* nonzero when it found and reported a leak (on stderr) */
@@ -492,12 +515,43 @@ template <typename Fn>
     _exit(failed ? 1 : 0);
 }
 
+/* in the parent: the child's wait status, for isolated_signal() */
+struct IsolatedExit {
+    int *status;
+    bool operator()(int s) const
+    {
+        *status = s;
+        return WIFEXITED(s) && WEXITSTATUS(s) == 0;
+    }
+};
+
+/* a failure that names the signal that killed the child, if one did */
+static inline void isolated_signal(int status, unsigned seconds, const char *file, int line)
+{
+    if (!WIFSIGNALED(status))
+        return;
+    int sig = WTERMSIG(status);
+    const char *abbrev = sigabbrev_np(sig);
+    std::string name = abbrev ? std::string("SIG") + abbrev : "signal " + std::to_string(sig);
+    if (sig == SIGALRM)
+        ADD_FAILURE_AT(file, line) << "RUN_ISOLATED: hang: the body still ran after "
+                                   << seconds << " s (killed by SIGALRM)";
+    else
+        ADD_FAILURE_AT(file, line) << "RUN_ISOLATED: crash: the child was killed by " << name
+                                   << " (signal " << sig << ")";
+}
+
 /* RUN_ISOLATED(seconds, { body }); the body may use EXPECT_* and ASSERT_* */
 #define RUN_ISOLATED(seconds, ...)                                              \
     do {                                                                        \
+        unsigned _isolated_seconds = (seconds);                                 \
+        int _isolated_status = 0;                                               \
         auto _isolated_body = [&]() __VA_ARGS__;                                \
-        EXPECT_EXIT(::blot_test::isolated_child((seconds), _isolated_body),     \
-                    ::testing::ExitedWithCode(0), "");                          \
+        EXPECT_EXIT(::blot_test::isolated_child(_isolated_seconds,              \
+                                                _isolated_body),                \
+                    ::blot_test::IsolatedExit{&_isolated_status}, "");          \
+        ::blot_test::isolated_signal(_isolated_status, _isolated_seconds,       \
+                                     __FILE__, __LINE__);                       \
     } while (0)
 
 } // namespace blot_test

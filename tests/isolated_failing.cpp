@@ -26,6 +26,8 @@ TEST(Isolated, expect_fails)
 {
     RUN_ISOLATED(5, {
         EXPECT_EQ(1 + 1, 3) << "isolated-expect-marker";
+        if (!HasFailure())
+            ADD_FAILURE() << "HasFailure() missed the failure";
     });
 }
 

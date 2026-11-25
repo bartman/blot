@@ -88,6 +88,7 @@ TEST(IsolatedOutput, expect_failure_shows_file_line_and_message)
     EXPECT_TRUE(has(r, where("isolated-expect-marker"))) << show(r);
     EXPECT_TRUE(has(r, "isolated-expect-marker")) << show(r);
     EXPECT_TRUE(has(r, "1 + 1")) << show(r);
+    EXPECT_FALSE(has(r, "HasFailure() missed")) << show(r);
 }
 
 TEST(IsolatedOutput, assert_failure_shows_file_line_and_message)
