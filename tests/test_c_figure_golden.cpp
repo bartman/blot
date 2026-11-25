@@ -241,6 +241,10 @@ TEST(Golden, braille_bar)
 
 TEST(Golden, no_axes_three_plot_types)
 {
+    /* the minimum screen, 20x12 (#17); x and y 0..9.  Scatter and line:
+     * x 0, 5, 9 in columns 0, 11, 19, y 0, 5, 9 in rows 0, 6, 11.  Bar: 10
+     * slots of 2 columns, a bar in the left half of its slot (#12): x 0, 5, 9
+     * from columns 0, 10, 18, 2 columns wide, up to rows 0, 6, 11 */
     const gint32 xs[] = { 0, 5, 9 }, ys[] = { 0, 5, 9 };
     const blot_render_flags flags = F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS;
     const struct {
@@ -248,11 +252,13 @@ TEST(Golden, no_axes_three_plot_types)
         Lines golden;
     } cases[] = {
         { BLOT_SCATTER, {
-            L"         *",
+            L"                   *",
             L"",
             L"",
             L"",
-            L"     *",
+            L"",
+            L"           *",
+            L"",
             L"",
             L"",
             L"",
@@ -260,33 +266,37 @@ TEST(Golden, no_axes_three_plot_types)
             L"*",
         } },
         { BLOT_LINE, {
-            L"         *",
-            L"        *",
+            L"                  **",
+            L"                 *",
+            L"               **",
+            L"             **",
+            L"            *",
+            L"          **",
+            L"        **",
             L"       *",
-            L"      *",
-            L"     *",
-            L"    *",
-            L"   *",
+            L"     **",
+            L"   **",
             L"  *",
-            L" *",
-            L"*",
+            L"**",
         } },
         { BLOT_BAR, {
-            L"         *",
-            L"         *",
-            L"         *",
-            L"         *",
-            L"     **  *",
-            L"     **  *",
-            L"     **  *",
-            L"     **  *",
-            L"     **  *",
-            L"**   **  *",
+            L"                  **",
+            L"                  **",
+            L"                  **",
+            L"                  **",
+            L"                  **",
+            L"          **      **",
+            L"          **      **",
+            L"          **      **",
+            L"          **      **",
+            L"          **      **",
+            L"          **      **",
+            L"**        **      **",
         } },
     };
     for (const auto &c : cases) {
         SCOPED_TRACE(c.type);
-        Fig f(10, 10);
+        Fig f(20, 12);
         f.lim(0, 9, 0, 9);
         f.plot(c.type, BLOT_DATA_INT32, 3, xs, ys);
         expect_golden(f, flags, c.golden);

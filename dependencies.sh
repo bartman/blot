@@ -86,7 +86,7 @@ elif [ -f /etc/debian_version ]; then
         *) compiler=( gcc g++ clang ) ;;
     esac
 
-    run apt install $YES make ninja-build cmake libglib2.0-dev git libgtest-dev "${compiler[@]}"
+    run apt install $YES make ninja-build cmake libglib2.0-dev git libgtest-dev libspdlog-dev libfmt-dev "${compiler[@]}"
 
 else
     die "Distribution is not handled"
