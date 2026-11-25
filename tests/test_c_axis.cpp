@@ -401,8 +401,11 @@ TEST(Axis, tick_in_cell_of_its_value_sweep)
 TEST(Axis, custom_label_ticks_in_their_cells)
 {
     std::vector<std::string> names;
-    for (unsigned i = 0; i < 250; i++)
-        names.push_back("l" + std::to_string(i));
+    for (unsigned i = 0; i < 250; i++) {
+        char name[16];
+        snprintf(name, sizeof(name), "l%u", i);
+        names.push_back(name);
+    }
     std::vector<char *> ptrs;
     for (auto &n : names)
         ptrs.push_back(&n[0]);
