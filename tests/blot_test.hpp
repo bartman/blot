@@ -467,17 +467,27 @@ struct Canvas {
 extern "C" void __gcov_dump(void);
 #endif
 
+/* a failure as the child writes it to stderr */
+static inline std::string isolated_line(const ::testing::TestPartResult &p)
+{
+    return std::string(p.file_name() ? p.file_name() : "?") + ":"
+           + std::to_string(p.line_number()) + ": " + p.message() + "\n";
+}
+
 /* in the child: writes each failure of the body's thread to stderr when
  * it is recorded, then passes it on as usual (HasFailure() still sees
  * it).  Not a listener: gtest stops telling them in a death test child.
- * gtest's own ASSERT_NO_FATAL_FAILURE hooks in the same way. */
+ * gtest's own ASSERT_NO_FATAL_FAILURE hooks in the same way.  It keeps
+ * what it wrote, so the end of the child writes only the others. */
 struct IsolatedReporter : ::testing::internal::HasNewFatalFailureHelper {
+    std::multiset<std::string> written;
     void ReportTestPartResult(const ::testing::TestPartResult &p) override
     {
         if (p.failed()) {
-            fprintf(stderr, "%s:%d: %s\n", p.file_name() ? p.file_name() : "?",
-                    p.line_number(), p.message());
+            std::string line = isolated_line(p);
+            fputs(line.c_str(), stderr);
             fflush(stderr);
+            written.insert(line);
         }
         HasNewFatalFailureHelper::ReportTestPartResult(p);
     }
@@ -491,14 +501,26 @@ template <typename Fn>
     const ::testing::TestInfo *ti = ::testing::UnitTest::GetInstance()->current_test_info();
     int before = ti ? ti->result()->total_part_count() : 0;
     /* never destroyed: the child ends with _exit() */
-    new IsolatedReporter;
+    IsolatedReporter *rep = new IsolatedReporter;
     alarm(seconds);
     body();
+    /* the failures the reporter didn't see (another thread's), as they
+     * would be lost otherwise */
     bool failed = false;
     if (ti) {
         const ::testing::TestResult *res = ti->result();
-        for (int i = before; i < res->total_part_count(); i++)
-            failed |= res->GetTestPartResult(i).failed();
+        for (int i = before; i < res->total_part_count(); i++) {
+            const ::testing::TestPartResult &p = res->GetTestPartResult(i);
+            if (!p.failed())
+                continue;
+            failed = true;
+            std::string line = isolated_line(p);
+            auto it = rep->written.find(line);
+            if (it != rep->written.end())
+                rep->written.erase(it);
+            else
+                fputs(line.c_str(), stderr);
+        }
     }
 #ifdef BLOT_TEST_LSAN
     /* nonzero when it found and reported a leak (on stderr) */

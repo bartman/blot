@@ -10,10 +10,24 @@
 
 #include <csignal>
 #include <cstdlib>
+#include <thread>
+
+#include <sys/prctl.h>
+#include <sys/resource.h>
 
 namespace {
 
 /* not inlined, so no pointer to the block stays in the caller's frame */
+/* abort() without a core dump on every ctest run: RLIMIT_CORE 0 for a
+ * file core_pattern; a piped one (systemd-coredump) still gets the dump
+ * unless the process isn't dumpable */
+void no_core()
+{
+    struct rlimit rl = { 0, 0 };
+    setrlimit(RLIMIT_CORE, &rl);
+    prctl(PR_SET_DUMPABLE, 0);
+}
+
 __attribute__((noinline)) void leak_a_block()
 {
     void *volatile p = malloc(48);
@@ -50,6 +64,7 @@ TEST(Isolated, hangs)
 TEST(Isolated, crashes)
 {
     RUN_ISOLATED(5, {
+        no_core();
         abort();
     });
 }
@@ -58,8 +73,19 @@ TEST(Isolated, crashes)
 TEST(Isolated, expect_fails_then_crashes)
 {
     RUN_ISOLATED(5, {
+        no_core();
         EXPECT_EQ(2 + 2, 5) << "isolated-before-crash-marker";
         abort();
+    });
+}
+
+/* a failure on another thread: the body's reporter doesn't see it, the
+ * end of the child writes it */
+TEST(Isolated, thread_fails)
+{
+    RUN_ISOLATED(5, {
+        std::thread t([] { ADD_FAILURE() << "isolated-thread-marker"; });
+        t.join();
     });
 }
 

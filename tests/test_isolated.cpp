@@ -21,10 +21,23 @@ struct Helper {
     std::string out;    // stdout and stderr
 };
 
+/* a shell word */
+std::string quote(const std::string &s)
+{
+    std::string q = "'";
+    for (char c : s)
+        q += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    return q + "'";
+}
+
 Helper run_case(const char *name)
 {
     Helper r;
-    std::string cmd = std::string("'") + BLOT_ISOLATED_HELPER + "' --gtest_filter=Isolated."
+    /* flags override the caller's GTEST_* environment; GTEST_OUTPUT
+     * would make the helper write over this program's report; timeout in
+     * case the child's alarm never fires */
+    std::string cmd = "timeout 60 env -u GTEST_OUTPUT " + quote(BLOT_ISOLATED_HELPER)
+                      + " --gtest_color=no --gtest_print_time=1 --gtest_filter=Isolated."
                       + name + " 2>&1";
     FILE *p = popen(cmd.c_str(), "r");
     if (!p) {
@@ -72,6 +85,14 @@ bool has(const Helper &r, const std::string &s)
     return r.out.find(s) != std::string::npos;
 }
 
+size_t count(const Helper &r, const std::string &s)
+{
+    size_t n = 0;
+    for (size_t at = r.out.find(s); at != std::string::npos; at = r.out.find(s, at + 1))
+        n++;
+    return n;
+}
+
 /* the helper ran the case, and it failed */
 void expect_failed(const Helper &r, const char *name)
 {
@@ -86,7 +107,7 @@ TEST(IsolatedOutput, expect_failure_shows_file_line_and_message)
     Helper r = run_case("expect_fails");
     expect_failed(r, "expect_fails");
     EXPECT_TRUE(has(r, where("isolated-expect-marker"))) << show(r);
-    EXPECT_TRUE(has(r, "isolated-expect-marker")) << show(r);
+    EXPECT_EQ(count(r, "isolated-expect-marker"), 1u) << "once\n" << show(r);
     EXPECT_TRUE(has(r, "1 + 1")) << show(r);
     EXPECT_FALSE(has(r, "HasFailure() missed")) << show(r);
 }
@@ -121,6 +142,14 @@ TEST(IsolatedOutput, failure_before_a_crash_still_shows)
     EXPECT_TRUE(has(r, where("isolated-before-crash-marker"))) << show(r);
     EXPECT_TRUE(has(r, "isolated-before-crash-marker")) << show(r);
     EXPECT_TRUE(has(r, "SIGABRT")) << show(r);
+}
+
+TEST(IsolatedOutput, failure_on_another_thread_shows)
+{
+    Helper r = run_case("thread_fails");
+    expect_failed(r, "thread_fails");
+    EXPECT_TRUE(has(r, where("isolated-thread-marker"))) << show(r);
+    EXPECT_EQ(count(r, "isolated-thread-marker"), 1u) << "once\n" << show(r);
 }
 
 TEST(IsolatedOutput, leak_fails_with_lsan_report)
