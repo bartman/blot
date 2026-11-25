@@ -11,6 +11,8 @@
 
 #include "plot_encode.hpp"
 
+#include "blot.h"
+
 namespace {
 
 /* sets LC_CTYPE for one test, and puts the old one back */
@@ -88,14 +90,25 @@ TEST(CliEncode, question_marks_as_wide_as_the_character)
 	EXPECT_EQ(encode(L"\u25D8x", &replaced, table_width), "?x");
 }
 
-TEST(CliEncode, unknown_width_is_one_column)
+TEST(CliEncode, width_is_the_librarys_in_every_locale)
 {
-	/* the C locale can't measure U+4E2D (wcwidth -1): one column, as
-	 * the library's legend assumes */
+	/* the C locale can't measure U+4E2D (wcwidth -1), but the library
+	 * laid it out two columns wide (#18): two '?'s */
 	CType c("C");
 	ASSERT_TRUE(c.ok);
 	bool replaced = false;
-	EXPECT_EQ(encode(L"a\u4E2Db", &replaced), "a?b");
+	EXPECT_EQ(encode(L"a\u4E2Db", &replaced), "a??b");
+	EXPECT_EQ(encode(L"e\u0301x", &replaced), "ex");
+}
+
+TEST(CliEncode, unknown_width_is_one_column)
+{
+	/* U+0378 is unassigned: blot_text_wcwidth() is -1, so one column,
+	 * as the library's legend assumes */
+	CType c("C");
+	ASSERT_TRUE(c.ok);
+	bool replaced = false;
+	EXPECT_EQ(encode(L"a\u0378b", &replaced), "a?b");
 }
 
 TEST(CliEncode, line_widths_are_kept_in_the_c_locale)
@@ -138,4 +151,91 @@ TEST(CliEncode, utf8_keeps_every_character)
 	EXPECT_EQ(encode(screen, &replaced),
 		  "\u4E2D\u6587abcdef\ne\u0301\u0301abcdefghi\n\u25D8 label123\n");
 	EXPECT_FALSE(replaced);
+}
+
+namespace {
+
+/* a real render (Unicode, no colour) with a CJK and a combining label, in
+ * the legend and as custom X labels, encoded with the default width
+ * (blot_text_wcwidth()) in the locale of the test */
+struct RealPlot {
+	std::wstring text;
+	unsigned cols = 50;
+	RealPlot() {
+		static const gint32 xs[] = { 0, 3, 6, 9 }, ys[] = { 1, 5, 2, 8 };
+		static char *labels[] = { (char *)"\xe6\x97\xa5\xe6\x9c\xac", (char *)"e\xcc\x81",
+					  (char *)"\xe4\xb8\xad", (char *)"ab" };
+		blot_figure *fig = blot_figure_new(NULL);
+		EXPECT_TRUE(blot_figure_set_screen_size(fig, cols, 20, NULL));
+		EXPECT_TRUE(blot_figure_set_x_axis_labels(fig, 4, labels, NULL));
+		EXPECT_TRUE(blot_figure_plot(fig, BLOT_LINE, BLOT_DATA_INT32, 4, xs, ys, 1,
+					     "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e", NULL));
+		EXPECT_TRUE(blot_figure_plot(fig, BLOT_SCATTER, BLOT_DATA_INT32, 4, xs, ys, 2,
+					     "e\xcc\x81" "e\xcc\x81", NULL));
+		blot_screen *scr = blot_figure_render(fig, (blot_render_flags)(BLOT_RENDER_NO_COLOR
+					| BLOT_RENDER_LEGEND_BELOW), NULL);
+		EXPECT_TRUE(scr != NULL);
+		if (scr) {
+			gsize n = 0;
+			const wchar_t *t = blot_screen_get_text(scr, &n, NULL);
+			text.assign(t, n);
+			blot_screen_delete(scr);
+		}
+		blot_figure_delete(fig);
+	}
+};
+
+/* each rendered line's width as the library counts it */
+std::vector<unsigned> layout_widths(const std::wstring &text)
+{
+	std::vector<unsigned> v;
+	unsigned w = 0;
+	for (wchar_t wc : text) {
+		if (wc == L'\n') {
+			v.push_back(w);
+			w = 0;
+			continue;
+		}
+		int cw = blot_text_wcwidth(wc);
+		w += cw >= 0 ? (unsigned)cw : 1;
+	}
+	return v;
+}
+
+void expect_real_plot_widths(const char *locale)
+{
+	CType c(locale);
+	if (!c.ok)
+		GTEST_SKIP() << "no " << locale << " locale";
+	RealPlot p;
+	ASSERT_FALSE(p.text.empty());
+	bool replaced = false;
+	auto v = lines(encode(p.text, &replaced));
+	EXPECT_TRUE(replaced);
+	auto want = layout_widths(p.text);
+	ASSERT_EQ(v.size(), want.size());
+	/* every byte is one column here: ASCII, '?', or a Latin-1 byte */
+	for (size_t i = 0; i < v.size(); i++)
+		EXPECT_EQ(v[i].size(), want[i]) << i << ": '" << v[i] << "'";
+	/* the X label row is the whole width; the labels under their ticks */
+	ASSERT_GE(v.size(), 4u);
+	EXPECT_EQ(v[v.size() - 3].size(), p.cols) << v[v.size() - 3];
+	EXPECT_NE(v[v.size() - 3].find("??"), std::string::npos) << v[v.size() - 3];
+	/* the legend: U+25D8, then the labels, '?' per column */
+	EXPECT_EQ(v[v.size() - 2], "?  ??????");
+	EXPECT_EQ(v[v.size() - 1], "?  ee");
+}
+
+} // namespace
+
+/* the CJK and combining labels of a real plot keep their exact widths
+ * (#18 re-review, note 36606) */
+TEST(CliEncode, real_plot_widths_c_locale)
+{
+	expect_real_plot_widths("C");
+}
+
+TEST(CliEncode, real_plot_widths_latin1)
+{
+	expect_real_plot_widths("en_US.ISO-8859-1");
 }
