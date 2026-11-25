@@ -25,8 +25,9 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
 endforeach()
 
 # the blot CLI without a terminal (#37): stdout a pipe, COLUMNS and LINES
-# unset; it must not abort (std::terminate)
-foreach(CLI_CASE help render regex)
+# unset; it must not abort (std::terminate).  repeat: a plot to a file or
+# a pipe is the same and complete every time, in any locale (#40)
+foreach(CLI_CASE help render regex repeat)
     add_test(NAME cli_notty_${CLI_CASE}
         COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/cli_test.sh $<TARGET_FILE:blot> ${CLI_CASE})
 endforeach()

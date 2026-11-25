@@ -69,6 +69,59 @@ regex)
 	expect 1 line --read "$tmp/data" --regex '('
 	grep -q -i -E 'regex|regular expression|parenthes' "$tmp/out" || fail "no message about the regex"
 	;;
+repeat)
+	# the same plot, rendered many times to a file and through a pipe, is
+	# the same every time and complete (#40).  In the C locale (no LANG,
+	# as in a docker container) printf("%ls") gave up at the legend's
+	# non-ASCII symbol, and the plot was cut off mid-line
+	n=${CLI_REPEAT:-200}
+	cols=80 lines=24
+	seq 1 20 | awk '{ print $1, $1*$1 }' > "$tmp/xy"
+	# the figure leaves two rows for the prompt, and blot ends the
+	# output with a newline after the last frame
+	frame=$((lines - 2))
+	# one frame clears the screen ("ESC [2J") first: count the lines of
+	# the last one, up to the final empty line
+	last_frame_lines() {
+		awk 'BEGIN { RS = "\033\\[2J" } { f = $0 } END { printf "%s", f }' "$1" \
+			| awk 'END { print NR }'
+	}
+	ref=
+	for loc in C C.UTF-8 ""; do
+		for how in file pipe; do
+			echo "running $n times: blot --ascii line --read xy -p 1,2 ($how, LC_ALL='$loc')"
+			i=0
+			while [ $i -lt $n ]; do
+				i=$((i + 1))
+				if [ $how = file ]; then
+					LC_ALL=$loc COLUMNS=$cols LINES=$lines "$blot" --ascii line \
+						--read "$tmp/xy" -p 1,2 </dev/null > "$tmp/out" 2>"$tmp/err"
+					rc=$?
+				else
+					{ LC_ALL=$loc COLUMNS=$cols LINES=$lines "$blot" --ascii line \
+						--read "$tmp/xy" -p 1,2 </dev/null 2>"$tmp/err"; \
+					  echo $? > "$tmp/rc"; } | cat > "$tmp/out"
+					rc=$(cat "$tmp/rc")
+				fi
+				cat "$tmp/err" >> "$tmp/out"
+				no_sanity
+				test "$rc" -eq 0 || fail "run $i: exit code $rc"
+				test -s "$tmp/err" && fail "run $i: stderr is not empty"
+				if [ -z "$ref" ]; then
+					ref=$tmp/ref
+					cp "$tmp/out" "$ref"
+					got=$(last_frame_lines "$ref")
+					test "$got" -eq $((frame + 1)) \
+						|| fail "the last frame has $((got - 1)) lines, expected $frame ($(wc -c < "$ref") bytes)"
+					# the legend, the last line of the frame, is whole
+					tail -n 2 "$ref" | grep -q -F "$tmp/xy" || fail "no legend line"
+				fi
+				cmp -s "$ref" "$tmp/out" \
+					|| fail "run $i ($how, LC_ALL='$loc'): $(wc -c < "$tmp/out") bytes differ from the first run's $(wc -c < "$ref")"
+			done
+		done
+	done
+	;;
 *)
 	echo "unknown case '$case'"; exit 2 ;;
 esac
