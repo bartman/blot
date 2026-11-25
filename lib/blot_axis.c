@@ -535,13 +535,14 @@ blot_axis * blot_axis_new_with_room(bool is_vertical, bool is_visible,
 			/* cut, never dropped */
 			unsigned room = blot_axis_custom_room(&lay, ti, cus.step, screen_length);
 			p += blot_axis_cut_label(p, custom, room, cus.mark_cuts) + 1;
+		} else if (use_labels_arg) {
+			/* a NULL custom label: a tick with no text, never a
+			 * number, which would read as a category */
+			*p++ = 0;
 		} else {
 			/* the layout above made sure it is good (the last
 			 * resort for a tiny axis is no text) */
-			unsigned room = !is_vertical && use_labels_arg
-				? min_t(unsigned, BLOT_AXIS_LABEL_MAX + 1,
-					blot_axis_custom_room(&lay, ti, cus.step, screen_length))
-				: blot_axis_number_room(&lay, ti, screen_length);
+			unsigned room = blot_axis_number_room(&lay, ti, screen_length);
 			double half_cell = 0.5 * (data_max - data_min) / screen_length;
 			int rc = blot_axis_good_text(p, room, d_val, half_cell) ? (int)strlen(p) : -1;
 			if (rc < 0)

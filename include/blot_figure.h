@@ -87,7 +87,9 @@ BLOT_API bool blot_figure_set_y_limits(blot_figure *fig,
  * without an array, or an array without a count) fails with EINVAL and
  * leaves the current labels unchanged.  The strings are not
  * modified: x_labels is not const only to keep the C API unchanged.
- * Labels are UTF-8 text in every locale (BLOT_LABEL_TEXT above). */
+ * The labels go on evenly spaced ticks, in order; when they are too many
+ * for the axis only every few get a tick.  A NULL entry is a tick with no
+ * text.  Labels are UTF-8 text in every locale (BLOT_LABEL_TEXT above). */
 BLOT_API bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 					  char **x_labels, GError **);
 
