@@ -1,4 +1,5 @@
 #include <glib.h>
+#include <signal.h>
 #include <stdio.h>
 #include <locale.h>
 #include <math.h>
@@ -22,10 +23,10 @@ blot_color data_color = 9;
 		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
 })
 
-static bool signaled = false;
+static volatile sig_atomic_t signaled = 0;
 static void sighandler(int sig)
 {
-	signaled = true;
+	signaled = 1;
 }
 
 int main(void)
