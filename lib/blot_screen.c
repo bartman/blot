@@ -447,16 +447,17 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 
 		const char *ytick_label = ytick ? ytick->label : "";
 		char axis_char = ytick ? '*' : '|';
-		/* a label wider than the margin (capped at half the screen)
-		 * is formatted again for the room there is: cutting it would
-		 * print a wrong number.  If no text fits, fill with '#'. */
+		/* a label wider than the margin is formatted again for the
+		 * room there is: cutting it would print a wrong number.  A
+		 * figure's Y-axis has labels that fit (#10); for an axis of
+		 * the caller's, the text follows the axis's rule, and when no
+		 * text does (it would name a value too far from the tick) the
+		 * label is left out. */
 		char short_label[32];
 		if (ytick && strlen(ytick_label) > dsp_lft-2) {
 			unsigned room = MIN(dsp_lft-1, sizeof(short_label));
-			if (blot_format_number(short_label, room, ytick->value) < 0) {
-				memset(short_label, '#', room-1);
-				short_label[room-1] = 0;
-			}
+			if (blot_axis_number_label(y_axs, short_label, room, ytick->value) < 0)
+				short_label[0] = 0;
 			ytick_label = short_label;
 		}
 		/* the precision keeps the line at dsp_lft characters */
