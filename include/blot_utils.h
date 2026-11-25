@@ -90,5 +90,15 @@ BLOT_EXTERN_C_START
 
 BLOT_API unsigned blot_env_to_uint(const char *name, unsigned dflt);
 BLOT_API int blot_format_number(char *p, unsigned room, double d_val);
+/* blot_format_number(), for an axis label: a text within tol of d_val
+ * (half a cell of the axis) where one fits.  Fixed point (%.3f, %.2f,
+ * %.1f) when it is within tol, else the fewest significant digits that
+ * are (0.0012, 1.4e-09); large values keep blot_format_number()'s most
+ * precise text when it is within tol.  When nothing that fits is within
+ * tol, the most precise text that fits.  Never a negative zero.  A tol
+ * that is inf, NaN or negative means no tolerance: the same text as
+ * blot_format_number().  Returns the length, or -1 when nothing fits;
+ * nothing is written at or past p[room]. */
+BLOT_API int blot_format_number_within(char *p, unsigned room, double d_val, double tol);
 
 BLOT_EXTERN_C_END

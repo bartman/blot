@@ -185,6 +185,12 @@ BLOT_EXTERN_C_START
 BLOT_API bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim,
 			       GError **);
 
+/* The cell a data point at v is drawn in, on an axis of len cells over
+ * min..max (from the left, or the bottom); false if it isn't drawn (v
+ * outside min..max, or NaN).  The axis puts its ticks there (#31). */
+
+BLOT_API bool blot_layer_value_cell(double v, double min, double max, unsigned len, unsigned *cell);
+
 /* render */
 
 BLOT_API struct blot_canvas * blot_layer_render(blot_layer *lay,

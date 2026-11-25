@@ -112,15 +112,18 @@ TEST(Text, later_layer_wins_overlap)
 {
     const gint32 ax[] = { 3, 4, 5 }, ay[] = { 4, 4, 4 };
     const gint32 bx[] = { 4, 4 }, by[] = { 4, 6 };
-    Fig f(10, 10);
-    f.lim(0, 9, 0, 9);
+    /* the minimum screen (#17); one cell per unit: x (or y) k is in column
+     * (or row) k */
+    Fig f(20, 12);
+    f.lim(0, 20, 0, 12);
     f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, ax, ay, 2);
     f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 2, bx, by, 9);
     Rendered r = render(f, BLOT_RENDER_NO_UNICODE | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS);
     ASSERT_TRUE(r.ok) << r.message;
-    Lines expected(10, std::wstring(10, L' '));
-    expected[3] = sgr(L"    \\e[38;5;9m*     \\e[0m");
-    expected[5] = sgr(L"   \\e[38;5;2m*\\e[38;5;9m*\\e[38;5;2m*    \\e[0m");
+    Lines expected(12, std::wstring(20, L' '));
+    /* row 6 is line 5, row 4 line 7 */
+    expected[5] = sgr(L"    \\e[38;5;9m*               \\e[0m");
+    expected[7] = sgr(L"   \\e[38;5;2m*\\e[38;5;9m*\\e[38;5;2m*              \\e[0m");
     EXPECT_LINES_EQ(r.lines, expected);
 }
 
@@ -452,14 +455,14 @@ TEST(Text, long_label_cut_to_width)
     for (auto legend : { BLOT_RENDER_LEGEND_ABOVE, BLOT_RENDER_LEGEND_BELOW }) {
         for (auto colour : { BLOT_RENDER_NONE, BLOT_RENDER_NO_COLOR }) {
             SCOPED_TRACE(testing::Message() << "legend=" << legend << " colour=" << colour);
-            Fig f(10, 12);
+            Fig f(20, 12);
             f.lim(0, 9, 0, 9);
             f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, label.c_str());
             Rendered r = render(f, flags | legend | colour);
-            expect_lines_fit(r, 10, 12);
+            expect_lines_fit(r, 20, 12);
             ASSERT_EQ(r.lines.size(), 12u);
             const std::wstring &l = legend == BLOT_RENDER_LEGEND_ABOVE ? r.lines.front() : r.lines.back();
-            EXPECT_EQ(strip_sgr(l), L"◘  xxxxxxx") << to_utf8(l);
+            EXPECT_EQ(strip_sgr(l), L"◘  " + std::wstring(17, L'x')) << to_utf8(l);
             EXPECT_EQ(has_esc(r.text), colour == BLOT_RENDER_NONE);
         }
     }
@@ -523,20 +526,21 @@ TEST(Text, legend_label_not_valid_text)
 }
 
 /* #11 (note 34955): a legend taller than the screen can give it failed the
- * render with EINVAL; it is cut so that the plot keeps BLOT_MIN_ROWS rows */
+ * render with EINVAL; it is cut so that the plot keeps BLOT_MIN_PLOT_ROWS
+ * rows */
 TEST(Text, tall_legend_is_cut)
 {
     static const char *const labels[] = { "l0", "l1", "l2" };
 
-    /* 10 rows, no X-axis: no room for a legend at all */
+    /* 12 rows (the minimum, #17) with the X-axis: no room for a legend */
     for (auto legend : { BLOT_RENDER_LEGEND_ABOVE, BLOT_RENDER_LEGEND_BELOW }) {
         SCOPED_TRACE(legend);
-        Fig f(28, 10);
+        Fig f(28, 12);
         f.lim(0, 9, 0, 9);
         f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "pts");
-        Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | legend);
-        expect_lines_fit(r, 28, 10);
-        EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_ROWS);
+        Rendered r = render(f, F | legend);
+        expect_lines_fit(r, 28, 12);
+        EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_PLOT_ROWS);
         EXPECT_EQ(r.text.find(LEGEND_MARK), std::wstring::npos) << to_utf8(r.text);
     }
 
@@ -548,7 +552,7 @@ TEST(Text, tall_legend_is_cut)
     Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_BELOW);
     expect_lines_fit(r, 28, 16);
     ASSERT_EQ(r.lines.size(), 16u);
-    EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_ROWS);
+    EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_PLOT_ROWS);
     EXPECT_EQ(r.mrg.top, 2u);
     EXPECT_EQ(r.mrg.bottom, 4u);
     EXPECT_LINES_EQ(Lines(r.lines.begin(), r.lines.begin() + 2), (Lines{ L"◘  l0", L"◘  l1" }));
@@ -558,7 +562,7 @@ TEST(Text, tall_legend_is_cut)
     f.size(28, 17);
     r = render(f, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_BELOW);
     expect_lines_fit(r, 28, 17);
-    EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_ROWS);
+    EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_PLOT_ROWS);
     EXPECT_EQ(r.mrg.top, 3u);
     EXPECT_EQ(r.mrg.bottom, 4u);
 }
@@ -575,13 +579,13 @@ TEST(Text, legend_label_tab_kept)
     ASSERT_FALSE(r.lines.empty());
     EXPECT_EQ(r.lines.front(), L"◘  a\tb") << to_utf8(r.lines.front());
 
-    Fig g(10, 12);
+    Fig g(20, 12);
     g.lim(0, 9, 0, 9);
-    g.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "abcdefg\tz");
+    g.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "abcdefghijklmno\tz");
     Rendered n = render(g, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
-    expect_lines_fit(n, 10, 12);
+    expect_lines_fit(n, 20, 12);
     ASSERT_FALSE(n.lines.empty());
-    EXPECT_EQ(n.lines.front(), L"◘  abcdefg") << to_utf8(n.lines.front());
+    EXPECT_EQ(n.lines.front(), L"◘  abcdefghijklmno") << to_utf8(n.lines.front());
 }
 
 namespace {
@@ -641,14 +645,16 @@ TEST(Text, legend_utf8_wide_characters_cut)
 {
     RUN_ISOLATED(10, {
         SET_UTF8_LOCALE();
-        /* "◘  " is 3 columns, each CJK character 2: the 4th would end in
-         * column 11 of 10 */
-        std::wstring l = utf8_legend_line("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad", 10);
-        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e") << to_utf8(l);
-        EXPECT_EQ(display_width_locale(l), 9u);
-        /* 11 columns: the 4th fits exactly */
-        l = utf8_legend_line("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad", 11);
-        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6") << to_utf8(l);
+        /* "◘  " is 3 columns, each CJK character 2: the 9th would end in
+         * column 21 of 20 (the minimum width, #17) */
+        const char *cjk = "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                          "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e";
+        std::wstring l = utf8_legend_line(cjk, 20);
+        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5") << to_utf8(l);
+        EXPECT_EQ(display_width_locale(l), 19u);
+        /* 21 columns: the 9th fits exactly */
+        l = utf8_legend_line(cjk, 21);
+        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5\u672c") << to_utf8(l);
     });
 }
 
@@ -656,16 +662,16 @@ TEST(Text, legend_utf8_combining_mark_takes_no_column)
 {
     RUN_ISOLATED(10, {
         SET_UTF8_LOCALE();
-        /* 7 x "e" + U+0301: 7 columns, the whole label fits in 10 */
+        /* 17 x "e" + U+0301: 17 columns, the whole label fits in 20 */
         std::string label;
         std::wstring expected = L"◘  ";
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 17; i++) {
             label += "e\xcc\x81";
             expected += L"e\u0301";
         }
-        std::wstring l = utf8_legend_line(label.c_str(), 10);
+        std::wstring l = utf8_legend_line(label.c_str(), 20);
         EXPECT_EQ(l, expected) << to_utf8(l);
-        EXPECT_EQ(display_width_locale(l), 10u);
+        EXPECT_EQ(display_width_locale(l), 20u);
     });
 }
 

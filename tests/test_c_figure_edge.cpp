@@ -3,6 +3,8 @@
  * area, row 0 at the bottom. */
 #include "blot_test.hpp"
 
+#include <cerrno>
+#include <cfloat>
 #include <cstdlib>
 
 using namespace blot_test;
@@ -35,12 +37,17 @@ bool near(const Cells &cs, unsigned col, unsigned row, unsigned dist = 1)
     return false;
 }
 
+/* no label is nan, -nan, inf or -inf (#6) */
 void expect_no_nan_label(const Rendered &r)
 {
-    for (const auto &t : y_ticks(r))
+    for (const auto &t : y_ticks(r)) {
         EXPECT_EQ(t.second.find("nan"), std::string::npos) << "Y label " << t.second;
-    for (const auto &t : x_ticks(r))
+        EXPECT_EQ(t.second.find("inf"), std::string::npos) << "Y label " << t.second;
+    }
+    for (const auto &t : x_ticks(r)) {
         EXPECT_EQ(t.second.find("nan"), std::string::npos) << "X label " << t.second;
+        EXPECT_EQ(t.second.find("inf"), std::string::npos) << "X label " << t.second;
+    }
 }
 
 /* the top marked row of the column range [c0, c1] */
@@ -253,8 +260,8 @@ TEST(Edge, identical_points_line)
     EXPECT_EQ(labels_of(x_ticks(r)), std::vector<std::string>({ "-3.300", "-3.100", "-2.900" }));
 }
 
-// BUG B6: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Edge, DISABLED_nan_does_not_shrink_limits)
+/* B6 (#6) */
+TEST(Edge, nan_does_not_shrink_limits)
 {
     const double xs[] = { 0, 1, 2, 3 }, ys[] = { 100, NAN, 1, 2 };
     Rendered r = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_DOUBLE, 4, xs, ys);
@@ -266,8 +273,8 @@ TEST(Edge, DISABLED_nan_does_not_shrink_limits)
     EXPECT_GT(top, 50);
 }
 
-// BUG B6: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Edge, DISABLED_nan_last_keeps_numeric_labels)
+/* B6 (#6) */
+TEST(Edge, nan_last_keeps_numeric_labels)
 {
     const double xs[] = { 0, 1, 2, 3 }, ys[] = { 1, 2, 3, NAN };
     Rendered r = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_DOUBLE, 4, xs, ys);
@@ -278,8 +285,8 @@ TEST(Edge, DISABLED_nan_last_keeps_numeric_labels)
     EXPECT_EQ(rows_of(m).size(), 3u) << cells_str(m);
 }
 
-// BUG B6: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Edge, DISABLED_all_nan_data)
+/* B6 (#6): all-NaN data is "no data", see all_non_finite_data_is_no_data */
+TEST(Edge, all_nan_data)
 {
     RUN_ISOLATED(5, {
         const double xs[] = { 0, 1, 2 }, ys[] = { NAN, NAN, NAN };
@@ -291,8 +298,8 @@ TEST(Edge, DISABLED_all_nan_data)
     });
 }
 
-// BUG B7: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Edge, DISABLED_infinity_in_data)
+/* B7 (#6) */
+TEST(Edge, infinity_in_data)
 {
     RUN_ISOLATED(5, {
         const double xs[] = { 0, 1, 2, 3 }, ys[] = { 1, 2, INFINITY, 3 };
@@ -303,6 +310,206 @@ TEST(Edge, DISABLED_infinity_in_data)
         /* the 3 finite points are in 3 different rows */
         EXPECT_GE(rows_of(m).size(), 3u) << cells_str(m);
     });
+}
+
+/* #6: data with no finite value on an auto-ranged axis is "no data":
+ * the render fails with ENOENT, like a figure whose layers are empty */
+TEST(Edge, all_non_finite_data_is_no_data)
+{
+    const double N = NAN, I = INFINITY;
+    const double fin[] = { 0, 1, 2 };
+    const std::vector<double> bad[] = { { N, N, N }, { I, I, I }, { -I, N, I } };
+    for (blot_plot_type type : { BLOT_SCATTER, BLOT_LINE, BLOT_BAR }) {
+        for (const auto &b : bad) {
+            SCOPED_TRACE(testing::Message() << "plot " << type << " " << b[0] << " " << b[1] << " " << b[2]);
+            RUN_ISOLATED(5, {
+                Rendered r = render_one(40, 14, type, BLOT_DATA_DOUBLE, 3, fin, b.data());
+                EXPECT_FALSE(r.ok);
+                EXPECT_EQ(r.code, ENOENT) << r.message;
+                r = render_one(40, 14, type, BLOT_DATA_DOUBLE, 3, b.data(), fin);
+                EXPECT_FALSE(r.ok);
+                EXPECT_EQ(r.code, ENOENT) << r.message;
+                r = render_one(40, 14, type, BLOT_DATA_DOUBLE, 3, NULL, b.data());
+                EXPECT_FALSE(r.ok);
+                EXPECT_EQ(r.code, ENOENT) << r.message;
+            });
+        }
+    }
+}
+
+/* #6: a layer with no finite y next to one with data: the limits and the
+ * picture are those of the other layer alone.  Limits are per coordinate,
+ * so the finite x of the first layer still count; they are inside the
+ * other layer's x range here. */
+TEST(Edge, non_finite_layer_beside_finite_layer)
+{
+    const double xs[] = { 0, 1, 2, 3 }, ys[] = { 4, 1, 7, 2 };
+    const double nx[] = { 1, 2, NAN }, ny[] = { NAN, INFINITY, -INFINITY };
+
+    Fig alone(40, 14);
+    alone.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 4, xs, ys);
+    Rendered want = render(alone, F);
+    ASSERT_TRUE(want.ok) << want.message;
+
+    Fig both(40, 14);
+    both.plot(BLOT_SCATTER, BLOT_DATA_DOUBLE, 3, nx, ny);
+    both.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 4, xs, ys);
+    Rendered got = render(both, F);
+    ASSERT_TRUE(got.ok) << got.message;
+    EXPECT_LINES_EQ(got.lines, want.lines);
+}
+
+/* #6: a line {NaN, 5, NaN} draws the 5 as one cell, as a scatter does;
+ * a NaN inside a line leaves a gap */
+TEST(Edge, line_nan_gaps)
+{
+    const double xs[] = { 0, 1, 2 }, ys[] = { NAN, 5, NAN };
+    Rendered line = render_one(40, 14, BLOT_LINE, BLOT_DATA_DOUBLE, 3, xs, ys);
+    Rendered scat = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_DOUBLE, 3, xs, ys);
+    ASSERT_TRUE(line.ok) << line.message;
+    ASSERT_TRUE(scat.ok) << scat.message;
+    expect_no_nan_label(line);
+    EXPECT_EQ(plot_cells(line).size(), 1u) << cells_str(plot_cells(line));
+    EXPECT_EQ(plot_cells(line), plot_cells(scat)) << cells_str(plot_cells(line));
+
+    /* 0 1 NaN 3 4 on the diagonal: two runs, no mark in the gap's columns */
+    const double gx[] = { 0, 1, 2, 3, 4 }, gy[] = { 0, 1, NAN, 3, 4 };
+    Rendered gap = render_one(40, 14, BLOT_LINE, BLOT_DATA_DOUBLE, 5, gx, gy);
+    ASSERT_TRUE(gap.ok) << gap.message;
+    expect_no_nan_label(gap);
+    Cells m = plot_cells(gap);
+    unsigned pc = gap.plot_cols();
+    unsigned c1 = expected_cell(1, -0.004, 4.004, pc), c3 = expected_cell(3, -0.004, 4.004, pc);
+    ASSERT_FALSE(m.empty());
+    /* within a column of the points' own (the line's X mapping is #14's) */
+    for (const auto &c : m)
+        EXPECT_TRUE(c.first <= c1 + 1 || c.first + 1 >= c3) << cells_str(m);
+    EXPECT_GT(c3, c1 + 8);
+    EXPECT_GT(m.size(), 4u) << cells_str(m);
+}
+
+/* #6: ranges up to DBL_MAX wide are drawn, every point in its place, with
+ * no nan or inf label */
+TEST(Edge, huge_range)
+{
+    const double D = DBL_MAX;
+    const std::vector<double> data[] = { { 0, 1e308 }, { 0, D }, { -D, 0 }, { -D / 2, D / 2 }, { 1e308, D } };
+    for (blot_plot_type type : { BLOT_SCATTER, BLOT_LINE }) {
+        for (const auto &d : data) {
+            SCOPED_TRACE(testing::Message() << "plot " << type << " " << d[0] << ".." << d[1]);
+            RUN_ISOLATED(5, {
+                const double xs[] = { 0, 1 };
+                Rendered r = render_one(40, 14, type, BLOT_DATA_DOUBLE, 2, xs, d.data());
+                ASSERT_TRUE(r.ok) << r.message;
+                expect_no_nan_label(r);
+                Cells m = plot_cells(r);
+                /* the bottom-left and the top-right cell of the plot */
+                EXPECT_TRUE(m.count({ 0, 0 })) << cells_str(m);
+                EXPECT_TRUE(m.count({ r.plot_cols() - 1, r.plot_rows() - 1 })) << cells_str(m);
+                if (type == BLOT_SCATTER) {
+                    EXPECT_EQ(m.size(), 2u) << cells_str(m);
+                }
+            });
+        }
+    }
+
+    /* one value at the largest double */
+    RUN_ISOLATED(5, {
+        const double xs[] = { 0 }, ys[] = { D };
+        Rendered r = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys);
+        ASSERT_TRUE(r.ok) << r.message;
+        expect_no_nan_label(r);
+        EXPECT_EQ(plot_cells(r).size(), 1u) << cells_str(plot_cells(r));
+    });
+}
+
+/* #6: data further apart than the largest double (max - min is inf) has no
+ * axis: the render fails with ERANGE, it does not draw nan labels */
+TEST(Edge, range_wider_than_dbl_max)
+{
+    const double D = DBL_MAX;
+    const double xs[] = { 0, 1 }, ys[] = { -D, D };
+    RUN_ISOLATED(5, {
+        Rendered r = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys);
+        EXPECT_FALSE(r.ok);
+        EXPECT_EQ(r.code, ERANGE) << r.message;
+        r = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, ys, xs);
+        EXPECT_FALSE(r.ok);
+        EXPECT_EQ(r.code, ERANGE) << r.message;
+    });
+}
+
+/* #6 with #7: only an auto-ranged axis needs finite data.  An axis with
+ * user limits keeps them whatever its data is: all NaN or inf draws
+ * nothing there, and data wider than DBL_MAX is no error.  The free axis
+ * still fails with ENOENT when it has no finite value, and with ERANGE
+ * when its data is wider than DBL_MAX. */
+TEST(Edge, one_sided_limits_with_non_finite_data)
+{
+    const double N = NAN, I = INFINITY, D = DBL_MAX;
+    const double fin[] = { 1, 2, 3 }, bad[] = { N, I, -I }, wide[] = { -D, 0, D };
+    for (bool limit_y : { true, false }) {
+        for (blot_plot_type type : { BLOT_SCATTER, BLOT_LINE, BLOT_BAR }) {
+            SCOPED_TRACE(testing::Message() << (limit_y ? "y" : "x") << " limits, plot " << type);
+            RUN_ISOLATED(5, {
+                /* the limited axis has no finite value: nothing is drawn */
+                Fig f(40, 14);
+                if (limit_y)
+                    f.ylim(0, 10);
+                else
+                    f.xlim(0, 10);
+                f.plot(type, BLOT_DATA_DOUBLE, 3, limit_y ? fin : bad, limit_y ? bad : fin);
+                Rendered r = render(f, F);
+                ASSERT_TRUE(r.ok) << r.message;
+                EXPECT_TRUE(plot_cells(r).empty()) << cells_str(plot_cells(r));
+                expect_no_nan_label(r);
+                std::vector<std::string> lim_labels = labels_of(limit_y ? y_ticks(r) : x_ticks(r));
+                ASSERT_FALSE(lim_labels.empty());
+                EXPECT_EQ(lim_labels.front(), "0.000");
+            });
+            /* the limited axis's data is wider than DBL_MAX: only the
+             * 0, inside the limits, is drawn.  Not for a line: a segment
+             * to a point far outside the limits hangs until #5 clips */
+            if (type != BLOT_LINE) RUN_ISOLATED(5, {
+                Fig f(40, 14);
+                if (limit_y)
+                    f.ylim(-1, 10);
+                else
+                    f.xlim(-1, 10);
+                f.plot(type, BLOT_DATA_DOUBLE, 3, limit_y ? fin : wide, limit_y ? wide : fin);
+                Rendered r = render(f, F);
+                ASSERT_TRUE(r.ok) << r.message;
+                expect_no_nan_label(r);
+                if (type == BLOT_SCATTER) {
+                    EXPECT_EQ(plot_cells(r).size(), 1u) << cells_str(plot_cells(r));
+                }
+            });
+            RUN_ISOLATED(5, {
+                /* the free axis has no finite value: no data */
+                Fig f(40, 14);
+                if (limit_y)
+                    f.ylim(0, 10);
+                else
+                    f.xlim(0, 10);
+                f.plot(type, BLOT_DATA_DOUBLE, 3, limit_y ? bad : fin, limit_y ? fin : bad);
+                Rendered r = render(f, F);
+                EXPECT_FALSE(r.ok);
+                EXPECT_EQ(r.code, ENOENT) << r.message;
+            });
+            RUN_ISOLATED(5, {
+                /* the free axis's data is wider than DBL_MAX: ERANGE */
+                Fig f(40, 14);
+                if (limit_y)
+                    f.ylim(0, 10);
+                else
+                    f.xlim(0, 10);
+                f.plot(type, BLOT_DATA_DOUBLE, 3, limit_y ? wide : fin, limit_y ? fin : wide);
+                Rendered r = render(f, F);
+                EXPECT_FALSE(r.ok);
+                EXPECT_EQ(r.code, ERANGE) << r.message;
+            });
+        }
+    }
 }
 
 TEST(Edge, huge_values)
@@ -334,11 +541,13 @@ TEST(Edge, tiny_values_geometry)
     for (const auto &c : m)
         last_col |= c.first == r.plot_cols() - 1;
     EXPECT_TRUE(last_col) << cells_str(m);
-    EXPECT_EQ(r.mrg.left, 8u);
+    /* #10: 9, not 8: the Y labels need 7 columns (2.6e-09), the
+     * magnitude alone gives 6 */
+    EXPECT_EQ(r.mrg.left, 9u);
 }
 
-// BUG B16: https://git.jukie.net/bart/blot/-/work_items/10
-TEST(Edge, DISABLED_tiny_values_labels_distinct)
+// B16, fixed in #10: https://git.jukie.net/bart/blot/-/work_items/10
+TEST(Edge, tiny_values_labels_distinct)
 {
     Rendered r = render_one(60, 14, BLOT_LINE, BLOT_DATA_DOUBLE, 3, TINY, TINY);
     ASSERT_TRUE(r.ok) << r.message;
