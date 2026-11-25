@@ -117,10 +117,11 @@ repeat)
 	# the figure leaves two rows for the prompt, and blot ends the
 	# output with a newline after the last frame
 	frame=$((lines - 2))
-	# blot draws a frame every second as well as at the end (the -i
-	# interval can't be changed, #44), so the number of frames depends on
-	# the clock: compare only the last frame, which follows the last
-	# "ESC [2J" (clear screen)
+	# blot draws a frame every display interval (1 s) while the input
+	# lasts, and one at the end; through a pipe or into a file without
+	# a screen clear (#44).  This input is one frame, but a slow run
+	# could draw more: compare only the last frame, which follows the
+	# last "ESC [2J" (clear screen) when there is one
 	last_frame() {
 		awk 'BEGIN { RS = "\033\\[2J" } { f = $0 } END { printf "%s", f }' "$1"
 	}

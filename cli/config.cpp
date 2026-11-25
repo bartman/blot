@@ -2,6 +2,9 @@
 
 #include <iostream>
 #include <charconv>
+#include <cmath>
+#include <cstdlib>
+#include <unistd.h>
 #include <ranges>
 #include <system_error>
 
@@ -33,8 +36,15 @@ Config::Config(int argc, char *argv[])
 		}).doc("Enable debug output"),
 		clipp::option("--timing").set(m_show_timing).doc("Show timing statitiscs"),
 		(clipp::option("-i", "--interval") & clipp::value("sec")
-			.call([&](const char *txt) { m_display_interval = txt; }))
-			.doc("Display interval in seconds")
+			.call([&](const char *txt) {
+				m_display_interval = parse_seconds("display interval", txt);
+			}))
+			.doc("Display interval in seconds while the input lasts (default 1)"),
+		clipp::joinable(clipp::option("--color=") & clipp::value("when")
+			.call([&](const char *txt) { set_color_mode(txt); }))
+			.doc("Colour: auto (on a terminal, the default), always or never"),
+		clipp::option("--no-color").call([&]{ m_color_mode = ColorMode::NEVER; })
+			.doc("No colour, same as --color=never")
 	);
 
 	auto cli_output = "Output:" % one_of (
@@ -208,6 +218,55 @@ Config::Config(int argc, char *argv[])
 		std::exit(1);
 	}
 	m_using_input_interval = with_interval;
+
+	/* colour (#44): --color=always or never as given; auto (the
+	 * default) is none when NO_COLOR is set and not empty
+	 * (https://no-color.org), otherwise only on a terminal.  The screen
+	 * clear before each frame is for a terminal too: through a pipe or
+	 * into a file, the output is the plain text of the plot, unless
+	 * --color=always asks for the terminal's output */
+	bool tty = isatty(STDOUT_FILENO);
+	const char *no_color = std::getenv("NO_COLOR");
+	switch (m_color_mode) {
+		case ColorMode::ALWAYS:
+			m_color = true;
+			break;
+		case ColorMode::NEVER:
+			m_color = false;
+			break;
+		case ColorMode::AUTO:
+			m_color = tty && !(no_color && *no_color);
+			break;
+	}
+	m_clear = tty || m_color_mode == ColorMode::ALWAYS;
+}
+
+void Config::set_color_mode(const std::string &txt)
+{
+	if (txt == "auto")
+		m_color_mode = ColorMode::AUTO;
+	else if (txt == "always")
+		m_color_mode = ColorMode::ALWAYS;
+	else if (txt == "never")
+		m_color_mode = ColorMode::NEVER;
+	else {
+		spdlog::error("invalid --color '{}': expected auto, always or never", txt);
+		std::exit(1);
+	}
+}
+
+/* a number of seconds: positive and finite, all of txt (#44) */
+double Config::parse_seconds(const char *what, const std::string &txt)
+{
+	double value{};
+	const char *end = txt.data() + txt.size();
+	auto [ptr, ec] = std::from_chars(txt.data(), end, value);
+	if (ec != std::errc{} || ptr != end || !std::isfinite(value) || value <= 0) {
+		spdlog::error("invalid {} '{}': expected a positive number of seconds",
+			what, txt);
+		std::exit(1);
+	}
+	return value;
 }
 
 void Input::set_source (Input::Source source, const std::string &details)

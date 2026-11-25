@@ -14,9 +14,9 @@
 # The CLI
 #   - plots the inputs in this directory as line, scatter and bar, read
 #     from a file (--read) and from stdin (--read /dev/stdin), and the
-#     last frame it prints must match <case>.out here, byte for byte once
-#     the colour escapes are taken out (the CLI has no flag to turn
-#     colour off).  Every .out was checked by hand against its data: see
+#     output, with --color=never, must match <case>.out here byte for
+#     byte: one frame (a file read to the end in less than the display
+#     interval is one), with no escape sequence at all (#44).  Every .out was checked by hand against its data: see
 #     the comments at each case below.  After a change that moves the
 #     output on purpose, SMOKE_UPDATE=1 writes the .out files again;
 #     check the new ones by hand, the same way, before committing them;
@@ -97,22 +97,21 @@ check_run() {
 # the CLI
 
 # $1: the case, the rest: blot's arguments; stdin is the caller's.
-# Compares the last frame, without colour, to $here/$1.out.
+# Compares all of the output, stdout and stderr, to $here/$1.out: with
+# --color=never it is the plain text of one frame (#44)
 golden() {
 	case=$1; shift
 	name=cli-$case${golden_suffix:-}
-	echo "--- $name: blot $*"
-	(cd "$here" && timeout -k 5 30 "$blot" "$@") > "$tmp/out" 2>&1
+	echo "--- $name: blot --color=never $*"
+	(cd "$here" && timeout -k 5 30 "$blot" --color=never "$@") > "$tmp/out" 2>&1
 	rc=$?
 	check_run 0 || return
-	strip || return
-	# the last frame: the CLI clears the screen for each, and prints one
-	# when it starts reading and one when the input ends (a slow run may
-	# print more in between)
 	ESC=$(printf '\033')
-	sed "s/$ESC\[2J$ESC\[H/@@FRAME@@\n/g" "$tmp/out" \
-		| awk '/^@@FRAME@@$/ { n = 0; delete f; next } { f[n++] = $0 } END { for (i = 0; i < n; i++) print f[i] }' \
-		| sed "s/$ESC\[[0-9;]*m//g" > "$tmp/last"
+	if grep -q "$ESC" "$tmp/out"; then
+		fail "an escape sequence with --color=never: $(grep -m1 "$ESC" "$tmp/out" | od -c | head -2)"
+		return
+	fi
+	cp "$tmp/out" "$tmp/last"
 	if [ -n "${SMOKE_UPDATE:-}" ] && [ -z "${golden_suffix:-}" ]; then
 		cp "$tmp/last" "$here/$case.out"
 		echo "updated $here/$case.out"
