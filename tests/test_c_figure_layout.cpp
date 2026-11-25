@@ -221,14 +221,16 @@ TEST(Layout, y_labels_within_half_a_cell_sweep)
         { 1e-9, 3e-9 }, { -3e-9, -1e-9 }, { 1e6, 1e6 + 0.001 }, { -7, 3 }, { -1e100, 1e100 },
     };
     const unsigned ROWS[] = { 12, 14, 17, 25, 50 };
-    for (const auto &rg : RANGES)
+    for (const auto &rg : RANGES) {
+        int parts = result_parts();
         for (unsigned rows : ROWS)
-            for (unsigned cols = 20; cols <= 60; cols++) {
+            for (unsigned cols = 20; cols <= 60 && result_parts() == parts; cols++) {
                 SCOPED_TRACE(testing::Message() << cols << "x" << rows << " y " << rg[0] << ".." << rg[1]);
                 LineAcross la(cols, rows, 0, 1, rg[0], rg[1]);
                 Rendered r = render(la.f, F);
                 expect_y_labels_half_cell(r, rg[0], rg[1]);
             }
+    }
 }
 
 /* B15 (#10), fixed by #13: the screen used to cut these labels */
@@ -994,7 +996,8 @@ TEST(Layout, x_labels_fit_and_match_their_cells)
         { 1e-9, 3e-9 }, { -0.0005, 0.0005 }, { 1e6, 1e6 + 0.001 },
     };
     for (const auto &rg : RANGES) {
-        for (unsigned cols = 18; cols <= 130; cols++) {
+        int parts = result_parts();
+        for (unsigned cols = 18; cols <= 130 && result_parts() == parts; cols++) {
             SCOPED_TRACE(testing::Message() << "x [" << rg[0] << "," << rg[1] << "] " << cols << "x14");
             const double xs[] = { rg[0], rg[1] }, ys[] = { 1, 2 };
             Fig f(cols, 14);
