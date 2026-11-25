@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "blot_test.hpp"
 
 #include "blot_terminal.h"
 #include "blot_layer.h"
@@ -975,8 +975,7 @@ TEST(Layer, scatter_out_of_range_clipped)
     EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT32, 7, xs, ys), Cells({ {5,5} }));
 }
 
-// BUG B9: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Layer, DISABLED_scatter_far_out_of_range_not_wrapped)
+TEST(Layer, scatter_far_out_of_range_not_wrapped)
 {
     /* (2^32 + 5) / 6: far above the limit, the cell index wraps to row 5 */
     const double xs[] = { 0.5 }, ys[] = { 715827883.5 };
@@ -984,29 +983,132 @@ TEST(Layer, DISABLED_scatter_far_out_of_range_not_wrapped)
                     Cells());
 }
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Layer, DISABLED_scatter_fractional_range)
+TEST(Layer, scatter_fractional_range)
 {
     const double xs[] = { 0, 1 }, ys[] = { 0, 1 };
     EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys, { 0, 1, 0, 1 }),
                     Cells({ {0,0}, {9,9} }));
 }
 
-// BUG B2: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Layer, DISABLED_scatter_wide_range_keeps_max)
+TEST(Layer, scatter_wide_range_keeps_max)
 {
     const gint32 xs[] = { 0, 1000 }, ys[] = { 0, 1000 };
     EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT32, 2, xs, ys, { 0, 1000, 0, 1000 }, { 20, 10 }),
                     Cells({ {0,0}, {19,9} }));
 }
 
-// BUG B2: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Layer, DISABLED_bar_wide_range_keeps_max)
+TEST(Layer, bar_wide_range_keeps_max)
 {
     const gint32 xs[] = { 1000 }, ys[] = { 1000 };
     Cells got = layer_cells(BLOT_BAR, BLOT_DATA_INT32, 1, xs, ys, { 0, 1000, 0, 1000 }, { 20, 10 });
     for (unsigned r = 0; r < 10; r++)
         EXPECT_TRUE(got.count({19, r})) << "row " << r << "; cells:" << cells_str(got);
+}
+
+/* #3: the same mapping checks for scatter_int64, and bar heights */
+TEST(Layer, scatter_int64_fractional_range)
+{
+    const gint64 xs[] = { 0, 1 }, ys[] = { 0, 1 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT64, 2, xs, ys, { 0, 1, 0, 1 }),
+                    Cells({ {0,0}, {9,9} }));
+}
+
+TEST(Layer, scatter_int64_wide_range_keeps_max)
+{
+    const gint64 xs[] = { 0, 1000 }, ys[] = { 0, 1000 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT64, 2, xs, ys, { 0, 1000, 0, 1000 }, { 20, 10 }),
+                    Cells({ {0,0}, {19,9} }));
+}
+
+TEST(Layer, scatter_int64_far_out_of_range_not_wrapped)
+{
+    /* 6 * 715827883 is 2^32 + 2: far above the limit, the old cell index wrapped to row 2 */
+    const gint64 xs[] = { 0 }, ys[] = { 715827883 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT64, 1, xs, ys, { 0, 1, 0, 1 }, { 12, 12 }),
+                    Cells());
+}
+
+TEST(Layer, bar_height_fractional_range)
+{
+    /* y 0..1 on 10 rows: 1 is the top row, 0.5 is row 5; the bar for x 1 starts in column 5 */
+    const double xs[] = { 0, 1 }, ys[] = { 0.5, 1 };
+    Cells got = layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 2, xs, ys, { 0, 1, 0, 1 });
+    EXPECT_TRUE(got.count({0, 5})) << cells_str(got);
+    EXPECT_FALSE(got.count({0, 6})) << cells_str(got);
+    EXPECT_TRUE(got.count({5, 9})) << cells_str(got);
+}
+
+TEST(Layer, bar_taller_than_limits_cut_at_top)
+{
+    /* 6 * 715827883.5 is 2^32 + 5: the old bar height wrapped to row 5.  X has
+     * 2 slots of 6 columns, the bar fills columns 0..3 */
+    const double xs[] = { 0 }, ys[] = { 715827883.5 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys, { 0, 1, 0, 1 }, { 12, 12 }),
+                    rect(0, 3, 0, 11));
+}
+
+/* #3: a value exactly at max is in the last cell.  The position
+ * (max - min) * len / (max - min) can round to just above len, e.g. 0.1 .. 0.7
+ * on 7 cells gives 7.000000000000001, and the point used to be dropped. */
+static bool reaches_row(const Cells &cs, unsigned row)
+{
+    for (const auto &c : cs)
+        if (c.second == row)
+            return true;
+    return false;
+}
+
+TEST(Layer, value_at_max_in_last_cell_reproducer)
+{
+    const double xs[] = { 0.7 }, ys[] = { 0.7 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys, { 0.1, 0.7, 0.1, 0.7 }, { 7, 7 }),
+                    Cells({ {6,6} }));
+    /* bar X is the slot model (#12); only its height is checked */
+    Cells bar = layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys, { 0.1, 0.7, 0.1, 0.7 }, { 7, 7 });
+    EXPECT_TRUE(reaches_row(bar, 6)) << cells_str(bar);
+}
+
+TEST(Layer, value_at_max_in_last_cell_sweep)
+{
+    const double ranges[][2] = {
+        { 0.1, 0.7 }, { 0.1, 0.3 }, { 0.2, 0.9 }, { -0.3, 0.7 }, { 0.15, 1.35 },
+        { -2.2, -0.1 }, { 1e-9, 3e-9 }, { 0.001, 0.007 }, { 3.3, 9.9 }, { -1e300, 1e300 },
+    };
+    unsigned bad = 0;
+    for (const auto &rg : ranges) {
+        for (unsigned len = 1; len <= 64; len++) {
+            SCOPED_TRACE(testing::Message() << "range " << rg[0] << ".." << rg[1] << " len " << len);
+            const blot_xy_limits lim = { rg[0], rg[1], rg[0], rg[1] };
+            const blot_dimensions dim = { len, len };
+            const double xs[] = { rg[1] }, ys[] = { rg[1] };
+            Cells sc = layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys, lim, dim);
+            EXPECT_EQ(sc, Cells({ { len - 1, len - 1 } })) << cells_str(sc);
+            Cells bar = layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys, lim, dim);
+            EXPECT_TRUE(reaches_row(bar, len - 1)) << cells_str(bar);
+            bad += sc.size() != 1 || !reaches_row(bar, len - 1);
+            if (bad > 5)
+                return;
+        }
+    }
+}
+
+/* an infinite range (-DBL_MAX .. DBL_MAX) or NaN limits give every value a
+ * NaN position: nothing is drawn, and nothing is converted to unsigned */
+TEST(Layer, infinite_or_nan_range_draws_nothing)
+{
+    const double xs[] = { 0, G_MAXDOUBLE }, ys[] = { 0, G_MAXDOUBLE };
+    const double nan = std::nan("");
+    const blot_xy_limits lims[] = {
+        { -G_MAXDOUBLE, G_MAXDOUBLE, -G_MAXDOUBLE, G_MAXDOUBLE },
+        { nan, nan, nan, nan },
+    };
+    for (const auto &lim : lims) {
+        SCOPED_TRACE(testing::Message() << "x " << lim.x_min << ".." << lim.x_max);
+        EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys, lim), Cells());
+        EXPECT_CELLS_EQ(layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 2, xs, ys, lim), Cells());
+        const gint64 xi[] = { 0, 1 }, yi[] = { 0, 1 };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT64, 2, xi, yi, lim), Cells());
+    }
 }
 
 TEST(Layer, line_fractional_tiny_huge)
@@ -1070,6 +1172,99 @@ TEST(Layer, line_right_to_left_and_downward)
     EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_INT32, 2, vx, vy), rect(5, 5, 0, 9));
 }
 
+/* #14: a line end is drawn in the cell of the axis mapping, the cell a
+ * scatter point of the same value is in (expected_cell(): floor((v - min) *
+ * len / range), max in the last cell).  For many limits and sizes, and for
+ * values on cell edges (and one ulp either side), cell centres, tick values
+ * of 3, 5 and 7 ticks, min and max:
+ * - a one-point line draws exactly the scatter cell, and that is the
+ *   expected cell;
+ * - a two-point line draws both end cells. */
+TEST(Layer, line_ends_use_axis_mapping_sweep)
+{
+    const double ranges[][2] = {
+        { 0, 1 }, { 0, 9 }, { -250, -200 }, { -0.301, 0.701 }, { 999.9, 1000 },
+        { 1e-9, 3e-9 }, { -1e6, 1e6 }, { 0.1, 0.7 }, { -5.006, 1.006 }, { 9.99, 20.01 },
+    };
+    const unsigned lens[] = { 1, 2, 3, 5, 7, 10, 12, 14, 16, 29, 31, 51, 64, 100 };
+
+    unsigned checked = 0, failed = 0;
+    std::ostringstream first;
+    auto fail = [&](const std::string &what) {
+        if (failed++ < 10)
+            first << "\n  " << what;
+    };
+
+    for (const auto &rg : ranges) {
+        const double lo = rg[0], hi = rg[1], range = hi - lo;
+        for (unsigned len : lens) {
+            std::vector<double> vals = { lo, hi };
+            for (unsigned k = 0; k <= len; k++) {
+                double e = lo + k * range / len;
+                vals.insert(vals.end(), { e, nextafter(e, -INFINITY), nextafter(e, INFINITY),
+                                          lo + (k + 0.5) * range / len });
+            }
+            for (unsigned n : { 3u, 5u, 7u })
+                for (unsigned ti = 0; ti <= n; ti++)
+                    vals.push_back(lo + ti * (range / n));
+            vals.erase(std::remove_if(vals.begin(), vals.end(),
+                                      [&](double v) { return !(v >= lo && v <= hi); }),
+                       vals.end());
+
+            const blot_xy_limits lim = { lo, hi, lo, hi };
+            const blot_dimensions dim = { len, len };
+            const size_t nv = vals.size();
+            for (size_t i = 0; i < nv; i++) {
+                /* x and y from different values, so both axes see all of them */
+                double x = vals[i], y = vals[(i * 7 + 3) % nv];
+                Cell want = { expected_cell(x, lo, hi, len), expected_cell(y, lo, hi, len) };
+                std::ostringstream at;
+                at.precision(17);
+                at << "limits " << lo << ".." << hi << " len " << len << " point (" << x << ", " << y << ")";
+
+                Cells sc = layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, &x, &y, lim, dim);
+                Cells ln = layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 1, &x, &y, lim, dim);
+                checked++;
+                if (sc != Cells({ want }))
+                    fail(at.str() + ": scatter" + cells_str(sc));
+                if (ln != Cells({ want }))
+                    fail(at.str() + ": line" + cells_str(ln) + ", want (" + std::to_string(want.first) +
+                         "," + std::to_string(want.second) + ")");
+
+                /* a segment to another point: both end cells drawn */
+                double xs[] = { x, vals[(i * 3 + 1) % nv] }, ys[] = { y, vals[(i * 5 + 2) % nv] };
+                Cell want1 = { expected_cell(xs[1], lo, hi, len), expected_cell(ys[1], lo, hi, len) };
+                Cells seg = layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys, lim, dim);
+                if (!seg.count(want) || !seg.count(want1))
+                    fail(at.str() + " to (" + std::to_string(xs[1]) + ", " + std::to_string(ys[1]) +
+                         "): segment ends not drawn" + cells_str(seg));
+            }
+        }
+    }
+    EXPECT_EQ(failed, 0u) << "of " << checked << " points; first failures:" << first.str();
+    EXPECT_GT(checked, 10000u);
+}
+
+/* #14: the issue's tick values, on a 10x14 layer (the plot area of a 40x16
+ * figure is 31x14; 5 ticks on 14 rows are on rows 0, 2, 5, 8 and 11) */
+TEST(Layer, line_on_tick_values)
+{
+    const struct { double lo, hi, v; unsigned row; } cases[] = {
+        { 0, 1, 0.2, 2 }, { 0, 1, 0.8, 11 },
+        { 0, 9, 1.8, 2 }, { 0, 9, 7.2, 11 },
+        { -250, -200, -240, 2 }, { -250, -200, -210, 11 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "y " << c.lo << ".." << c.hi << " value " << c.v);
+        const double xs[] = { 0, 1 }, ys[] = { c.v, c.v };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys, { 0, 1, c.lo, c.hi }, { 10, 14 }),
+                        rect(0, 9, c.row, c.row));
+        /* the same on X: a vertical line in column 2 or 11 of 14 */
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 2, ys, xs, { c.lo, c.hi, 0, 1 }, { 14, 10 }),
+                        rect(c.row, c.row, 0, 9));
+    }
+}
+
 TEST(Layer, bar_width_and_height)
 {
     const gint32 xs[] = { 3 }, ys[] = { 4 };
@@ -1085,8 +1280,7 @@ TEST(Layer, DISABLED_bar_negative_starts_at_zero)
                     rect(2, 3, 2, 5) + rect(6, 7, 5, 8));
 }
 
-// BUG B8: https://git.jukie.net/bart/blot/-/work_items/5
-TEST(Layer, DISABLED_bar_below_limit_terminates)
+TEST(Layer, bar_below_limit_terminates)
 {
     RUN_ISOLATED(5, {
         const gint32 xs[] = { 1, 2 }, ys[] = { -5, 5 };
@@ -1131,8 +1325,7 @@ TEST(Layer, line_infinite_value_terminates)
     });
 }
 
-// BUG B6: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Layer, DISABLED_nan_points_not_drawn)
+TEST(Layer, nan_points_not_drawn)
 {
     const double xs[] = { 0.5, NAN, 5 }, ys[] = { NAN, 0.5, 5 };
     EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 3, xs, ys), Cells({ {5,5} }));
@@ -1206,8 +1399,8 @@ TEST(Layer, DISABLED_get_lim_ignores_nan)
     blot_layer_delete(lay);
 }
 
-// BUG B18: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Layer, DISABLED_index_equal_to_count_rejected)
+// B18, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Layer, index_equal_to_count_rejected)
 {
     const gint32 xs[] = { 0, 1, 2, 3 }, ys[] = { 0, 1, 2, 3 };
     blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys, 1, "l", NULL);
@@ -1236,4 +1429,32 @@ TEST(Layer, braille_scatter_dots)
         { {0,0}, 0x2840 }, { {4,2}, 0x2808 }, { {2,1}, 0x2802 },
     };
     EXPECT_EQ(glyphs(can), expected);
+}
+
+/* B18 (#11): blot_layer_render() checked the plot and data types with '>'
+ * before indexing its tables; the value MAX itself is out of range */
+TEST(Layer, render_rejects_types_at_max)
+{
+    RUN_ISOLATED(10, {
+        const gint32 xs[] = { 0, 1, 2 }, ys[] = { 0, 1, 2 };
+        const blot_xy_limits lim = { 0, 2, 0, 2 };
+        const blot_dimensions dim = { 10, 10 };
+        blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+
+        GError *error = NULL;
+        lay->data_type = BLOT_DATA_TYPE_MAX;
+        EXPECT_TRUE(blot_layer_render(lay, &lim, &dim, BLOT_RENDER_NONE, &error) == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        g_clear_error(&error);
+
+        lay->data_type = BLOT_DATA_INT32;
+        lay->plot_type = BLOT_PLOT_TYPE_MAX;
+        EXPECT_TRUE(blot_layer_render(lay, &lim, &dim, BLOT_RENDER_NONE, &error) == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        g_clear_error(&error);
+        blot_layer_delete(lay);
+    });
 }
