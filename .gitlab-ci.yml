@@ -7,8 +7,9 @@
 # --------------
 # The jobs run in prebuilt images from this project's registry,
 # $CI_REGISTRY_IMAGE/ci/<name>, and don't run apt:
-#   deb12   the *-deb12 jobs, from debian:bookworm
-#   deb13   the *-deb13 jobs, from debian:trixie
+#   deb12        the *-deb12 jobs, from debian:bookworm
+#   deb13        the *-deb13 jobs, from debian:trixie
+#   deb13-clang  sanitize-deb13: deb13 plus clang (ci/clang.packages)
 # The prep-container stage builds them with kaniko (no privileged runner)
 # from ci/image.Dockerfile, which is generic: it gets the base image and
 # the package list as build-args.  Both are in files, not here: ci/images
@@ -35,7 +36,8 @@
 #   - prep-container:<name> builds and pushes the missing ones, and
 #     passes the image reference, pinned by digest,
 #     $CI_REGISTRY_IMAGE/ci/<name>:df-<hash>@sha256:<digest>, to the jobs
-#     as a dotenv variable (CI_IMAGE_DEB12, CI_IMAGE_DEB13).  Each job's
+#     as a dotenv variable (CI_IMAGE_DEB12, CI_IMAGE_DEB13,
+#     CI_IMAGE_DEB13_CLANG).  Each job's
 #     image: is that variable, through its needs: on the
 #     prep-container:<name> job.  So every job runs in the image of its
 #     own commit's files, branches with the same package list share one
@@ -246,6 +248,11 @@ prep-container:deb13:
   variables:
     CI_IMAGE_NAME: deb13
 
+prep-container:deb13-clang:
+  extends: .prep-container
+  variables:
+    CI_IMAGE_NAME: deb13-clang
+
 # ---
 
 # A job in a CI image (see the top): .deb12 and .deb13 take the image
@@ -266,6 +273,14 @@ prep-container:deb13:
     pull_policy: [always, if-not-present]
   needs:
     - job: prep-container:deb13
+      optional: true
+
+.deb13-clang:
+  image:
+    name: ${CI_IMAGE_DEB13_CLANG}
+    pull_policy: [always, if-not-present]
+  needs:
+    - job: prep-container:deb13-clang
       optional: true
 
 .build:
@@ -313,6 +328,28 @@ prep-container:deb13:
     - sh ci/coverage.sh build-cov
   coverage: '/TOTAL lines: (\d+\.\d+)%/'
 
+# The unit tests under clang's AddressSanitizer and UndefinedBehavior-
+# Sanitizer (#15): ci/sanitize.sh builds twice, with address,undefined
+# and with undefined alone (see there why), and summarizes the reports.
+# allow_failure while known UB is still there: the float-to-unsigned
+# conversion of scatter heights at blot_layer.c:221 (#3, fixed in !8).
+# blot_screen's __aligned64 data[] from g_malloc was #16, fixed with
+# posix_memalign like the canvas (#15).  #19 takes allow_failure off once
+# !8, !9 and the #16 MR are merged.
+.sanitize:
+  stage: unit-test
+  allow_failure: true
+  script:
+    - sh ci/sanitize.sh build-san
+  artifacts:
+    when: always
+    paths:
+      - build-san-*/Testing/Temporary/LastTest.log
+      - build-san-*/test_report.xml
+    reports:
+      junit:
+      - build-san-*/test_report.xml
+
 # ---
 
 build-deb12:
@@ -357,3 +394,6 @@ smoke-test-deb13:
 
 coverage-deb13:
   extends: [.deb13, .coverage]
+
+sanitize-deb13:
+  extends: [.deb13-clang, .sanitize]

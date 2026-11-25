@@ -1,5 +1,6 @@
 /* blot: a canvas is a render of a single layer w/o colour coding */
 /* vim: set noet sw=8 ts=8 tw=120: */
+#include <stdlib.h>
 #include <string.h>
 #include "blot_canvas.h"
 #include "blot_braille.h"
@@ -33,8 +34,15 @@ blot_canvas * blot_canvas_new(unsigned _cols, unsigned _rows,
 		/ BLOT_CANVAS_BITMAP_CELL_SIZE;
 
 	gsize total_size = sizeof(blot_canvas) + bitmap_bytes;
-	blot_canvas *can = g_malloc(total_size);
-	RETURN_ERROR(!can, NULL, error, "new blot_canvas [%zu]", bitmap_size);
+
+	/* bitmap[] is __aligned64, so the whole canvas must be (#15): g_malloc
+	 * only guarantees 16 bytes.  posix_memalign() rather than
+	 * g_aligned_alloc(), which needs glib 2.72; blot_canvas_delete() frees
+	 * it with free() to match. */
+	void *mem = NULL;
+	int rc = posix_memalign(&mem, __alignof__(blot_canvas), total_size);
+	RETURN_ERRORx(rc, NULL, error, rc, "new blot_canvas [%zu]", bitmap_size);
+	blot_canvas *can = mem;
 
 	can->dim.cols     = cols;
 	can->dim.rows     = rows;
@@ -58,6 +66,7 @@ blot_canvas * blot_canvas_new(unsigned _cols, unsigned _rows,
 }
 void blot_canvas_delete(blot_canvas *can)
 {
-	g_free(can);
+	/* allocated by posix_memalign() in blot_canvas_new() */
+	free(can);
 }
 

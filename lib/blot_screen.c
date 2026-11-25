@@ -2,6 +2,7 @@
 /* vim: set noet sw=8 ts=8 tw=120: */
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
 #include <wctype.h>
@@ -22,21 +23,32 @@ blot_screen * blot_screen_new(const blot_dimensions *dim,
 	RETURN_ERRORx(!dim, NULL, error, EFAULT, "dimensions pointer is NULL");
 	RETURN_ERRORx(!mrg, NULL, error, EFAULT, "margins pointer is NULL");
 
-	gsize char_len = (gsize)dim->cols * (gsize)dim->rows;
+	gsize char_len;
+	bool overflow = __builtin_mul_overflow((gsize)dim->cols, (gsize)dim->rows, &char_len);
 
-	RETURN_ERRORx(!char_len, NULL, error, EINVAL, "cannot create a zero sized screen");
+	RETURN_ERRORx(!overflow && !char_len, NULL, error, EINVAL, "cannot create a zero sized screen");
 
 	// add extra space for screen clear escape code
 	if (flags & BLOT_RENDER_CLEAR)
-		char_len ++;
+		overflow |= __builtin_add_overflow(char_len, 1, &char_len);
 
 	// assume every character is escaped (overkill)
-	char_len *= 16;
+	overflow |= __builtin_mul_overflow(char_len, 16, &char_len);
 
-	gsize data_bytes = char_len * sizeof(wchar_t);
-	gsize total_size = sizeof(blot_screen) + data_bytes;
-	blot_screen *scr = g_malloc(total_size);
-	RETURN_ERROR(!scr, NULL, error, "new blot_screen [%zu]", char_len);
+	gsize data_bytes, total_size;
+	overflow |= __builtin_mul_overflow(char_len, sizeof(wchar_t), &data_bytes);
+	overflow |= __builtin_add_overflow(sizeof(blot_screen), data_bytes, &total_size);
+	RETURN_ERRORx(overflow, NULL, error, EOVERFLOW, "blot_screen %ux%u is too large",
+		      dim->cols, dim->rows);
+
+	/* data[] is __aligned64, so the whole screen must be (#16): g_malloc
+	 * only guarantees 16 bytes.  posix_memalign() rather than
+	 * g_aligned_alloc(), which needs glib 2.72; blot_screen_delete() frees
+	 * it with free() to match. */
+	void *mem = NULL;
+	int rc = posix_memalign(&mem, __alignof__(blot_screen), total_size);
+	RETURN_ERRORx(rc, NULL, error, rc, "new blot_screen [%zu]", char_len);
+	blot_screen *scr = mem;
 
 	scr->flags     = flags;
 	scr->dim       = *dim;
@@ -49,7 +61,8 @@ blot_screen * blot_screen_new(const blot_dimensions *dim,
 
 void blot_screen_delete(blot_screen *scr)
 {
-	g_free(scr);
+	/* allocated by posix_memalign() in blot_screen_new() */
+	free(scr);
 }
 
 /* render */

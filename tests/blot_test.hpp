@@ -40,6 +40,20 @@
 #include "blot_color.h"
 #include "blot_terminal.h"
 
+/* an ASan build (ci/sanitize.sh): the child ends with _exit(), which
+ * skips LeakSanitizer's check at exit, so run it here; a leak fails the
+ * child.  gcc says __SANITIZE_ADDRESS__, clang __has_feature. */
+#if defined(__SANITIZE_ADDRESS__)
+#define BLOT_TEST_LSAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define BLOT_TEST_LSAN 1
+#endif
+#endif
+#ifdef BLOT_TEST_LSAN
+#include <sanitizer/lsan_interface.h>
+#endif
+
 namespace blot_test {
 
 using Lines = std::vector<std::wstring>;
@@ -463,6 +477,13 @@ template <typename Fn>
                         p.line_number(), p.message());
         }
     }
+#ifdef BLOT_TEST_LSAN
+    /* nonzero when it found and reported a leak (on stderr) */
+    if (__lsan_do_recoverable_leak_check()) {
+        fprintf(stderr, "LeakSanitizer: leak in RUN_ISOLATED child\n");
+        failed = true;
+    }
+#endif
     fflush(stdout);
     fflush(stderr);
 #ifdef BLOT_TEST_GCOV
