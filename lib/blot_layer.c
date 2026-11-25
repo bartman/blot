@@ -205,10 +205,14 @@ static inline double blot_layer_pos(double v, double min, double max, unsigned l
 
 static inline bool blot_layer_cell(double v, double min, double max, unsigned len, unsigned *cell)
 {
-	double pos = blot_layer_pos(v, min, max, len);
+	/* written so that NaN fails too; tested on v, not on the position:
+	 * for v = max the position can round to just above len (0.1 .. 0.7
+	 * on 7 cells gives 7.000000000000001) */
+	if (!(v >= min && v <= max))
+		return false;
 
-	/* written so that NaN fails too */
-	if (!(pos >= 0 && pos <= len))
+	double pos = blot_layer_pos(v, min, max, len);
+	if (isnan(pos))		/* an infinite range */
 		return false;
 
 	*cell = pos < len ? (unsigned)floor(pos) : len - 1;
