@@ -153,7 +153,8 @@ public:
 
 // ------------------------------------------------------------------------
 
-/* owns its layers: move-only, a moved-from Figure is a fresh, empty one */
+/* owns its layers and its copy of the X labels: move-only, a moved-from
+ * Figure is a fresh, empty one */
 struct Figure final : public blot_figure {
 public:
 	explicit Figure() {
@@ -184,7 +185,8 @@ public:
 	}
 
 private:
-	/* forget the (moved) layers, back to what blot_figure_init() gives */
+	/* forget the (moved) layers and labels, back to what blot_figure_init()
+	 * gives */
 	void reset() noexcept {
 		[[maybe_unused]] bool ok = blot_figure_init(this, nullptr);
 		assert(ok);
@@ -222,12 +224,15 @@ public:
 		GError *error = nullptr;
 		BLOT_EXPECT(!labels.empty());
 		size_t label_count = labels.size();
-		char **x_labels = (char**)labels.data(); // TOOD: fix this cast!
+		/* blot copies the array and the strings, and writes to
+		 * neither: the vector may be a temporary (#23) */
+		char **x_labels = const_cast<char **>(labels.data());
 		if (!blot_figure_set_x_axis_labels(this, label_count, x_labels, &error))
 			throw Exception(error);
 	}
 
-	/* add layers */
+	/* add layers: the figure keeps pointers to the data and the label,
+	 * not copies (see blot_figure_plot()); they must outlive render() */
 
 	template <typename T, typename U>
 	void plot(blot_plot_type plot_type, const std::span<T> &data_xs, const std::span<U> &data_ys, blot_color data_color, const char *data_label) {

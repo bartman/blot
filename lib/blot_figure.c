@@ -23,8 +23,20 @@ bool blot_figure_init(blot_figure *fig, GError **error)
 	return true;
 }
 
+/* free the figure's copy of the X labels (#23) */
+static void blot_figure_free_x_labels(blot_figure *fig)
+{
+	for (size_t i=0; i<fig->xlabels.count; i++)
+		g_free(fig->xlabels.strings[i]);
+	g_free(fig->xlabels.strings);
+	fig->xlabels.count = 0;
+	fig->xlabels.strings = NULL;
+}
+
 void blot_figure_cleanup(blot_figure *fig)
 {
+	blot_figure_free_x_labels(fig);
+
 	if (fig->layers) {
 		for (int li=0; li<fig->layer_count; li++) {
 			blot_layer *lay = fig->layers[li];
@@ -114,8 +126,17 @@ bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 	RETURN_ERRORx((!!label_count) ^ (!!x_labels), false, error, EINVAL,
 		      "label_count=%u but x_labels=%p", label_count, x_labels);
 
+	/* copy first: x_labels may be the figure's own labels */
+	char **strings = NULL;
+	if (label_count) {
+		strings = g_new(char *, label_count);
+		for (size_t i=0; i<label_count; i++)
+			strings[i] = g_strdup(x_labels[i]);
+	}
+
+	blot_figure_free_x_labels(fig);
 	fig->xlabels.count = label_count;
-	fig->xlabels.strings = x_labels;
+	fig->xlabels.strings = strings;
 	return true;
 }
 

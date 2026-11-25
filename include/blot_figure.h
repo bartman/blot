@@ -24,7 +24,7 @@ typedef struct blot_figure {
 	bool y_limits_set;
 	blot_xy_limits lim;
 
-	blot_strv xlabels;
+	blot_strv xlabels;	/* owned: see blot_figure_set_x_axis_labels() */
 
 	/* layers */
 	gsize layer_count;
@@ -53,6 +53,11 @@ BLOT_API bool blot_figure_set_x_limits(blot_figure *fig,
 BLOT_API bool blot_figure_set_y_limits(blot_figure *fig,
 				     double y_min, double y_max, GError **);
 
+/* The figure keeps a copy of the array and of the strings (NULL entries
+ * stay NULL); the caller may free or reuse its own after the call.  A new
+ * set replaces (and frees) the old copy, label_count=0 with x_labels=NULL
+ * clears it, and blot_figure_cleanup() frees it.  The strings are not
+ * modified: x_labels is not const only to keep the C API unchanged. */
 BLOT_API bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 					  char **x_labels, GError **);
 
@@ -64,6 +69,9 @@ BLOT_API struct blot_screen * blot_figure_render(blot_figure *fig,
 
 /* add layers */
 
+/* The layer keeps the data_xs and data_ys pointers and the data_label
+ * pointer, not copies: the data and the label must stay valid, and
+ * unchanged, until the last blot_figure_render() of this figure. */
 BLOT_API bool blot_figure_plot(blot_figure *fig,
 		      blot_plot_type plot_type, blot_data_type data_type,
 		      size_t data_count, const void *data_xs, const void *data_ys,
