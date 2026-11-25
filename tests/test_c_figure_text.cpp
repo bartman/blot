@@ -215,8 +215,7 @@ TEST(Text, legend_skips_unlabelled_layers)
     EXPECT_EQ(legend[1].find(L"◘  a much longer label "), 0u) << to_utf8(legend[1]);
 }
 
-// BUG B11: https://git.jukie.net/bart/blot/-/work_items/8
-TEST(Text, DISABLED_legend_keeps_screen_height)
+TEST(Text, legend_keeps_screen_height)
 {
     const blot_render_flags legends[] = {
         BLOT_RENDER_LEGEND_ABOVE, BLOT_RENDER_LEGEND_BELOW,
@@ -234,8 +233,7 @@ TEST(Text, DISABLED_legend_keeps_screen_height)
     }
 }
 
-// BUG B12: https://git.jukie.net/bart/blot/-/work_items/8
-TEST(Text, DISABLED_no_color_applies_to_legend)
+TEST(Text, no_color_applies_to_legend)
 {
     Fig f;
     two_layers(f);
@@ -248,8 +246,7 @@ TEST(Text, DISABLED_no_color_applies_to_legend)
     EXPECT_TRUE(first.size() >= 4 && first.compare(first.size() - 4, 4, L" one") == 0) << to_utf8(first);
 }
 
-// BUG B12: https://git.jukie.net/bart/blot/-/work_items/8
-TEST(Text, DISABLED_colour_support_disabled)
+TEST(Text, colour_support_disabled)
 {
     RUN_ISOLATED(10, {
         have_color_support = false;
@@ -259,6 +256,76 @@ TEST(Text, DISABLED_colour_support_disabled)
         ASSERT_TRUE(r.ok) << r.message;
         EXPECT_FALSE(has_esc(r.text)) << to_utf8(r.lines[0]);
     });
+}
+
+/* not in the design's list (#8): where the legend rows go.  The legend
+ * takes the rows reserved for it, above the plot or below the X-axis, and
+ * layers without a label reserve nothing */
+TEST(Text, legend_rows_and_placement)
+{
+    const gint32 xs[] = { 0, 10 };
+    const Lines legend = { L"◘  one", L"◘  two" };
+
+    Fig f;
+    two_layers(f);
+    f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, xs, xs, 3, NULL);
+    f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, xs, xs, 4, "");
+
+    Rendered a = render(f, F | BLOT_RENDER_LEGEND_ABOVE);
+    ASSERT_TRUE(a.ok) << a.message;
+    ASSERT_EQ(a.lines.size(), 16u);
+    EXPECT_EQ(a.mrg.top, 2u);
+    EXPECT_EQ(a.mrg.bottom, 2u);
+    EXPECT_LINES_EQ(Lines(a.lines.begin(), a.lines.begin() + 2), legend);
+    EXPECT_EQ(a.lines[14].find(L"+"), a.mrg.left - 1) << "X-axis line: " << to_utf8(a.lines[14]);
+
+    Rendered b = render(f, F | BLOT_RENDER_LEGEND_BELOW);
+    ASSERT_TRUE(b.ok) << b.message;
+    ASSERT_EQ(b.lines.size(), 16u);
+    EXPECT_EQ(b.mrg.top, 0u);
+    EXPECT_EQ(b.mrg.bottom, 4u);
+    EXPECT_LINES_EQ(Lines(b.lines.end() - 2, b.lines.end()), legend);
+    EXPECT_EQ(b.lines[12].find(L"+"), b.mrg.left - 1) << "X-axis line: " << to_utf8(b.lines[12]);
+    /* same plot height as above: the plot rows and axes are the same */
+    EXPECT_LINES_EQ(Lines(b.lines.begin(), b.lines.begin() + 14),
+                    Lines(a.lines.begin() + 2, a.lines.end()));
+
+    /* only unlabelled layers: the legend flags change nothing */
+    Fig u;
+    u.size(40, 16);
+    u.plot(BLOT_LINE, BLOT_DATA_INT32, 3, TWO_X, TWO_Y1, 1, NULL);
+    u.plot(BLOT_LINE, BLOT_DATA_INT32, 3, TWO_X, TWO_Y2, 2, "");
+    Rendered n = render(u, F);
+    Rendered l = render(u, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_BELOW);
+    ASSERT_TRUE(n.ok && l.ok) << n.message << l.message;
+    EXPECT_EQ(l.text, n.text);
+    EXPECT_EQ(n.lines.size(), 16u);
+}
+
+/* not in the design's list (#8): a legend taller than the rows the
+ * margins can give it (at most half the screen) is cut, not appended */
+TEST(Text, legend_cut_to_reserved_rows)
+{
+    static const char *const labels[] = {
+        "l0", "l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "l9", "l10", "l11", "l12", "l13",
+    };
+    for (auto legend : { BLOT_RENDER_LEGEND_ABOVE, BLOT_RENDER_LEGEND_BELOW }) {
+        SCOPED_TRACE(legend);
+        Fig f;
+        f.size(40, 26);
+        for (unsigned i = 0; i < 14; i++)
+            f.plot(BLOT_LINE, BLOT_DATA_INT32, 3, TWO_X, TWO_Y1, 1, labels[i]);
+        Rendered r = render(f, F | legend);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(r.lines.size(), 26u);
+        unsigned marks = 0;
+        for (const auto &l : r.lines)
+            if (l.find(LEGEND_MARK) != std::wstring::npos)
+                marks++;
+        /* 14 labels; the margins take at most half the screen, 13
+         * rows: 13 legend lines above, or 13 less the 2 X-axis rows below */
+        EXPECT_EQ(marks, legend == BLOT_RENDER_LEGEND_ABOVE ? 13u : 11u);
+    }
 }
 
 // BUG B17: https://git.jukie.net/bart/blot/-/work_items/11
