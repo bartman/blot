@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "blot_test.hpp"
 
 #include "blot_axis.h"
 #include "blot_error.h"
@@ -139,14 +140,6 @@ struct Axis {
         return out;
     }
 };
-
-/* the results (failures) recorded so far in the current test: a sweep
- * leaves a range at its first failing size, so that a failure doesn't
- * flood the log (as blot_test.hpp) */
-int result_parts()
-{
-    return ::testing::UnitTest::GetInstance()->current_test_info()->result()->total_part_count();
-}
 
 std::map<unsigned, std::string> zip(const std::vector<unsigned> &idx, const std::vector<std::string> &lbl)
 {
@@ -426,8 +419,8 @@ TEST(Axis, y_labels_within_half_a_cell_sweep)
         { 1e6, 1e6 + 0.001 }, { -1e100, 1e100 }, { 1e-300, 3e-300 },
     };
     for (const auto &rg : RANGES) {
-        int parts = result_parts();
-        for (unsigned len = 3; len <= 200 && result_parts() == parts; len++) {
+        int parts = blot_test::result_parts();
+        for (unsigned len = 3; len <= 200 && blot_test::result_parts() == parts; len++) {
             SCOPED_TRACE(testing::Message() << "V len " << len << " [" << rg[0] << "," << rg[1] << "]");
             Axis a(true, len, rg[0], rg[1]);
             ASSERT_TRUE(a.axs) << a.error;
@@ -460,9 +453,9 @@ TEST(Axis, y_labels_in_room_sweep)
         { 1e6, 1e6 + 0.001 }, { -1e100, 1e100 }, { -1e15, 1e15 },
     };
     for (const auto &rg : RANGES) {
-        int parts = result_parts();
+        int parts = blot_test::result_parts();
         for (unsigned cols = 0; cols <= 16; cols++) {
-            for (unsigned len = 3; len <= 60 && result_parts() == parts; len++) {
+            for (unsigned len = 3; len <= 60 && blot_test::result_parts() == parts; len++) {
                 SCOPED_TRACE(testing::Message() << "V len " << len << " cols " << cols << " [" << rg[0] << ","
                                                 << rg[1] << "]");
                 GError *e = NULL;
@@ -577,8 +570,8 @@ TEST(Axis, x_labels_no_worse_than_needed_sweep)
         { 1e-9, 3e-9 }, { -0.0005, 0.0005 }, { 1e6, 1e6 + 0.001 },
     };
     for (const auto &rg : RANGES) {
-        int parts = result_parts();
-        for (unsigned len = 10; len <= 200 && result_parts() == parts; len++) {
+        int parts = blot_test::result_parts();
+        for (unsigned len = 10; len <= 200 && blot_test::result_parts() == parts; len++) {
             SCOPED_TRACE(testing::Message() << "H len " << len << " [" << rg[0] << "," << rg[1] << "]");
             Axis a(false, len, rg[0], rg[1]);
             ASSERT_TRUE(a.axs) << a.error;
