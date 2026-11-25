@@ -178,6 +178,14 @@ golden scatter-stdin --ascii scatter --read /dev/stdin --position 1,2 < "$here/c
 # re-checks it by hand
 golden bar-file --ascii bar --read bars.txt < /dev/null
 
+# line, from a one-column file (#47): 1 3 2 5 at x = 1..4, all four
+# values, not only the first; x 0.997..4.003, y 0.996..5.004, 30x11 (the
+# Y labels are 6 characters), so (1,1) (2,3) (3,2) (4,5) are in columns
+# floor((x - 0.997) * 30 / 3.006) = 0, 10, 19, 29 and rows
+# floor((y - 0.996) * 11 / 4.008) = 0, 5, 2, 10, and the line joins
+# them; the X labels 0.997, 1.999, 3.001, the Y labels 0.996, 2.332, 3.668
+golden line-column --ascii line --read column.txt < /dev/null
+
 # two layers on one figure, the legend lists both: the ramp's line and
 # the corners' scatter; x -0.011..11.011 (0..11 over both), y
 # -0.01..10.01, 29x10: the corners in columns 0, 26, 13 (centre) and rows
