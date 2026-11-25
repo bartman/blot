@@ -19,3 +19,32 @@ END {
 	}
 	printf "%-24s %5d %7d %9d\n", "TOTAL", R, P, D
 }' "$log"
+
+# The programs that ctest failed although no gtest in them failed (#30),
+# which the counts above can't show: one that ran every test and passed
+# them all but then failed (a leak at exit under LeakSanitizer, a crash
+# in a static destructor, a nonzero exit status), or one that stopped
+# before gtest's summary (a crash, abort or timeout in a test), so its
+# counts are those of the tests before.  A program with a gtest failure
+# isn't listed: its counts already show it.
+awk '
+/^[0-9]+\/[0-9]+ Testing: / { n++; name[n] = $NF; out = 1; next }
+/^<end of output>$/ { out = 0; next }
+out && /^\[==========\] [0-9]+ tests? from .* ran/ { ran[n] = 1 }
+out && /^\[  FAILED  \] [0-9]+ tests?, listed below/ { gfail[n] = 1 }
+!out && /^Test Failed\.$/ { cfail[n] = 1 }
+END {
+	k = 0
+	for (i = 1; i <= n; i++) {
+		if (!cfail[i] || gfail[i])
+			continue
+		if (!k++)
+			print "failed under ctest with no gtest failure:"
+		if (ran[i])
+			printf "  %-22s every gtest passed, then the program failed (exit status, leak at exit, ...)\n", name[i]
+		else
+			printf "  %-22s stopped before gtest'"'"'s summary (crash, abort or timeout)\n", name[i]
+	}
+	if (!k)
+		print "failed under ctest with no gtest failure: none"
+}' "$log"
