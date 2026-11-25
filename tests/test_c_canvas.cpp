@@ -118,6 +118,7 @@ TEST(Canvas, fill_rect)
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "blot_test.hpp"
 
@@ -371,16 +372,19 @@ TEST(Canvas, bitmap_is_64_byte_aligned)
         BLOT_RENDER_BRAILLE,
         (blot_render_flags)(BLOT_RENDER_BRAILLE | BLOT_RENDER_DONT_INVERT_Y_AXIS),
     };
-    std::vector<blot_canvas *> cans;
+    /* unique_ptr: an ASSERT returns early, and must not leak the canvases */
+    std::vector<std::unique_ptr<blot_canvas, decltype(&blot_canvas_delete)>> cans;
     unsigned misaligned = 0;
     for (unsigned i = 0; i < 256; i++) {
         unsigned cols = 1 + (i * 7) % 97;
         unsigned rows = 1 + (i * 13) % 61;
         GError *error = NULL;
         blot_canvas *can = blot_canvas_new(cols, rows, flags[i % 4], 1, &error);
-        ASSERT_TRUE(can != NULL) << cols << "x" << rows;
-        ASSERT_TRUE(error == NULL);
-        cans.push_back(can);
+        if (can)
+            cans.emplace_back(can, blot_canvas_delete);
+        ASSERT_TRUE(can != NULL) << cols << "x" << rows << ": "
+                                 << (error ? error->message : "no error");
+        ASSERT_TRUE(error == NULL) << error->message;
         /* uintptr_t: no access through a misaligned pointer here */
         uintptr_t base = (uintptr_t)can;
         uintptr_t bitmap = base + offsetof(blot_canvas, bitmap);
@@ -388,6 +392,4 @@ TEST(Canvas, bitmap_is_64_byte_aligned)
             misaligned++;
     }
     EXPECT_EQ(misaligned, 0u) << "of " << cans.size() << " canvases";
-    for (blot_canvas *can : cans)
-        blot_canvas_delete(can);
 }
