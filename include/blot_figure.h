@@ -51,6 +51,8 @@ BLOT_EXTERN_C_START
 
 BLOT_API bool blot_figure_init(blot_figure *fig, GError **);
 BLOT_API blot_figure * blot_figure_new(GError **);
+/* frees the layers and the X labels and leaves the figure without them;
+ * may be called again, or followed by blot_figure_init() */
 BLOT_API void blot_figure_cleanup(blot_figure *fig);
 BLOT_API void blot_figure_delete(blot_figure *fig);
 
