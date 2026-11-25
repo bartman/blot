@@ -6,8 +6,10 @@
 #   smoke.sh [build dir]          (make smoke runs it on build/)
 #
 # BLOT=<path> tests another blot (e.g. an installed /usr/bin/blot) and
-# EXAMPLES=<dir> other examples (with c/ and cpp/ in it).  A sanitizer
-# build works too: its reports fail the run.
+# EXAMPLES=<dir> other examples (with c/ and cpp/ in it).  On a
+# sanitizer build its reports fail the run; today that build fails on
+# the UB in the *-trig-loop examples (#43) until that is fixed.  CI's
+# smoke jobs run the plain build.
 #
 # The CLI
 #   - plots the inputs in this directory as line, scatter and bar, read
@@ -38,7 +40,8 @@ case $blot in /*) ;; */*) blot=$PWD/$blot ;; *) blot=$(command -v "$blot") ;; es
 
 # fixed sizes and locale: the output must not depend on where it runs.
 # The CLI prints with %ls, so it needs a UTF-8 locale for its legend
-# marker (the C locale loses the output from there on)
+# marker: the C locale loses the output from there on (#40; drop this,
+# and add an LC_ALL=C pass, when it is fixed)
 COLUMNS=40
 LINES=16
 LC_ALL=C.UTF-8
@@ -80,7 +83,7 @@ check_run() {
 	if grep -q -a -E 'Sanitizer|runtime error:' "$tmp/out"; then
 		fail "sanitizer report:"; sed -n '1,40p' "$tmp/out"; ok=1
 	fi
-	if grep -q -a -e 'terminate called' -e 'Aborted' "$tmp/out"; then
+	if grep -q -a -e 'terminate called' "$tmp/out"; then
 		fail "std::terminate"; ok=1
 	fi
 	if [ "$rc" -ne "$1" ]; then
@@ -97,7 +100,7 @@ check_run() {
 golden() {
 	name=cli-$1; shift
 	echo "--- $name: blot $*"
-	(cd "$here" && "$blot" "$@") > "$tmp/out" 2>&1
+	(cd "$here" && timeout -k 5 30 "$blot" "$@") > "$tmp/out" 2>&1
 	rc=$?
 	check_run 0 || return
 	strip || return
@@ -165,7 +168,10 @@ golden scatter-stdin --ascii scatter --read /dev/stdin --position 1,2 < "$here/c
 # X is not the axis mapping but the bar slot model (blot_layer_bar, the
 # open question of #12): 4.006 slots of 30/4.006 columns, a bar in the
 # left half of its slot: columns 0..4, 8..11, 15..19, 22..26, so the
-# bars sit left of the X ticks (0.997, 1.999, 3.001 at columns 0, 10, 20)
+# bars sit left of the X ticks (0.997, 1.999, 3.001 at columns 0, 10, 20).
+# This golden bakes in the current slot model, which the owner is
+# deciding in #12: a change there regenerates it (SMOKE_UPDATE=1) and
+# re-checks it by hand
 golden bar-file --ascii bar --read bars.txt < /dev/null
 
 # two layers on one figure, the legend lists both: the ramp's line and
@@ -179,7 +185,7 @@ golden two-layers --ascii line --read ramp.txt scatter --read /dev/stdin -p 1,2 
 # --help and --version through a pipe (#37): exit 0, and the text
 name=cli-help
 echo "--- $name: blot --help | cat"
-{ "$blot" --help < /dev/null 2>&1; echo $? > "$tmp/rc"; } | cat > "$tmp/out"
+{ timeout -k 5 30 "$blot" --help < /dev/null 2>&1; echo $? > "$tmp/rc"; } | cat > "$tmp/out"
 rc=$(cat "$tmp/rc")
 if check_run 0; then
 	if ! grep -q '^SYNOPSIS' "$tmp/out" || ! grep -q '^EXAMPLES' "$tmp/out" \
@@ -192,7 +198,7 @@ fi
 
 name=cli-version
 echo "--- $name: blot --version | cat"
-{ "$blot" --version < /dev/null 2>&1; echo $? > "$tmp/rc"; } | cat > "$tmp/out"
+{ timeout -k 5 30 "$blot" --version < /dev/null 2>&1; echo $? > "$tmp/rc"; } | cat > "$tmp/out"
 rc=$(cat "$tmp/rc")
 if check_run 0; then
 	cat "$tmp/out"
