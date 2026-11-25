@@ -278,10 +278,18 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 		mrg.left += 4;
 	}
 
+	/* one row per labelled layer, above or below the plot (and below
+	 * the X-axis); the screen writes the legend in exactly these rows */
+	unsigned legend = 0;
+	for (gsize li=0; li<fig->layer_count; li++) {
+		const blot_layer *lay = fig->layers[li];
+		if (lay->label && *lay->label)
+			legend ++;
+	}
 	if (flags & BLOT_RENDER_LEGEND_ABOVE)
-		mrg.top += fig->layer_count;
+		mrg.top += legend;
 	if (flags & BLOT_RENDER_LEGEND_BELOW)
-		mrg.top += fig->layer_count;
+		mrg.bottom += legend;
 
 #if 0
 	/* don't use the top or right edge */

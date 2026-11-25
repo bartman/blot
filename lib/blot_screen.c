@@ -9,6 +9,7 @@
 #include "blot_layer.h"
 #include "blot_color.h"
 #include "blot_axis.h"
+#include "blot_utils.h"
 
 /* create/delete */
 
@@ -51,19 +52,67 @@ void blot_screen_delete(blot_screen *scr)
 
 /* render */
 
-static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
-				   struct blot_layer *const*lays,
-				   GError **error)
+/* escape sequences for colour are written only when the caller didn't ask
+ * for BLOT_RENDER_NO_COLOR and the terminal supports them */
+static bool blot_screen_use_color(const blot_screen *scr)
+{
+	return have_color_support && !(scr->flags & BLOT_RENDER_NO_COLOR);
+}
+
+/* only layers with a label have a legend line */
+static bool blot_screen_has_legend(const struct blot_layer *lay)
+{
+	return lay->label && *lay->label;
+}
+
+static unsigned blot_screen_legend_lines(unsigned count,
+					 struct blot_layer *const*lays)
+{
+	unsigned lines = 0;
+
+	for (unsigned ci=0; ci<count; ci++)
+		if (blot_screen_has_legend(lays[ci]))
+			lines ++;
+	return lines;
+}
+
+static bool blot_screen_blank_lines(blot_screen *scr, unsigned lines,
+				    GError **error)
 {
 	wchar_t *p = scr->data + scr->data_used,
 		 *end = scr->data + scr->data_size;
 
-	for (int ci=0; ci<count; ci++) {
-		const struct blot_layer *lay = lays[ci];
-		const char *colstr = fg(lay->color);
+	RETURN_ERRORx((gsize)(end - p) <= lines, false, error, ENOSPC,
+		      "screen buffer too small for %u lines", lines);
 
-		if (!lay->label || !*lay->label)
+	for (unsigned i=0; i<lines; i++)
+		*(p++) = L'\n';
+
+	*p = 0;
+	scr->data_used = p - scr->data;
+	return true;
+}
+
+/* write at most max_lines legend lines: the rows the margins reserved */
+static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
+				   struct blot_layer *const*lays,
+				   unsigned max_lines,
+				   GError **error)
+{
+	wchar_t *p = scr->data + scr->data_used,
+		 *end = scr->data + scr->data_size;
+	bool use_color = blot_screen_use_color(scr);
+	unsigned lines = 0;
+
+	for (int ci=0; ci<count && lines<max_lines; ci++) {
+		const struct blot_layer *lay = lays[ci];
+
+		if (!blot_screen_has_legend(lay))
 			continue;
+
+		/* same text as with colour, without the escape sequences */
+		const char *colstr = use_color ? fg(lay->color) : "";
+		const char *rststr = use_color ? COL_RESET : "";
 
 		//wchar_t star = 0x2605; // does not show up in Terminus font
 		wchar_t symbol = 0x25D8; // inverse bullet ◘
@@ -71,7 +120,7 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 
 		if (!(scr->flags & BLOT_RENDER_LEGEND_DETAILS)) {
 			len = swprintf(p, end-p, L"%s%lc %s %s\n",
-				   colstr, symbol, COL_RESET,
+				   colstr, symbol, rststr,
 				   lay->label);
 		} else if (lay->summary.enabled) {
 			char tavg[32], tmin[32], tmax[32];
@@ -83,7 +132,7 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 				   lay->summary.ymax);
 
 			len = swprintf(p, end-p, L"%s%lc %s %s   \tavg=%s min=%s max=%s count=%u\n",
-				   colstr, symbol, COL_RESET,
+				   colstr, symbol, rststr,
 				   lay->label,
 				   ravg>0 ? tavg : "?",
 				   rmin>0 ? tmin : "?",
@@ -91,12 +140,13 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 				   lay->count);
 		} else {
 			len = swprintf(p, end-p, L"%s%lc %s %s   \tcount=%u\n",
-				   colstr, symbol, COL_RESET,
+				   colstr, symbol, rststr,
 				   lay->label,
 				   lay->count);
 		}
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
+		lines ++;
 	}
 
 	*p = 0;
@@ -104,13 +154,15 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 	return true;
 }
 
-
+/* the plot rows and the X-axis rows: the rows between the top and bottom
+ * margins, then x_axis_rows rows of the bottom margin */
 static bool blot_screen_plot_cans(blot_screen *scr,
 				  const blot_xy_limits *lim,
 				  const blot_axis * x_axs,
 				  const blot_axis * y_axs,
 				  unsigned count,
 				  blot_canvas *const*cans,
+				  unsigned x_axis_rows,
 				  GError **error)
 {
 	const int PREV_COLOR_UNUSED = -1;
@@ -128,17 +180,11 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 	unsigned dsp_rgt = scr->dim.cols - scr->mrg.right;
 	unsigned dsp_wdh = dsp_rgt - dsp_lft;
 
-	bool draw_x_axis = !(scr->flags & BLOT_RENDER_NO_X_AXIS);
 	bool draw_y_axis = !(scr->flags & BLOT_RENDER_NO_Y_AXIS);
 	bool invert_y_axis = !(scr->flags & BLOT_RENDER_DONT_INVERT_Y_AXIS);
+	bool use_color = blot_screen_use_color(scr);
 
-	/* now draw */
-
-	for (unsigned s_y=0; s_y<dsp_top; s_y++) {
-		/* lines above the display area are just skipped */
-		*(p++) = L'\n';
-		g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
-	}
+	/* now draw; the margins above and below are written by the caller */
 
 	for (unsigned s_y=dsp_top; s_y<dsp_bot; s_y++) {
 		/* this is where the canvases are merged */
@@ -161,7 +207,7 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 
 		/* apply Y-axis color */
 
-		if (!(scr->flags & BLOT_RENDER_NO_COLOR) && prev_color != y_axs->color) {
+		if (use_color && prev_color != y_axs->color) {
 			const char *colstr = fg(y_axs->color);
 			len = swprintf(p, end-p, L"%s", colstr);
 			RETURN_ERROR(len<0, false, error, "swprintf");
@@ -212,7 +258,7 @@ plot_cells:
 			}
 
 			if (top_cell) {
-				if (!(scr->flags & BLOT_RENDER_NO_COLOR) && prev_color != top_col) {
+				if (use_color && prev_color != top_col) {
 					const char *colstr = fg(top_col);
 					len = swprintf(p, end-p, L"%s", colstr);
 					RETURN_ERROR(len<0, false, error, "swprintf");
@@ -238,12 +284,9 @@ skip_cell:
 		g_assert_cmpuint((uintptr_t)p, <, (uintptr_t)end);
 	}
 
-	for (unsigned s_y=dsp_bot; s_y<scr->dim.rows; s_y++) {
-		/* the bottom lines may contain the X-axis */
-		if (!draw_x_axis)
-			goto done_bot_line;
-
-		if (!(scr->flags & BLOT_RENDER_NO_COLOR) && prev_color != x_axs->color) {
+	for (unsigned s_y=dsp_bot; s_y<dsp_bot+x_axis_rows; s_y++) {
+		/* the X-axis line, then its label line */
+		if (use_color && prev_color != x_axs->color) {
 			const char *colstr = fg(x_axs->color);
 			len = swprintf(p, end-p, L"%s", colstr);
 			RETURN_ERROR(len<0, false, error, "swprintf");
@@ -268,10 +311,6 @@ skip_cell:
 						*(p++) = L'-';
 				}
 			}
-			goto done_bot_line;
-
-		} else if (s_y > (dsp_bot+1) ) {
-			/* there may be lines below the X-axis, they will be * blank */
 			goto done_bot_line;
 		}
 
@@ -334,18 +373,36 @@ bool blot_screen_render(blot_screen *scr,
 
 	gboolean ok;
 
-	if (scr->flags & BLOT_RENDER_LEGEND_ABOVE) {
-		ok = blot_screen_can_legend(scr, count, lays, error);
-		RETURN_IF(!ok, false);
-	}
+	/* The text is exactly dim.rows lines.  The top margin holds the
+	 * legend above (padded with blank lines); the bottom margin holds the
+	 * X-axis line and its labels, then the legend below (blank lines
+	 * between them pad it).  A legend longer than the rows reserved for it
+	 * is cut. */
+	unsigned legend = blot_screen_legend_lines(count, lays);
+	unsigned top = scr->mrg.top, bottom = scr->mrg.bottom;
 
-	ok = blot_screen_plot_cans(scr, lim, x_axs, y_axs, count, cans, error);
+	unsigned x_axis_rows = (scr->flags & BLOT_RENDER_NO_X_AXIS)
+		? 0 : min_t(unsigned, 2, bottom);
+	unsigned above = (scr->flags & BLOT_RENDER_LEGEND_ABOVE)
+		? min_t(unsigned, legend, top) : 0;
+	unsigned below = (scr->flags & BLOT_RENDER_LEGEND_BELOW)
+		? min_t(unsigned, legend, bottom - x_axis_rows) : 0;
+
+	ok = blot_screen_can_legend(scr, count, lays, above, error);
 	RETURN_IF(!ok, false);
 
-	if (scr->flags & BLOT_RENDER_LEGEND_BELOW) {
-		ok = blot_screen_can_legend(scr, count, lays, error);
-		RETURN_IF(!ok, false);
-	}
+	ok = blot_screen_blank_lines(scr, top - above, error);
+	RETURN_IF(!ok, false);
+
+	ok = blot_screen_plot_cans(scr, lim, x_axs, y_axs, count, cans,
+				   x_axis_rows, error);
+	RETURN_IF(!ok, false);
+
+	ok = blot_screen_blank_lines(scr, bottom - x_axis_rows - below, error);
+	RETURN_IF(!ok, false);
+
+	ok = blot_screen_can_legend(scr, count, lays, below, error);
+	RETURN_IF(!ok, false);
 
 	return true;
 }
