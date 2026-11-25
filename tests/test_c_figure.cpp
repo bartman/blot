@@ -149,7 +149,11 @@ TEST(Figure, set_x_axis_labels)
     ASSERT_TRUE(blot_figure_set_x_axis_labels(fig, 3, labels, &error));
     ASSERT_TRUE(error == NULL);
     ASSERT_EQ(fig->xlabels.count, 3);
-    ASSERT_EQ(fig->xlabels.strings, labels);
+    /* the figure keeps a copy (#23) */
+    ASSERT_NE(fig->xlabels.strings, labels);
+    ASSERT_STREQ(fig->xlabels.strings[0], "a");
+    ASSERT_STREQ(fig->xlabels.strings[1], "b");
+    ASSERT_STREQ(fig->xlabels.strings[2], "c");
 
     // Test invalid labels
     ASSERT_FALSE(blot_figure_set_x_axis_labels(fig, 0, labels, &error));
