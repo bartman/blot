@@ -124,6 +124,10 @@ constexpr blot_data_type data_type() {
 
 // ------------------------------------------------------------------------
 
+/* the terminal's size.  Unlike Figure, it is a blot_dimensions: it owns
+ * nothing (two unsigned), so a sliced copy is a plain, safe copy of the
+ * size, and term.cols / term.rows and passing it as a blot_dimensions
+ * keep working (#41) */
 struct Dimensions final : public blot_dimensions {
 public:
 	explicit Dimensions() {
@@ -188,19 +192,33 @@ public:
 
 /* owns its layers, its copy of the X labels, and the data and label of each
  * layer added from a std::vector (see plot()): move-only, a moved-from
- * Figure is a fresh, empty one */
-struct Figure final : public blot_figure {
+ * Figure is a fresh, empty one.
+ *
+ * The blot_figure is a private member, not a base: a Figure doesn't turn
+ * into a blot_figure& or blot_figure*, and can't be sliced into a
+ * blot_figure copy that shares its layers and labels (#41).  c_ptr() gives
+ * the C API the figure, which the Figure still owns: don't
+ * blot_figure_init() it, and don't copy the struct out of it. */
+struct Figure final {
+private:
+	blot_figure m_fig;
+
 public:
 	explicit Figure() {
 		GError *error = nullptr;
 
-		if (!blot_figure_init(this, &error)) [[unlikely]] {
+		if (!blot_figure_init(&m_fig, &error)) [[unlikely]] {
 			throw_error(error, "blot_figure_init");
 		}
 	}
 	~Figure() {
-		blot_figure_cleanup(this);
+		blot_figure_cleanup(&m_fig);
 	}
+
+	/* the C figure, for the C API.  The pointer is this Figure's for its
+	 * whole life; a move copies the struct into the target's own one. */
+	blot_figure *c_ptr() noexcept { return &m_fig; }
+	const blot_figure *c_ptr() const noexcept { return &m_fig; }
 
 	Figure(const Figure &) = delete;
 	Figure& operator=(const Figure &) = delete;
@@ -208,15 +226,15 @@ public:
 	/* the layers point into m_owned's buffers, which a move hands over
 	 * without moving them */
 	Figure(Figure &&other) noexcept
-		: blot_figure(other), m_owned(std::move(other.m_owned)) {
+		: m_fig(other.m_fig), m_owned(std::move(other.m_owned)) {
 		other.reset();
 	}
 
 	Figure& operator=(Figure &&other) noexcept {
 		if (this != &other) {
 			/* the layers go before the data they point to */
-			blot_figure_cleanup(this);
-			static_cast<blot_figure&>(*this) = other;
+			blot_figure_cleanup(&m_fig);
+			m_fig = other.m_fig;
 			m_owned = std::move(other.m_owned);
 			other.reset();
 		}
@@ -233,7 +251,7 @@ private:
 	/* forget the (moved) layers, labels and data, back to what
 	 * blot_figure_init() gives */
 	void reset() noexcept {
-		[[maybe_unused]] bool ok = blot_figure_init(this, nullptr);
+		[[maybe_unused]] bool ok = blot_figure_init(&m_fig, nullptr);
 		assert(ok);
 		m_owned.clear();
 	}
@@ -272,7 +290,7 @@ private:
 		 * points at them */
 		m_owned.reserve(m_owned.size() + 3);
 
-		if (!blot_figure_plot(this, plot_type, data_type, ys_count, xs, ys,
+		if (!blot_figure_plot(&m_fig, plot_type, data_type, ys_count, xs, ys,
 				      data_color, label->c_str(), &error)) {
 			throw_error(error, "blot_figure_plot");
 		}
@@ -290,25 +308,25 @@ public:
 
 	void set_axis_color(blot_color color) {
 		GError *error = nullptr;
-		if (!blot_figure_set_axis_color(this, color, &error))
+		if (!blot_figure_set_axis_color(&m_fig, color, &error))
 			throw_error(error, "blot_figure_set_axis_color");
 	}
 
 	void set_screen_size(unsigned cols, unsigned rows) {
 		GError *error = nullptr;
-		if (!blot_figure_set_screen_size(this, cols, rows, &error)) {
+		if (!blot_figure_set_screen_size(&m_fig, cols, rows, &error)) {
 			throw_error(error, "blot_figure_set_screen_size");
 		}
 	}
 
 	void set_x_limits(double x_min, double x_max) {
 		GError *error = nullptr;
-		if (!blot_figure_set_x_limits(this, x_min, x_max, &error))
+		if (!blot_figure_set_x_limits(&m_fig, x_min, x_max, &error))
 			throw_error(error, "blot_figure_set_x_limits");
 	}
 	void set_y_limits(double y_min, double y_max) {
 		GError *error = nullptr;
-		if (!blot_figure_set_y_limits(this, y_min, y_max, &error))
+		if (!blot_figure_set_y_limits(&m_fig, y_min, y_max, &error))
 			throw_error(error, "blot_figure_set_y_limits");
 	}
 
@@ -319,7 +337,7 @@ public:
 		/* blot copies the array and the strings, and writes to
 		 * neither: the vector may be a temporary (#23) */
 		char **x_labels = const_cast<char **>(labels.data());
-		if (!blot_figure_set_x_axis_labels(this, label_count, x_labels, &error))
+		if (!blot_figure_set_x_axis_labels(&m_fig, label_count, x_labels, &error))
 			throw_error(error, "blot_figure_set_x_axis_labels");
 	}
 
@@ -390,7 +408,7 @@ public:
 
 	Screen render(blot_render_flags flags) {
 		GError *error = nullptr;
-		blot_screen * screen = blot_figure_render(this, flags, &error);
+		blot_screen * screen = blot_figure_render(&m_fig, flags, &error);
 		if (!screen)
 			throw_error(error, "blot_figure_render");
 		return Screen(screen);
