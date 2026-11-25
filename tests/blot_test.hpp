@@ -435,7 +435,7 @@ struct Canvas {
  * after `seconds`, a crash is a normal test failure, and process-wide
  * state (cached terminal size, have_color_support, the environment)
  * can't leak into other tests.  The child exits 0 only when the body
- * recorded no failure. */
+ * recorded no failure of its own. */
 #ifdef BLOT_TEST_GCOV
 /* a --coverage build (tests/CMakeLists.txt): the child writes its
  * counters before _exit() */
@@ -445,14 +445,19 @@ extern "C" void __gcov_dump(void);
 template <typename Fn>
 [[noreturn]] void isolated_child(unsigned seconds, Fn body)
 {
+    /* only the failures of this child count, not those the parent
+     * recorded before the fork (an earlier case of the same test) */
+    const ::testing::TestInfo *ti = ::testing::UnitTest::GetInstance()->current_test_info();
+    int before = ti ? ti->result()->total_part_count() : 0;
     alarm(seconds);
     body();
     /* the parent shows the child's stderr: repeat the failures there */
-    bool failed = ::testing::Test::HasFailure();
-    if (const ::testing::TestInfo *ti = ::testing::UnitTest::GetInstance()->current_test_info()) {
+    bool failed = false;
+    if (ti) {
         const ::testing::TestResult *res = ti->result();
-        for (int i = 0; i < res->total_part_count(); i++) {
+        for (int i = before; i < res->total_part_count(); i++) {
             const ::testing::TestPartResult &p = res->GetTestPartResult(i);
+            failed |= p.failed();
             if (p.failed())
                 fprintf(stderr, "%s:%d: %s\n", p.file_name() ? p.file_name() : "?",
                         p.line_number(), p.message());
