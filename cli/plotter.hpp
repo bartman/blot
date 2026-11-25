@@ -12,13 +12,25 @@
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
+#include <cstdlib>
+#include <initializer_list>
 #include <stdexcept>
 #include <string>
+
+/* one warning about characters written as '?' is enough */
+inline bool plot_warned_once()
+{
+	static bool warned;
+	bool was = warned;
+	warned = true;
+	return was;
+}
 
 /* the plot is wide text, written in the encoding of the locale's
  * LC_CTYPE.  The C and POSIX locales (no LANG, as in a docker container
  * or CI) encode only ASCII, and a plot isn't ASCII even with --ascii (the
- * legend's symbol), so use UTF-8 there (#40) */
+ * legend's symbol), so use a UTF-8 locale there (#40).  Unlike Python's
+ * PEP 538 this also applies when LC_ALL=C is set explicitly */
 inline void plot_locale()
 {
 	static bool done;
@@ -27,8 +39,22 @@ inline void plot_locale()
 	done = true;
 
 	const char *loc = setlocale(LC_CTYPE, "");
-	if (!loc || !strcmp(loc, "C") || !strcmp(loc, "POSIX"))
-		setlocale(LC_CTYPE, "C.UTF-8");
+	if (loc && strcmp(loc, "C") && strcmp(loc, "POSIX"))
+		return;
+
+	/* C.UTF-8 is in glibc >= 2.35 and Debian; UTF-8 and en_US.UTF-8
+	 * elsewhere (macOS, older glibc) */
+	for (const char *utf8 : { "C.UTF-8", "C.utf8", "UTF-8", "en_US.UTF-8" }) {
+		if (setlocale(LC_CTYPE, utf8)) {
+			spdlog::debug("locale is {}, using {} for the plot",
+				loc ? loc : "unknown", utf8);
+			return;
+		}
+	}
+	setlocale(LC_CTYPE, "C");
+	if (!plot_warned_once())
+		spdlog::warn("no UTF-8 locale available; the plot's "
+			"non-ASCII characters are written as '?'");
 }
 
 /* write the rendered text to f in the locale's encoding, all of it.
@@ -40,7 +66,7 @@ inline void plot_locale()
 inline void plot_write(FILE *f, const wchar_t *txt, size_t len)
 {
 	std::string out;
-	out.reserve(len);
+	out.reserve(len * MB_CUR_MAX);
 
 	char mb[MB_LEN_MAX];
 	mbstate_t state{};
@@ -56,14 +82,10 @@ inline void plot_write(FILE *f, const wchar_t *txt, size_t len)
 		out.append(mb, n);
 	}
 
-	if (replaced) {
-		static bool warned;
-		if (!warned)
-			spdlog::warn("the locale ({}) can't encode some of "
-				"the plot's characters; they are written as '?'",
-				setlocale(LC_CTYPE, nullptr));
-		warned = true;
-	}
+	if (replaced && !plot_warned_once())
+		spdlog::warn("the locale ({}) can't encode some of "
+			"the plot's characters; they are written as '?'",
+			setlocale(LC_CTYPE, nullptr));
 
 	if (fwrite(out.data(), 1, out.size(), f) != out.size()
 	    || fflush(f) != 0)
