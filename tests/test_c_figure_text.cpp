@@ -188,6 +188,8 @@ TEST(Text, legend_below_details)
 {
     Fig f;
     s9_layers(f);
+    /* 80 columns: the whole lines fit (#11 cuts them at the screen width) */
+    f.size(80, 16);
     Rendered r = render(f, BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_BELOW | BLOT_RENDER_LEGEND_DETAILS);
     ASSERT_TRUE(r.ok) << r.message;
     ASSERT_GE(r.lines.size(), 2u);
@@ -350,8 +352,8 @@ TEST(Text, legend_cut_to_reserved_rows)
     }
 }
 
-// BUG B17: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Text, DISABLED_many_colour_changes)
+// B17, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Text, many_colour_changes)
 {
     RUN_ISOLATED(60, {
         /* a checkerboard of two colours over all 1000x1000 cells */
@@ -380,7 +382,8 @@ TEST(Text, legend_details_without_summary)
 {
     const gint32 xs[] = { 0, 5, 9 }, ys[] = { 0, 5, 9 };
     const blot_xy_limits lim = { 0, 9, 0, 9 };
-    const blot_dimensions dim = { 10, 12 }, use = { 10, 10 };
+    /* 24 columns: the whole line fits (#11 cuts it at the screen width) */
+    const blot_dimensions dim = { 24, 12 }, use = { 24, 10 };
     const blot_margins mrg = { 0, 0, 2, 0 };
     const blot_render_flags flags = F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS
         | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_DETAILS;
@@ -391,7 +394,7 @@ TEST(Text, legend_details_without_summary)
     blot_canvas *can = blot_layer_render(lay, &lim, &use, F, NULL);
     ASSERT_TRUE(can != NULL);
     ASSERT_FALSE(lay->summary.enabled);
-    blot_axis *xa = blot_axis_new(false, false, 7, 10, 0, 9, NULL, NULL);
+    blot_axis *xa = blot_axis_new(false, false, 7, 24, 0, 9, NULL, NULL);
     blot_axis *ya = blot_axis_new(true, false, 7, 10, 0, 9, NULL, NULL);
     blot_screen *scr = blot_screen_new(&dim, &mrg, flags, NULL);
     ASSERT_TRUE(xa && ya && scr);
@@ -411,4 +414,148 @@ TEST(Text, legend_details_without_summary)
     blot_axis_delete(ya);
     blot_canvas_delete(can);
     blot_layer_delete(lay);
+}
+
+namespace {
+
+/* the columns a line takes on a terminal: escapes take none, a tab goes
+ * to the next multiple of 8 */
+unsigned display_width(const std::wstring &line)
+{
+    unsigned col = 0;
+    for (wchar_t wc : strip_sgr(line))
+        col = wc == L'\t' ? (col / 8 + 1) * 8 : col + 1;
+    return col;
+}
+
+void expect_lines_fit(const Rendered &r, unsigned cols, unsigned rows)
+{
+    ASSERT_TRUE(r.ok) << r.message;
+    EXPECT_EQ(r.lines.size(), rows);
+    for (size_t i = 0; i < r.lines.size(); i++)
+        EXPECT_LE(display_width(r.lines[i]), cols) << "line " << i << " |" << to_utf8(r.lines[i]) << "|";
+}
+
+const gint32 LEG_X[] = { 0, 5, 9 }, LEG_Y[] = { 0, 5, 9 };
+
+} // namespace
+
+/* #11 (note 34933): a label far longer than the screen buffer allows
+ * (cols * rows * 16 characters) failed the render; it is cut at the screen
+ * width, colour escapes not counted */
+TEST(Text, long_label_cut_to_width)
+{
+    const std::string label(2000, 'x');
+    const blot_render_flags flags = BLOT_RENDER_NO_UNICODE | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS;
+    for (auto legend : { BLOT_RENDER_LEGEND_ABOVE, BLOT_RENDER_LEGEND_BELOW }) {
+        for (auto colour : { BLOT_RENDER_NONE, BLOT_RENDER_NO_COLOR }) {
+            SCOPED_TRACE(testing::Message() << "legend=" << legend << " colour=" << colour);
+            Fig f(10, 12);
+            f.lim(0, 9, 0, 9);
+            f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, label.c_str());
+            Rendered r = render(f, flags | legend | colour);
+            expect_lines_fit(r, 10, 12);
+            ASSERT_EQ(r.lines.size(), 12u);
+            const std::wstring &l = legend == BLOT_RENDER_LEGEND_ABOVE ? r.lines.front() : r.lines.back();
+            EXPECT_EQ(strip_sgr(l), L"◘  xxxxxxx") << to_utf8(l);
+            EXPECT_EQ(has_esc(r.text), colour == BLOT_RENDER_NONE);
+        }
+    }
+}
+
+/* #11 (note 34955): a LEGEND_DETAILS line wider than the screen wrapped on
+ * the terminal; it is cut at the screen width, the tab counted to its stop */
+TEST(Text, legend_details_cut_to_width)
+{
+    Fig f;
+    s9_layers(f);       /* 40 columns */
+    Rendered r = render(f, F | BLOT_RENDER_LEGEND_BELOW | BLOT_RENDER_LEGEND_DETAILS);
+    expect_lines_fit(r, 40, 16);
+    ASSERT_EQ(r.lines.size(), 16u);
+    EXPECT_LINES_EQ(Lines(r.lines.end() - 2, r.lines.end()), (Lines{
+        L"◘  sc   \tavg=0.875 min=-2.000 max",
+        L"◘  a much longer label   \tavg=0.87",
+    }));
+
+    /* a label that reaches the tab stop: the details start no further */
+    Fig g(20, 14);
+    g.lim(0, 9, 0, 9);
+    g.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "abcdefghijklm");
+    Rendered d = render(g, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_DETAILS);
+    expect_lines_fit(d, 20, 14);
+    ASSERT_FALSE(d.lines.empty());
+    EXPECT_EQ(d.lines.front(), L"◘  abcdefghijklm   ") << to_utf8(d.lines.front());
+}
+
+/* #11 (note 34955): a newline in a label added a line, and an escape
+ * sequence in one went to the terminal; control characters become '?' */
+TEST(Text, legend_control_characters_replaced)
+{
+    for (auto legend : { BLOT_RENDER_LEGEND_ABOVE, BLOT_RENDER_LEGEND_BELOW }) {
+        SCOPED_TRACE(legend);
+        Fig f(40, 14);
+        f.lim(0, 9, 0, 9);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "a\nb\x1b[31mc\td\re\x7f");
+        Rendered r = render(f, F | legend);
+        expect_lines_fit(r, 40, 14);
+        EXPECT_FALSE(has_esc(r.text)) << to_utf8(r.text);
+        ASSERT_EQ(r.lines.size(), 14u);
+        const std::wstring &l = legend == BLOT_RENDER_LEGEND_ABOVE ? r.lines.front() : r.lines.back();
+        EXPECT_EQ(l, L"◘  a?b?[31mc?d?e?") << to_utf8(l);
+    }
+}
+
+/* not in the design's list (#11): bytes that aren't text in the locale
+ * (the tests run in the C locale) failed the render with EILSEQ; each one
+ * becomes '?' */
+TEST(Text, legend_label_not_valid_text)
+{
+    Fig f(40, 13);
+    f.lim(0, 9, 0, 9);
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "caf\xc3\xa9s");
+    Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE);
+    expect_lines_fit(r, 40, 13);
+    ASSERT_FALSE(r.lines.empty());
+    EXPECT_EQ(r.lines.front(), L"◘  caf??s") << to_utf8(r.lines.front());
+}
+
+/* #11 (note 34955): a legend taller than the screen can give it failed the
+ * render with EINVAL; it is cut so that the plot keeps BLOT_MIN_ROWS rows */
+TEST(Text, tall_legend_is_cut)
+{
+    static const char *const labels[] = { "l0", "l1", "l2" };
+
+    /* 10 rows, no X-axis: no room for a legend at all */
+    for (auto legend : { BLOT_RENDER_LEGEND_ABOVE, BLOT_RENDER_LEGEND_BELOW }) {
+        SCOPED_TRACE(legend);
+        Fig f(28, 10);
+        f.lim(0, 9, 0, 9);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "pts");
+        Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | legend);
+        expect_lines_fit(r, 28, 10);
+        EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_ROWS);
+        EXPECT_EQ(r.text.find(LEGEND_MARK), std::wstring::npos) << to_utf8(r.text);
+    }
+
+    /* 16 rows, 3 labels, both legends: 4 rows left, 2 each */
+    Fig f(28, 16);
+    f.lim(0, 9, 0, 9);
+    for (auto label : labels)
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, label);
+    Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_BELOW);
+    expect_lines_fit(r, 28, 16);
+    ASSERT_EQ(r.lines.size(), 16u);
+    EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_ROWS);
+    EXPECT_EQ(r.mrg.top, 2u);
+    EXPECT_EQ(r.mrg.bottom, 4u);
+    EXPECT_LINES_EQ(Lines(r.lines.begin(), r.lines.begin() + 2), (Lines{ L"◘  l0", L"◘  l1" }));
+    EXPECT_LINES_EQ(Lines(r.lines.end() - 2, r.lines.end()), (Lines{ L"◘  l0", L"◘  l1" }));
+
+    /* one row more: the legend above gets it */
+    f.size(28, 17);
+    r = render(f, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_BELOW);
+    expect_lines_fit(r, 28, 17);
+    EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_ROWS);
+    EXPECT_EQ(r.mrg.top, 3u);
+    EXPECT_EQ(r.mrg.bottom, 4u);
 }

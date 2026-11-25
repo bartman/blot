@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "blot_test.hpp"
 
 #include "blot_terminal.h"
 #include "blot_layer.h"
@@ -1176,8 +1176,8 @@ TEST(Layer, DISABLED_get_lim_ignores_nan)
     blot_layer_delete(lay);
 }
 
-// BUG B18: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Layer, DISABLED_index_equal_to_count_rejected)
+// B18, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Layer, index_equal_to_count_rejected)
 {
     const gint32 xs[] = { 0, 1, 2, 3 }, ys[] = { 0, 1, 2, 3 };
     blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys, 1, "l", NULL);
@@ -1206,4 +1206,32 @@ TEST(Layer, braille_scatter_dots)
         { {0,0}, 0x2840 }, { {4,2}, 0x2808 }, { {2,1}, 0x2802 },
     };
     EXPECT_EQ(glyphs(can), expected);
+}
+
+/* B18 (#11): blot_layer_render() checked the plot and data types with '>'
+ * before indexing its tables; the value MAX itself is out of range */
+TEST(Layer, render_rejects_types_at_max)
+{
+    RUN_ISOLATED(10, {
+        const gint32 xs[] = { 0, 1, 2 }, ys[] = { 0, 1, 2 };
+        const blot_xy_limits lim = { 0, 2, 0, 2 };
+        const blot_dimensions dim = { 10, 10 };
+        blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+
+        GError *error = NULL;
+        lay->data_type = BLOT_DATA_TYPE_MAX;
+        EXPECT_TRUE(blot_layer_render(lay, &lim, &dim, BLOT_RENDER_NONE, &error) == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        g_clear_error(&error);
+
+        lay->data_type = BLOT_DATA_INT32;
+        lay->plot_type = BLOT_PLOT_TYPE_MAX;
+        EXPECT_TRUE(blot_layer_render(lay, &lim, &dim, BLOT_RENDER_NONE, &error) == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        g_clear_error(&error);
+        blot_layer_delete(lay);
+    });
 }

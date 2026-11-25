@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "blot_test.hpp"
 
 #include "blot_color.h"
 
@@ -158,4 +158,32 @@ TEST(Color, constant_bg)
     ASSERT_STREQ(bg(MAGENTA), "\x1B[48;5;5m");
     ASSERT_STREQ(bg(CYAN   ), "\x1B[48;5;6m");
     ASSERT_STREQ(bg(WHITE  ), "\x1B[48;5;7m");
+}
+
+/* #11: fg() and bg() of a runtime colour, every value; the colour is taken
+ * modulo 256 as before */
+TEST(Color, runtime_all_values)
+{
+    for (int col = 0; col < 512; col++) {
+        volatile int c = col;
+        char efg[COL_BUF_LEN], ebg[COL_BUF_LEN];
+        snprintf(efg, sizeof(efg), "\x1B[38;5;%dm", col & 0xFF);
+        snprintf(ebg, sizeof(ebg), "\x1B[48;5;%dm", col & 0xFF);
+        ASSERT_STREQ(fg(c), efg) << " col=" << col;
+        ASSERT_STREQ(bg(c), ebg) << " col=" << col;
+    }
+}
+
+/* B17 (#11): fg() of a runtime colour used to alloca() 16 bytes per call,
+ * released only when the calling function returns: 2 million calls in one
+ * function overflowed the default 8 MB stack */
+TEST(Color, runtime_colour_in_a_loop_uses_no_stack)
+{
+    RUN_ISOLATED(30, {
+        volatile int col = 1;
+        unsigned long sum = 0;
+        for (unsigned i = 0; i < 2000000; i++)
+            sum += strlen(fg(col)) + strlen(bg(col));
+        EXPECT_NE(sum, 0u);
+    });
 }
