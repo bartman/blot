@@ -411,15 +411,16 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 			/* cut, never dropped */
 			unsigned room = blot_axis_custom_room(&lay, ti, cus.step, screen_length);
 			p += blot_axis_cut_label(p, custom, room, cus.mark_cuts) + 1;
+		} else if (use_labels_arg) {
+			/* a NULL custom label: a tick with no text, never a
+			 * number, which would read as a category */
+			*p++ = 0;
 		} else {
 			/* the layout above made sure it fits (the last
 			 * resort for a tiny axis is no text) */
 			unsigned room = BLOT_AXIS_LABEL_MAX;
 			if (!is_vertical)
-				room = use_labels_arg
-					? min_t(unsigned, BLOT_AXIS_LABEL_MAX + 1,
-						blot_axis_custom_room(&lay, ti, cus.step, screen_length))
-					: blot_axis_number_room(&lay, ti, screen_length);
+				room = blot_axis_number_room(&lay, ti, screen_length);
 			int rc = blot_format_number(p, room, d_val);
 			if (rc < 0)
 				rc = 0;

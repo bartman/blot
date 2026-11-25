@@ -53,6 +53,7 @@ BLOT_API bool blot_figure_set_x_limits(blot_figure *fig,
 BLOT_API bool blot_figure_set_y_limits(blot_figure *fig,
 				     double y_min, double y_max, GError **);
 
+/* One label per tick, in order.  A NULL entry is a tick with no text. */
 BLOT_API bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 					  char **x_labels, GError **);
 
