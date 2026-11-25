@@ -355,6 +355,40 @@ testing::AssertionResult label_in_tick_cell(const Tick &t, double min, double ma
     return testing::AssertionSuccess();
 }
 
+/* #42 review: no text with as many decimals as the label is closer to the
+ * tick's value and also good (within half a cell, in the tick's cell).
+ * The texts with those decimals are a grid, and both rules allow an
+ * interval, so it is enough to check the label's two neighbours. */
+testing::AssertionResult label_closest(const Tick &t, double min, double max, unsigned len)
+{
+    if (t.label.empty())
+        return testing::AssertionSuccess();
+    const std::string &l = t.label;
+    size_t epos = l.find('e'), dot = l.find('.');
+    bool exp = epos != std::string::npos;
+    int exp10 = exp ? atoi(l.c_str() + epos + 1) : 0;
+    size_t mant_end = exp ? epos : l.size();
+    int decimals = dot == std::string::npos ? 0 : (int)(mant_end - dot - 1);
+    double step = pow(10, exp10 - decimals);
+    double v = strtod(l.c_str(), NULL), half_cell = 0.5 * (max - min) / len;
+    /* a mantissa of 1 (a power of ten): the texts towards zero are a
+     * decade finer (9.9e-301 before 1.0e-300) */
+    double m = exp ? std::fabs(strtod(l.substr(0, epos).c_str(), NULL)) : 0;
+    for (int dir : { -1, 1 }) {
+        char buf[64];
+        double s = exp && m == 1 && (v < 0) != (dir < 0) ? step / 10 : step;
+        snprintf(buf, sizeof(buf), exp ? "%.*e" : "%.*f", decimals, v + dir * s);
+        double n = strtod(buf, NULL);
+        if (!(n >= min && n <= max) || formula_cell(n, min, max, len) != t.index ||
+            std::fabs(n - t.value) > half_cell)
+            continue;
+        if (std::fabs(n - t.value) < std::fabs(v - t.value) - 1e-9 * step)
+            return testing::AssertionFailure() << "tick " << t.index << " " << t.value << " label '" << l
+                                               << "': '" << buf << "' is closer and good";
+    }
+    return testing::AssertionSuccess();
+}
+
 } // namespace
 
 TEST(Axis, tick_in_cell_of_its_value_reproducer)
@@ -405,13 +439,16 @@ TEST(Axis, tick_in_cell_of_its_value_sweep)
                 ASSERT_TRUE(a.axs) << a.error;
                 if (!ticks_in_their_cells(a, vertical, len, rg.first, rg.second))
                     goto next_range;
-                /* #42: and so is each label */
-                for (const auto &t : a.ticks())
-                    if (!label_in_tick_cell(t, rg.first, rg.second, len)) {
+                /* #42: and so is each label, the closest good one */
+                for (const auto &t : a.ticks()) {
+                    testing::AssertionResult in = label_in_tick_cell(t, rg.first, rg.second, len);
+                    testing::AssertionResult near = label_closest(t, rg.first, rg.second, len);
+                    if (!in || !near) {
                         ADD_FAILURE() << (vertical ? "V" : "H") << " len " << len << " [" << rg.first << ","
-                                      << rg.second << "] " << label_in_tick_cell(t, rg.first, rg.second, len).message();
+                                      << rg.second << "] " << (in ? near : in).message();
                         goto next_range;
                     }
+                }
             }
         }
     next_range:;
@@ -678,6 +715,29 @@ TEST(Axis, label_in_tick_cell_on_cell_edge)
     }
 }
 
+/* #42 review: when the edge of a cell is a short decimal, the text of it
+ * is just outside the cell, and its neighbour is the closest label inside:
+ * 0.00131, not 0.00135 (half a cell off), for the lowest value of cell 3
+ * of 10 over 0.001..0.002, whose double 0.0013 is at 2.9999999999999996.
+ * The ticks of 15 rows over 0.001..0.002 are on such edges. */
+TEST(Axis, label_closest_in_cell)
+{
+    Axis a(true, 10, 0.001, 0.002);
+    ASSERT_TRUE(a.axs) << a.error;
+    double v = 0.0013;
+    unsigned cell;
+    while (!blot_layer_value_cell(v, 0.001, 0.002, 10, &cell) || cell < 3)
+        v = nextafter(v, 1);
+    char text[17];
+    ASSERT_EQ(blot_axis_number_label(a.axs, text, sizeof(text), v), 7);
+    EXPECT_STREQ(text, "0.00131");
+    EXPECT_TRUE(label_in_tick_cell(Tick{ 3, v, text }, 0.001, 0.002, 10));
+
+    Axis b(true, 15, 0.001, 0.002);
+    ASSERT_TRUE(b.axs) << b.error;
+    EXPECT_EQ(b.labels(), zip({ 0, 3, 6, 9, 12 }, { "0.001", "0.00121", "0.00141", "0.0016", "0.00181" }));
+}
+
 /* #10: every label of a vertical axis (with all of its 15 columns) names
  * a value within half a cell of its tick; none is a negative zero */
 TEST(Axis, y_labels_within_half_a_cell_sweep)
@@ -702,6 +762,7 @@ TEST(Axis, y_labels_within_half_a_cell_sweep)
                 EXPECT_LE(std::fabs(v - t.value), 0.5 * cell * (1 + 1e-9))
                     << "tick " << t.index << " " << t.value << " label '" << t.label << "'";
                 EXPECT_TRUE(label_in_tick_cell(t, rg[0], rg[1], len));
+                EXPECT_TRUE(label_closest(t, rg[0], rg[1], len));
                 EXPECT_FALSE(t.label[0] == '-' && v == 0) << "tick " << t.index << " label '" << t.label << "'";
                 EXPECT_LE(t.label.size(), 15u);
                 EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
@@ -753,6 +814,7 @@ TEST(Axis, y_labels_in_room_sweep)
                     EXPECT_LE(err, std::max(half_cell, full_err * (1 + 1e-9)))
                         << "tick " << i << " " << t->value << " label '" << label << "' full '" << full << "'";
                     EXPECT_TRUE(label_in_tick_cell(Tick{ i, t->value, label }, rg[0], rg[1], len));
+                    EXPECT_TRUE(label_closest(Tick{ i, t->value, label }, rg[0], rg[1], len));
                     EXPECT_FALSE(label[0] == '-' && v == 0) << "label '" << label << "'";
                     EXPECT_TRUE(seen.insert(label).second) << "duplicate label " << label;
                 }
@@ -874,6 +936,7 @@ TEST(Axis, x_labels_no_worse_than_needed_sweep)
                 EXPECT_LE(std::fabs(v - t.value), 0.5 * cell * (1 + 1e-9))
                     << "tick " << t.index << " " << t.value << " label '" << t.label << "'";
                 EXPECT_TRUE(label_in_tick_cell(t, rg[0], rg[1], len));
+                EXPECT_TRUE(label_closest(t, rg[0], rg[1], len));
                 EXPECT_FALSE(t.label[0] == '-' && v == 0) << "tick " << t.index << " label '" << t.label << "'";
                 EXPECT_LE(t.label.size(), 16u);
                 EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
