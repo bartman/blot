@@ -172,7 +172,8 @@ golden scatter-stdin --ascii scatter --read /dev/stdin --position 1,2 < "$here/c
 # X is not the axis mapping but the bar slot model (blot_layer_bar, the
 # open question of #12): 4.006 slots of 30/4.006 columns, a bar in the
 # left half of its slot: columns 0..4, 8..11, 15..19, 22..26, so the
-# bars sit left of the X ticks (0.997, 1.999, 3.001 at columns 0, 10, 20).
+# bars sit left of the X ticks (0.997, 1.999, 3.002 at columns 0, 10, 20;
+# not 3.001, whose double is at 19.999999999999996, in column 19: #42).
 # This golden bakes in the current slot model, which the owner is
 # deciding in #12: a change there regenerates it (SMOKE_UPDATE=1) and
 # re-checks it by hand
