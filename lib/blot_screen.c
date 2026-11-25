@@ -308,7 +308,9 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 		const char *rststr = use_color ? COL_RESET : "";
 
 		//wchar_t star = 0x2605; // does not show up in Terminus font
-		wchar_t symbol = 0x25D8; // inverse bullet ◘
+		/* inverse bullet ◘; NO_UNICODE output is ASCII (#46): '#' is the
+		 * nearest solid swatch, and unlike '*' isn't read as a mark */
+		wchar_t symbol = (scr->flags & BLOT_RENDER_NO_UNICODE) ? L'#' : 0x25D8;
 		/* the details: items, each with the separator before it.
 		 * The line is cut between them, never inside one, so a value
 		 * is shown whole or not at all; count and its "(+N
