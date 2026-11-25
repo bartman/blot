@@ -5,8 +5,11 @@
 
 #include <cassert>
 #include <iostream>
+#include <memory>
 #include <span>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <algorithm>
 #include <utility>
 #include <vector>
@@ -170,7 +173,21 @@ public:
 
 // ------------------------------------------------------------------------
 
-/* owns its layers and its copy of the X labels: move-only, a moved-from
+/* a layer's label, as the Figure keeps it: its own copy of the text.  It is
+ * made from a C string (NULL is no label, as in blot_figure_plot()), a
+ * std::string or a std::string_view, temporary or not. */
+class Label final {
+	std::string m_text;
+public:
+	Label(const char *text) : m_text(text ? text : "") {}
+	Label(std::string text) : m_text(std::move(text)) {}
+	Label(std::string_view text) : m_text(text) {}
+
+	std::string release() && { return std::move(m_text); }
+};
+
+/* owns its layers, its copy of the X labels, and the data and label of each
+ * layer added from a std::vector (see plot()): move-only, a moved-from
  * Figure is a fresh, empty one */
 struct Figure final : public blot_figure {
 public:
@@ -188,25 +205,83 @@ public:
 	Figure(const Figure &) = delete;
 	Figure& operator=(const Figure &) = delete;
 
-	Figure(Figure &&other) noexcept : blot_figure(other) {
+	/* the layers point into m_owned's buffers, which a move hands over
+	 * without moving them */
+	Figure(Figure &&other) noexcept
+		: blot_figure(other), m_owned(std::move(other.m_owned)) {
 		other.reset();
 	}
 
 	Figure& operator=(Figure &&other) noexcept {
 		if (this != &other) {
+			/* the layers go before the data they point to */
 			blot_figure_cleanup(this);
 			static_cast<blot_figure&>(*this) = other;
+			m_owned = std::move(other.m_owned);
 			other.reset();
 		}
 		return *this;
 	}
 
 private:
-	/* forget the (moved) layers and labels, back to what blot_figure_init()
-	 * gives */
+	/* what the layers point to: a vector<T> per data array and a string
+	 * per label, each in its own heap block, so that its address doesn't
+	 * change when m_owned grows or the Figure moves (a short std::string
+	 * keeps its text inside the object, which a move would change) */
+	std::vector<std::shared_ptr<const void>> m_owned;
+
+	/* forget the (moved) layers, labels and data, back to what
+	 * blot_figure_init() gives */
 	void reset() noexcept {
 		[[maybe_unused]] bool ok = blot_figure_init(this, nullptr);
 		assert(ok);
+		m_owned.clear();
+	}
+
+	/* the copy of a vector the Figure keeps; an empty one is no data */
+	template <typename T>
+	static std::shared_ptr<const std::vector<T>> own(std::vector<T> &&data) {
+		if (data.empty())
+			return nullptr;
+		return std::make_shared<const std::vector<T>>(std::move(data));
+	}
+
+	/* add a layer: count, types and pointers are checked here; keep_*
+	 * hold what the pointers point into (null for borrowed data), and are
+	 * kept only when the layer is added */
+	template <typename T, typename U>
+	void add_layer(blot_plot_type plot_type,
+		       const T *xs, size_t xs_count, const U *ys, size_t ys_count,
+		       blot_color data_color, Label &&data_label,
+		       std::shared_ptr<const void> keep_xs, std::shared_ptr<const void> keep_ys) {
+		GError *error = nullptr;
+
+		BLOT_EXPECT(ys_count != 0);
+		if (xs_count)
+			BLOT_EXPECT_EQ(xs_count, ys_count);
+		else
+			xs = nullptr;
+
+		blot_data_type x_data_type = data_type<T>();
+		blot_data_type y_data_type = data_type<U>();
+		blot_data_type data_type = BLOT_DATA_TYPE(x_data_type, y_data_type);
+
+		auto label = std::make_shared<const std::string>(std::move(data_label).release());
+
+		/* room for all three first: nothing can throw once the layer
+		 * points at them */
+		m_owned.reserve(m_owned.size() + 3);
+
+		if (!blot_figure_plot(this, plot_type, data_type, ys_count, xs, ys,
+				      data_color, label->c_str(), &error)) {
+			throw_error(error, "blot_figure_plot");
+		}
+
+		m_owned.push_back(std::move(label));
+		if (keep_xs)
+			m_owned.push_back(std::move(keep_xs));
+		if (keep_ys)
+			m_owned.push_back(std::move(keep_ys));
 	}
 
 public:
@@ -248,70 +323,67 @@ public:
 			throw_error(error, "blot_figure_set_x_axis_labels");
 	}
 
-	/* add layers: the figure keeps pointers to the data and the label,
-	 * not copies (see blot_figure_plot()); they must outlive render().
-	 * A temporary vector or string passed here dangles as soon as the
-	 * statement ends (#24). */
+	/* add layers.  blot_figure_plot() keeps pointers, not copies (see
+	 * blot_figure.h); the Figure gives it pointers into copies of its own
+	 * (#24), moved along with the Figure:
+	 *
+	 * - the label is always copied;
+	 * - a std::vector is taken by value: an lvalue is copied, an rvalue
+	 *   (a temporary, or std::move(v)) is moved in without a copy.  Either
+	 *   way the vector may die or change right after the call;
+	 * - a std::span is a view, and is borrowed: its data must stay valid,
+	 *   and unchanged, until the last render() (the cli plots its buffers
+	 *   this way, without copying them).
+	 *
+	 * An empty xs means no X data: X is the index of each Y. */
 
 	template <typename T, typename U>
-	void plot(blot_plot_type plot_type, const std::span<T> &data_xs, const std::span<U> &data_ys, blot_color data_color, const char *data_label) {
-		GError *error = nullptr;
-		size_t data_count = data_ys.size();
-
-		BLOT_EXPECT(!data_ys.empty());
-		const void *ptr_ys = (const void*)data_ys.data();
-
-		const void *ptr_xs = nullptr;
-		if (data_xs.size()) {
-			BLOT_EXPECT_EQ(data_xs.size(), data_ys.size());
-			ptr_xs = (const void*)data_xs.data();
-		}
-
-		blot_data_type x_data_type = data_type<T>();
-		blot_data_type y_data_type = data_type<U>();
-		blot_data_type data_type = BLOT_DATA_TYPE(x_data_type, y_data_type);
-
-		if (!blot_figure_plot(this, plot_type, data_type, data_count, ptr_xs, ptr_ys, data_color, data_label, &error)) {
-			throw_error(error, "blot_figure_plot");
-		}
+	void plot(blot_plot_type plot_type, const std::span<T> &data_xs, const std::span<U> &data_ys, blot_color data_color, Label data_label) {
+		add_layer(plot_type, data_xs.data(), data_xs.size(), data_ys.data(), data_ys.size(),
+			  data_color, std::move(data_label), nullptr, nullptr);
 	}
 
 	template <typename T, typename U>
-	void plot(blot_plot_type plot_type, const std::vector<T> &data_xs, const std::vector<U> &data_ys, blot_color data_color, const char *data_label) {
-		plot(plot_type,
-		       std::span<const T>(data_xs.data(), data_xs.size()),
-		       std::span<const U>(data_ys.data(), data_ys.size()),
-		       data_color, data_label);
+	void plot(blot_plot_type plot_type, std::vector<T> data_xs, std::vector<U> data_ys, blot_color data_color, Label data_label) {
+		auto xs = own(std::move(data_xs));
+		auto ys = own(std::move(data_ys));
+		/* before the shared_ptrs are moved into the arguments */
+		const T *xs_data = xs ? xs->data() : nullptr;
+		const U *ys_data = ys ? ys->data() : nullptr;
+		size_t xs_count = xs ? xs->size() : 0;
+		size_t ys_count = ys ? ys->size() : 0;
+		add_layer(plot_type, xs_data, xs_count, ys_data, ys_count,
+			  data_color, std::move(data_label), std::move(xs), std::move(ys));
 	}
 
 	template <typename T, typename U>
-	void scatter(const std::vector<T> &data_xs, const std::vector<U>& data_ys, blot_color data_color, const char *data_label) {
-		plot(BLOT_SCATTER, data_xs, data_ys, data_color, data_label);
+	void scatter(std::vector<T> data_xs, std::vector<U> data_ys, blot_color data_color, Label data_label) {
+		plot(BLOT_SCATTER, std::move(data_xs), std::move(data_ys), data_color, std::move(data_label));
 	}
 
 	template <typename T>
-	void scatter(const std::vector<T> &data_ys, blot_color data_color, const char *data_label) {
-		plot<T,T>(BLOT_SCATTER, {}, data_ys, data_color, data_label);
+	void scatter(std::vector<T> data_ys, blot_color data_color, Label data_label) {
+		plot(BLOT_SCATTER, std::vector<T>(), std::move(data_ys), data_color, std::move(data_label));
 	}
 
 	template <typename T, typename U>
-	void line(const std::vector<T> &data_xs, const std::vector<U>& data_ys, blot_color data_color, const char *data_label) {
-		plot(BLOT_LINE, data_xs, data_ys, data_color, data_label);
+	void line(std::vector<T> data_xs, std::vector<U> data_ys, blot_color data_color, Label data_label) {
+		plot(BLOT_LINE, std::move(data_xs), std::move(data_ys), data_color, std::move(data_label));
 	}
 
 	template <typename T>
-	void line(const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
-		plot<T,T>(BLOT_LINE, {}, data_ys, data_color, data_label);
+	void line(std::vector<T> data_ys, blot_color data_color, Label data_label) {
+		plot(BLOT_LINE, std::vector<T>(), std::move(data_ys), data_color, std::move(data_label));
 	}
 
 	template <typename T, typename U>
-	void bar(const std::vector<T> &data_xs, const std::vector<U>& data_ys, blot_color data_color, const char *data_label) {
-		plot(BLOT_BAR, data_xs, data_ys, data_color, data_label);
+	void bar(std::vector<T> data_xs, std::vector<U> data_ys, blot_color data_color, Label data_label) {
+		plot(BLOT_BAR, std::move(data_xs), std::move(data_ys), data_color, std::move(data_label));
 	}
 
 	template <typename T>
-	void bar(const std::vector<T>& data_ys, blot_color data_color, const char *data_label) {
-		plot<T,T>(BLOT_BAR, {}, data_ys, data_color, data_label);
+	void bar(std::vector<T> data_ys, blot_color data_color, Label data_label) {
+		plot(BLOT_BAR, std::vector<T>(), std::move(data_ys), data_color, std::move(data_label));
 	}
 
 	/* render */
