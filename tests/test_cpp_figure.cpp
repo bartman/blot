@@ -189,7 +189,11 @@ TEST(Figure, add_plot_null_ys)
         FAIL() << "no exception";
     } catch (const Blot::Exception &e) {
         EXPECT_EQ(e.code(), EINVAL);
-        EXPECT_NE(std::string(e.what()).find("ys_count != 0"), std::string::npos) << e.what();
+        /* the wrapper names the empty ys: "data_ys.empty()" here, "ys_count != 0"
+         * after !31 (#24) rewrote the plot overloads */
+        const std::string what = e.what();
+        EXPECT_TRUE(what.find("data_ys.empty()") != std::string::npos ||
+                    what.find("ys_count != 0") != std::string::npos) << what;
     }
     EXPECT_EQ(fig.c_ptr()->layer_count, 0u);
 }
