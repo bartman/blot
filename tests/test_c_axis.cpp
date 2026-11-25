@@ -421,6 +421,46 @@ TEST(Axis, x_labels_within_half_a_cell)
     }
 }
 
+/* #9 re-review M1b: when even the full text is more than half a cell
+ * off (%.3f is the formatter's first choice), a shorter text may be no
+ * further off: 0.01842 at 66 has 4 columns, 0.02 is 5 half-cells off and
+ * the full 0.018 less than 3, so the tick is dropped */
+TEST(Axis, x_label_no_worse_than_full_text)
+{
+    Axis a(false, 70, -0.0019955, 0.0194945);
+    ASSERT_TRUE(a.axs) << a.error;
+    EXPECT_EQ(a.labels(), zip({ 6, 16, 26, 36, 46, 56 }, { "0.000", "0.003", "0.006", "0.009", "0.012", "0.015" }));
+}
+
+/* #9: every X number label names a value within half a cell of its tick,
+ * or, when even the formatter's text with all the room is further off,
+ * no further than that; and it is in reach of the tick's own cell.  Also
+ * the ranges where %.3f is coarser than a cell. */
+TEST(Axis, x_labels_no_worse_than_needed_sweep)
+{
+    const double RANGES[][2] = {
+        { -0.01003, 0.02003 }, { -0.0019955, 0.0194945 }, { 0.001, 0.002 }, { -7.01, 3.01 },
+        { -1.003, 2.003 }, { 1e9, 5.2e9 }, { -200100, -99900 }, { -1e100, 1e100 },
+    };
+    for (const auto &rg : RANGES) {
+        for (unsigned len = 10; len <= 200; len++) {
+            SCOPED_TRACE(testing::Message() << "H len " << len << " [" << rg[0] << "," << rg[1] << "]");
+            Axis a(false, len, rg[0], rg[1]);
+            ASSERT_TRUE(a.axs) << a.error;
+            double cell = (rg[1] - rg[0]) / len;
+            for (const auto &t : a.ticks()) {
+                char full[17];
+                ASSERT_GE(blot_format_number(full, sizeof(full), t.value), 0);
+                double err = std::fabs(strtod(t.label.c_str(), NULL) - t.value);
+                double full_err = std::fabs(strtod(full, NULL) - t.value);
+                EXPECT_LE(err, std::max(0.5 * cell, full_err * (1 + 1e-9)))
+                    << "tick " << t.index << " " << t.value << " label '" << t.label << "' full '" << full << "'";
+                EXPECT_LE(t.label.size(), 16u);
+            }
+        }
+    }
+}
+
 /* #9 review M2: custom X labels are written whole when there is room, the
  * 16-character cap is for numbers */
 TEST(Axis, long_custom_x_labels_whole)
@@ -432,8 +472,9 @@ TEST(Axis, long_custom_x_labels_whole)
     EXPECT_EQ(a.labels(), zip({ 0, 46 }, { w[0], w[1] }));
 }
 
-/* #9 review L1: cut custom labels never become ambiguous; first fewer
- * ticks (up to every other one), then a '~' on every cut label */
+/* #9 review L1: cut custom labels never become ambiguous: the smallest
+ * step that makes them so; a '~' only on a lone label longer than the
+ * axis */
 TEST(Axis, cut_custom_x_labels_not_ambiguous)
 {
     char *d[] = { (char *)"2024-01-15", (char *)"2024-01-16", (char *)"2024-01-17", (char *)"2024-01-18" };
@@ -446,11 +487,19 @@ TEST(Axis, cut_custom_x_labels_not_ambiguous)
         EXPECT_EQ(a.labels(), zip({ 0, 16 }, { "2024-01-15", "2024-01-17" }));
     }
     {
-        /* every other label would still be 2024-01 next to 2024-01-:
-         * all four, marked as cut */
+        /* every other label: 2024-01 next to 2024-01-; every third:
+         * 2024-01-15 next to 202; only the first, whole */
         Axis a(false, 16, 0, 4, &l);
         ASSERT_TRUE(a.axs) << a.error;
-        EXPECT_EQ(a.labels(), zip({ 0, 4, 8, 12 }, { "20~", "20~", "20~", "202~" }));
+        EXPECT_EQ(a.labels(), zip({ 0 }, { "2024-01-15" }));
+    }
+    {
+        /* even one label is longer than the axis: cut, and marked */
+        char *w[] = { (char *)"a-label-longer-than-the-axis-1", (char *)"a-label-longer-than-the-axis-2" };
+        blot_strv lw = { 2, w };
+        Axis a(false, 12, 0, 2, &lw);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 0 }, { "a-label-lon~" }));
     }
     {
         /* different prefixes stay plain cuts */

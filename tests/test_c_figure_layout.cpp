@@ -907,9 +907,10 @@ TEST(Layout, x_custom_labels_exact)
  * ranges that abort without the fix are in the isolated test below.  Not
  * [0.001,0.002]: 0.001 for both 0.0010 and 0.0014 is the formatter's
  * precision with all the room it wants (#13, #10), not the layout's; for
- * the same reason not [-0.01003,0.02003] (Axis.x_labels_within_half_a_cell
- * has its 52 columns): from 69 columns half a cell is under 0.0002 and
- * %.3f, the formatter's first choice, is coarser. */
+ * the same reason not [-0.01003,0.02003]: from 69 columns half a cell is
+ * under 0.0002 and %.3f, the formatter's first choice, is coarser.  The
+ * bound for those (no further off than the full text) needs each tick's
+ * value: Axis.x_labels_no_worse_than_needed_sweep has both ranges. */
 TEST(Layout, x_labels_fit_and_match_their_cells)
 {
     const double RANGES[][2] = {
