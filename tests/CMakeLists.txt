@@ -4,6 +4,12 @@ link_directories(${GTEST_LIBRARY_DIRS})
 
 file(GLOB TEST_SOURCES "test_*.cpp")
 
+# a --coverage build: tests that fork (RUN_ISOLATED in blot_test.hpp)
+# write the child's counters too
+if(CMAKE_C_FLAGS MATCHES "--coverage" OR CMAKE_CXX_FLAGS MATCHES "--coverage")
+    add_compile_definitions(BLOT_TEST_GCOV=1)
+endif()
+
 foreach(TEST_SOURCE ${TEST_SOURCES})
     # Extract the filename without the extension to use as the test name
     get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
