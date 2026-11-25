@@ -202,9 +202,50 @@ color_never)
 	no_escapes "--color=never"
 	plot 0 --no-color line --read "$tmp/data"
 	no_escapes "--no-color"
-	# the last one given wins
+	# the last one given wins, in either order
 	plot 0 --color=always --no-color line --read "$tmp/data"
 	no_escapes "--color=always --no-color"
+	plot 0 --color=always --color=never line --read "$tmp/data"
+	no_escapes "--color=always --color=never"
+	plot 0 --no-color --color=always line --read "$tmp/data"
+	has_colour "--no-color --color=always"
+	plot 0 --color=never --color=always line --read "$tmp/data"
+	has_colour "--color=never --color=always"
+	;;
+stderr_no_color)
+	# the messages on stderr follow the colour too (#44): a value that
+	# isn't a number is an error from the main loop, after the options
+	printf 'abc\n' > "$tmp/bad"
+	export COLUMNS=40 LINES=12
+	expect 1 --no-color line --read "$tmp/bad"
+	grep -q 'failed to parse' "$tmp/out" || fail "no message about the value"
+	no_escapes "stderr, piped, --no-color"
+	# spdlog colours stderr only on a terminal: give it one with
+	# script(1), stdout to a file, and TERM a colour terminal
+	if ! command -v script >/dev/null 2>&1; then
+		echo "SKIP: no script(1) for stderr on a terminal"
+	else
+		on_tty() {
+			echo "running: blot $* (stderr a terminal, stdout a file)"
+			TERM=xterm-256color script -q -e -c \
+				"'$blot' $* line --read '$tmp/bad' </dev/null >'$tmp/plot'" \
+				/dev/null > "$tmp/out" 2>&1 </dev/null
+			echo "exit code: $?"
+			no_sanity
+			grep -q 'failed to parse' "$tmp/out" || fail "no message on the terminal ($*)"
+		}
+		# the control: in colour with --color=always ...
+		on_tty --color=always
+		has_colour "stderr on a terminal, --color=always"
+		# ... and none with --no-color, --color=never or NO_COLOR
+		on_tty --no-color
+		no_escapes "stderr on a terminal, --no-color"
+		on_tty --color=never
+		no_escapes "stderr on a terminal, --color=never"
+		NO_COLOR=1; export NO_COLOR
+		on_tty --color=auto
+		no_escapes "stderr on a terminal, NO_COLOR=1"
+	fi
 	;;
 no_color_env)
 	# NO_COLOR (https://no-color.org): set and not empty, no colour (#44);
@@ -263,9 +304,10 @@ one_frame)
 	# a file read to the end, in less than the interval, is one frame
 	# with all of it: blot drew a first frame with only the first value,
 	# which looked like a one-column file plotted only its first (#44,
-	# #47).  --color=always to have the screen clears that start them
+	# #47).  --color=always to have the screen clears that start them;
+	# --interval 1e6 so that a slow run (a sanitizer build) is one too
 	printf '1\n3\n2\n5\n' > "$tmp/column"
-	plot 0 --color=always line --read "$tmp/column"
+	plot 0 --color=always --interval 1e6 line --read "$tmp/column"
 	n=$(frames)
 	test "$n" -eq 1 || fail "$n frames for a file read to the end, expected 1"
 	;;

@@ -10,6 +10,7 @@
 
 #include "blot.hpp"
 #include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 #include "fmt/format.h"
 
 #pragma GCC diagnostic push
@@ -40,10 +41,14 @@ Config::Config(int argc, char *argv[])
 				m_display_interval = parse_seconds("display interval", txt);
 			}))
 			.doc("Display interval in seconds while the input lasts (default 1)"),
+		/* repeatable: the last --color= or --no-color given wins */
 		clipp::joinable(clipp::option("--color=") & clipp::value("when")
 			.call([&](const char *txt) { set_color_mode(txt); }))
-			.doc("Colour: auto (on a terminal, the default), always or never"),
-		clipp::option("--no-color").call([&]{ m_color_mode = ColorMode::NEVER; })
+			.repeatable(true)
+			.doc("Colour: auto (on a terminal, the default), always (also "
+			     "clears the screen for each frame) or never"),
+		clipp::option("--no-color").repeatable(true)
+			.call([&]{ m_color_mode = ColorMode::NEVER; })
 			.doc("No colour, same as --color=never")
 	);
 
@@ -142,6 +147,38 @@ Config::Config(int argc, char *argv[])
 		std::exit(1);
 	}
 
+	/* colour (#44): --color=always or never as given; auto (the
+	 * default) is none when NO_COLOR is set and not empty
+	 * (https://no-color.org), otherwise only on a terminal.  The screen
+	 * clear before each frame is for a terminal too: through a pipe or
+	 * into a file, the output is the plain text of the plot, unless
+	 * --color=always asks for the terminal's output */
+	bool tty = isatty(STDOUT_FILENO);
+	const char *no_color = std::getenv("NO_COLOR");
+	switch (m_color_mode) {
+		case ColorMode::ALWAYS:
+			m_color = true;
+			break;
+		case ColorMode::NEVER:
+			m_color = false;
+			break;
+		case ColorMode::AUTO:
+			m_color = tty && !(no_color && *no_color);
+			break;
+	}
+	m_clear = tty || m_color_mode == ColorMode::ALWAYS;
+
+	/* and the messages on stderr: spdlog colours them on a terminal
+	 * whatever --no-color or NO_COLOR say.  Here, before the checks
+	 * below, so their messages follow it too */
+	if (!m_color) {
+		for (auto &sink : spdlog::default_logger()->sinks()) {
+			auto c = std::dynamic_pointer_cast<spdlog::sinks::stderr_color_sink_mt>(sink);
+			if (c)
+				c->set_color_mode(spdlog::color_mode::never);
+		}
+	}
+
 	if (show_version) {
 		std::cout << "refspec: " << BLOT_GIT_REFSPEC << '\n'
 			<< "revision: " << BLOT_GIT_REVISION << '\n'
@@ -218,27 +255,6 @@ Config::Config(int argc, char *argv[])
 		std::exit(1);
 	}
 	m_using_input_interval = with_interval;
-
-	/* colour (#44): --color=always or never as given; auto (the
-	 * default) is none when NO_COLOR is set and not empty
-	 * (https://no-color.org), otherwise only on a terminal.  The screen
-	 * clear before each frame is for a terminal too: through a pipe or
-	 * into a file, the output is the plain text of the plot, unless
-	 * --color=always asks for the terminal's output */
-	bool tty = isatty(STDOUT_FILENO);
-	const char *no_color = std::getenv("NO_COLOR");
-	switch (m_color_mode) {
-		case ColorMode::ALWAYS:
-			m_color = true;
-			break;
-		case ColorMode::NEVER:
-			m_color = false;
-			break;
-		case ColorMode::AUTO:
-			m_color = tty && !(no_color && *no_color);
-			break;
-	}
-	m_clear = tty || m_color_mode == ColorMode::ALWAYS;
 }
 
 void Config::set_color_mode(const std::string &txt)

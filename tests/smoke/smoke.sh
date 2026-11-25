@@ -98,12 +98,13 @@ check_run() {
 
 # $1: the case, the rest: blot's arguments; stdin is the caller's.
 # Compares all of the output, stdout and stderr, to $here/$1.out: with
-# --color=never it is the plain text of one frame (#44)
+# --color=never it is the plain text of one frame (#44), and with
+# --interval 1e6 one frame however slow the run (a sanitizer build)
 golden() {
 	case=$1; shift
 	name=cli-$case${golden_suffix:-}
-	echo "--- $name: blot --color=never $*"
-	(cd "$here" && timeout -k 5 30 "$blot" --color=never "$@") > "$tmp/out" 2>&1
+	echo "--- $name: blot --color=never --interval 1e6 $*"
+	(cd "$here" && timeout -k 5 30 "$blot" --color=never --interval 1e6 "$@") > "$tmp/out" 2>&1
 	rc=$?
 	check_run 0 || return
 	ESC=$(printf '\033')
