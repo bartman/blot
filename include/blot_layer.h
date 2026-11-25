@@ -3,18 +3,48 @@
 #pragma once
 
 #include <glib.h>
+#include <math.h>
 #include <stdbool.h>
 
 #include "blot_compiler.h"
 #include "blot_types.h"
 #include "blot_error.h"
 
+/* the points of a layer whose X and Y are both finite; the others
+ * (layer count - summary count) are left out.  xttl and yttl are plain
+ * sums and can overflow to +-inf; yttl_scaled is the sum of y * 2^-64,
+ * which doesn't, see blot_layer_summary_yavg() */
 typedef struct blot_layer_summary {
 	double xmin, xmax, xttl;
 	double ymin, ymax, yttl;
 	size_t count;
 	bool enabled; // when (render_flags & BLOT_RENDER_LEGEND_DETAILS)
+	double yttl_scaled;
 } blot_layer_summary;
+
+#define BLOT_LAYER_SUMMARY_SCALE 0x1p-64
+
+/* the mean of the summarized Y values, NAN when there are none.  It is
+ * yttl / count while yttl is finite.  When the sum of the finite values
+ * overflows, it comes from the scaled sum: scaling by a power of two is
+ * exact, so that is the same sum with 64 more bits of exponent.  The
+ * mean lies between ymin and ymax; rounding doesn't take it out */
+static inline double blot_layer_summary_yavg(const blot_layer_summary *sum)
+{
+	double avg;
+
+	if (!sum->count)
+		return NAN;
+	if (isfinite(sum->yttl))
+		avg = sum->yttl / sum->count;
+	else
+		avg = sum->yttl_scaled / sum->count / BLOT_LAYER_SUMMARY_SCALE;
+	if (!(avg >= sum->ymin))
+		avg = sum->ymin;
+	if (!(avg <= sum->ymax))
+		avg = sum->ymax;
+	return avg;
+}
 
 typedef struct blot_layer {
 

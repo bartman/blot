@@ -1,5 +1,7 @@
 #include "blot_test.hpp"
 
+#include <cfloat>
+
 #include "blot_terminal.h"
 #include "blot_layer.h"
 #include "blot_types.h"
@@ -1395,6 +1397,45 @@ TEST(Layer, summary_skips_non_finite)
         EXPECT_DOUBLE_EQ(s.yttl, 6);
         blot_layer_delete(lay);
     }
+}
+
+/* #22: the mean of finite values whose sum overflows stays finite, and
+ * between ymin and ymax even where the scaled sum rounds up */
+TEST(Layer, summary_yavg_overflow)
+{
+    const blot_xy_limits lim = { 0, 5, 0, 9 };
+    const double xs[] = { 0, 1, 2, 3 };
+    const struct {
+        size_t n;
+        double ys[4];
+        double avg;
+    } cases[] = {
+        { 3, { DBL_MAX, DBL_MAX, DBL_MAX }, DBL_MAX },
+        { 4, { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX }, 0 },
+        { 2, { -DBL_MAX, -DBL_MAX }, -DBL_MAX },
+        { 2, { 1e308, 1e308 }, 1e308 },
+        { 3, { 1, 2, 4 }, 7.0 / 3 },
+        /* the scaled sum's mean rounds past max, or below min: the
+         * true means round to max and min */
+        { 3, { 0x1.fffffffffffeap+1023, 0x1.fffffffffffe9p+1023, 0x1.fffffffffffeap+1023 },
+          0x1.fffffffffffeap+1023 },
+        { 3, { 0x1.fffffffffffe6p+1023, 0x1.fffffffffffe7p+1023, 0x1.fffffffffffe6p+1023 },
+          0x1.fffffffffffe6p+1023 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "ys[0] " << c.ys[0] << " n " << c.n);
+        blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_DOUBLE, c.n, xs, c.ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+        blot_canvas_delete(blot_layer_render(lay, &lim, &DIM10,
+                                             BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_DETAILS, NULL));
+        EXPECT_EQ(lay->summary.count, c.n);
+        EXPECT_EQ(blot_layer_summary_yavg(&lay->summary), c.avg);
+        blot_layer_delete(lay);
+    }
+
+    blot_layer_summary none = {};
+    none.enabled = true;
+    EXPECT_TRUE(std::isnan(blot_layer_summary_yavg(&none)));
 }
 
 // BUG B6: https://git.jukie.net/bart/blot/-/work_items/6

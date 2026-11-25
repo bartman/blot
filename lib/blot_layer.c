@@ -115,6 +115,10 @@ static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, 
 	if (likely (!sum->enabled))
 		return;
 
+	/* a point that isn't drawn isn't summarized either */
+	if (unlikely (!isfinite(x) || !isfinite(y)))
+		return;
+
 	if (likely (sum->count)) {
 		if (sum->xmax < x) sum->xmax = x;
 		if (sum->xmin > x) sum->xmin = x;
@@ -122,6 +126,7 @@ static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, 
 		if (sum->ymax < y) sum->ymax = y;
 		if (sum->ymin > y) sum->ymin = y;
 		sum->yttl += y;
+		sum->yttl_scaled += y * BLOT_LAYER_SUMMARY_SCALE;
 		sum->count ++;
 	} else {
 		sum->xmax = x;
@@ -130,6 +135,7 @@ static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, 
 		sum->ymax = y;
 		sum->ymin = y;
 		sum->yttl = y;
+		sum->yttl_scaled = y * BLOT_LAYER_SUMMARY_SCALE;
 		sum->count = 1;
 	}
 }

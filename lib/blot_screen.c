@@ -245,23 +245,32 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 		if (!(scr->flags & BLOT_RENDER_LEGEND_DETAILS)) {
 			/* no details */
 		} else if (lay->summary.enabled) {
-			char tavg[32], tmin[32], tmax[32];
-			int ravg = blot_format_number(tavg, sizeof(tavg),
-				   lay->summary.yttl / lay->count);
-			int rmin = blot_format_number(tmin, sizeof(tmin),
-				   lay->summary.ymin);
-			int rmax = blot_format_number(tmax, sizeof(tmax),
-				   lay->summary.ymax);
+			/* the summary is of the points whose X and Y are
+			 * finite; "(+N non-finite)" counts the others, and
+			 * with none left there is no avg, min or max: "-" */
+			const struct blot_layer_summary *sum = &lay->summary;
+			size_t skipped = lay->count - sum->count;
+			char tavg[32] = "-", tmin[32] = "-", tmax[32] = "-";
+			char tskip[48] = "";
+
+			if (sum->count) {
+				if (blot_format_number(tavg, sizeof(tavg),
+						       blot_layer_summary_yavg(sum)) <= 0)
+					strcpy(tavg, "?");
+				if (blot_format_number(tmin, sizeof(tmin), sum->ymin) <= 0)
+					strcpy(tmin, "?");
+				if (blot_format_number(tmax, sizeof(tmax), sum->ymax) <= 0)
+					strcpy(tmax, "?");
+			}
+			if (skipped)
+				snprintf(tskip, sizeof(tskip), " (+%zu non-finite)", skipped);
 
 			len = swprintf(details, G_N_ELEMENTS(details),
-				   L"   \tavg=%s min=%s max=%s count=%u",
-				   ravg>0 ? tavg : "?",
-				   rmin>0 ? tmin : "?",
-				   rmax>0 ? tmax : "?",
-				   lay->count);
+				   L"   \tavg=%s min=%s max=%s count=%zu%s",
+				   tavg, tmin, tmax, sum->count, tskip);
 		} else {
 			len = swprintf(details, G_N_ELEMENTS(details),
-				   L"   \tcount=%u", lay->count);
+				   L"   \tcount=%zu", lay->count);
 		}
 		RETURN_ERROR(len<0, false, error, "swprintf");
 
