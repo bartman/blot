@@ -296,8 +296,9 @@ TEST(Golden, no_axes_three_plot_types)
 /* G13..G20, G22 have sloped lines: their interior cells depend on how
  * blot_canvas_draw_line() rounds (both ends rounded to the nearest cell,
  * integer steps between, since #4); regenerate them and check them
- * against the data if that changes.  With auto limits they also pin where a
- * line maps y (round(v * (rows-1) / range), #14) */
+ * against the data if that changes.  They also pin where a line maps x and
+ * y: the axis mapping, as for scatter (#14), so every data point is in the
+ * cell its value has on the axes */
 
 TEST(Golden, auto_limits_line)
 {
@@ -308,16 +309,16 @@ TEST(Golden, auto_limits_line)
     expect_golden(f, F, {
         L"        |                             **",
         L"        |                           **",
-        L"  8.016 *                         **",
-        L"        |                      ***",
+        L"  8.016 *                        ***",
+        L"        |                      **",
         L"        |                    **",
         L"  6.012 *                  **",
         L"        |               ***",
         L"        |             **",
         L"  4.008 *           **",
         L"        |         **",
-        L"        |      ***",
-        L"  2.004 *    **",
+        L"        |       **",
+        L"  2.004 *    ***",
         L"        |  **",
         L"  0.000 ***",
         L"        +*---------*---------*----------",
@@ -334,16 +335,16 @@ TEST(Golden, auto_limits_offset_range)
     expect_golden(f, F, {
         L"        |                             **",
         L"        |                           **",
-        L" 18.006 *                         **",
-        L"        |                      ***",
+        L" 18.006 *                        ***",
+        L"        |                      **",
         L"        |                    **",
         L" 16.002 *                  **",
-        L"        |                **",
-        L"        |             ***",
+        L"        |               ***",
+        L"        |             **",
         L" 13.998 *           **",
         L"        |         **",
-        L"        |      ***",
-        L" 11.994 *    **",
+        L"        |       **",
+        L" 11.994 *    ***",
         L"        |  **",
         L"  9.990 ***",
         L"        +*---------*---------*----------",
@@ -359,10 +360,10 @@ TEST(Golden, zero_crossing_both_axes)
     Fig f(60, 20);
     f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
     expect_golden(f, F, {
-        L"        |                                                 **",
-        L"        |                                              ***",
-        L"  0.573 *                                           ***",
-        L"        |                                        ***",
+        L"        |                                                ***",
+        L"        |                                             ***",
+        L"  0.573 *                                          ***",
+        L"        |                                        **",
         L"  0.429 *                                     ***",
         L"        |                                  ***",
         L"        |                               ***",
@@ -374,9 +375,9 @@ TEST(Golden, zero_crossing_both_axes)
         L"  0.000 *              ***",
         L"        |           ***",
         L"        |        ***",
-        L" -0.143 *     ***",
-        L"        |  ***",
-        L" -0.286 ***",
+        L" -0.143 *      **",
+        L"        |   ***",
+        L" -0.286 ****",
         L"        +-----*---------*---------*---------*---------*-----",
         L"              -0.200    0.000     0.200     0.401     0.601",
     });
@@ -414,16 +415,16 @@ TEST(Golden, negative_large_y)
     f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
     expect_golden(f, F, {
         L"           |                          **",
-        L"     0.000 *                        **",
-        L"           |                     ***",
+        L"     0.000 *                       ***",
+        L"           |                     **",
         L"  -220.440 *                   **",
         L"           |                ***",
         L"  -440.880 *              **",
         L"           |            **",
         L"           |         ***",
         L"  -661.320 *       **",
-        L"           |    ***",
-        L"  -881.760 *  **",
+        L"           |     **",
+        L"  -881.760 *  ***",
         L"           |**",
         L"           +*--------*--------*---------",
         L"            0.000    0.334    0.668",
@@ -436,18 +437,18 @@ TEST(Golden, small_fraction_y)
     Fig f(40, 14);
     f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
     expect_golden(f, F, {
-        L"        |**",
-        L"  0.040 *  ***",
-        L"        |     **",
-        L"  0.020 *       ***",
+        L"        |***",
+        L"  0.040 *   **",
+        L"        |     ***",
+        L"  0.020 *        **",
         L"        |          ***",
-        L"  0.000 *             ***",
-        L"        |                **",
+        L"  0.000 *             **",
+        L"        |               ***",
         L"        |                  ***",
-        L" -0.020 *                     ***",
-        L"        |                        **",
-        L" -0.040 *                          ***",
-        L"        |                             **",
+        L" -0.020 *                     **",
+        L"        |                       ***",
+        L" -0.040 *                          **",
+        L"        |                            ***",
         L"        +*---------*---------*----------",
         L"         0.000     0.334     0.668",
     });
@@ -460,16 +461,16 @@ TEST(Golden, narrow_y_range_high_offset)
     f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
     expect_golden(f, F, {
         L"          |                           **",
-        L"          |                         **",
-        L"  999.980 *                      ***",
-        L"          |                    **",
-        L"  999.960 *                 ***",
+        L"          |                        ***",
+        L"  999.980 *                      **",
+        L"          |                   ***",
+        L"  999.960 *                 **",
         L"          |               **",
         L"          |            ***",
-        L"  999.940 *         ***",
-        L"          |       **",
-        L"  999.920 *    ***",
-        L"          |  **",
+        L"  999.940 *          **",
+        L"          |       ***",
+        L"  999.920 *     **",
+        L"          |  ***",
         L"  999.900 ***",
         L"          +*--------*---------*---------",
         L"           0.000    0.334     0.668",
@@ -569,9 +570,9 @@ TEST(Golden, union_of_two_layers)
     f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, ax, ay, 1);
     f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, bx, by, 2);
     expect_golden(f, F, {
-        L"        |      ***",
-        L"        |  ****",
-        L"  0.000 ***",
+        L"        |    ****",
+        L"        | ***",
+        L"  0.000 **",
         L"        |",
         L" -1.202 *                             **",
         L"        |                           **",

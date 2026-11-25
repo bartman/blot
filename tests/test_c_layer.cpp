@@ -1172,6 +1172,99 @@ TEST(Layer, line_right_to_left_and_downward)
     EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_INT32, 2, vx, vy), rect(5, 5, 0, 9));
 }
 
+/* #14: a line end is drawn in the cell of the axis mapping, the cell a
+ * scatter point of the same value is in (expected_cell(): floor((v - min) *
+ * len / range), max in the last cell).  For many limits and sizes, and for
+ * values on cell edges (and one ulp either side), cell centres, tick values
+ * of 3, 5 and 7 ticks, min and max:
+ * - a one-point line draws exactly the scatter cell, and that is the
+ *   expected cell;
+ * - a two-point line draws both end cells. */
+TEST(Layer, line_ends_use_axis_mapping_sweep)
+{
+    const double ranges[][2] = {
+        { 0, 1 }, { 0, 9 }, { -250, -200 }, { -0.301, 0.701 }, { 999.9, 1000 },
+        { 1e-9, 3e-9 }, { -1e6, 1e6 }, { 0.1, 0.7 }, { -5.006, 1.006 }, { 9.99, 20.01 },
+    };
+    const unsigned lens[] = { 1, 2, 3, 5, 7, 10, 12, 14, 16, 29, 31, 51, 64, 100 };
+
+    unsigned checked = 0, failed = 0;
+    std::ostringstream first;
+    auto fail = [&](const std::string &what) {
+        if (failed++ < 10)
+            first << "\n  " << what;
+    };
+
+    for (const auto &rg : ranges) {
+        const double lo = rg[0], hi = rg[1], range = hi - lo;
+        for (unsigned len : lens) {
+            std::vector<double> vals = { lo, hi };
+            for (unsigned k = 0; k <= len; k++) {
+                double e = lo + k * range / len;
+                vals.insert(vals.end(), { e, nextafter(e, -INFINITY), nextafter(e, INFINITY),
+                                          lo + (k + 0.5) * range / len });
+            }
+            for (unsigned n : { 3u, 5u, 7u })
+                for (unsigned ti = 0; ti <= n; ti++)
+                    vals.push_back(lo + ti * (range / n));
+            vals.erase(std::remove_if(vals.begin(), vals.end(),
+                                      [&](double v) { return !(v >= lo && v <= hi); }),
+                       vals.end());
+
+            const blot_xy_limits lim = { lo, hi, lo, hi };
+            const blot_dimensions dim = { len, len };
+            const size_t nv = vals.size();
+            for (size_t i = 0; i < nv; i++) {
+                /* x and y from different values, so both axes see all of them */
+                double x = vals[i], y = vals[(i * 7 + 3) % nv];
+                Cell want = { expected_cell(x, lo, hi, len), expected_cell(y, lo, hi, len) };
+                std::ostringstream at;
+                at.precision(17);
+                at << "limits " << lo << ".." << hi << " len " << len << " point (" << x << ", " << y << ")";
+
+                Cells sc = layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, &x, &y, lim, dim);
+                Cells ln = layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 1, &x, &y, lim, dim);
+                checked++;
+                if (sc != Cells({ want }))
+                    fail(at.str() + ": scatter" + cells_str(sc));
+                if (ln != Cells({ want }))
+                    fail(at.str() + ": line" + cells_str(ln) + ", want (" + std::to_string(want.first) +
+                         "," + std::to_string(want.second) + ")");
+
+                /* a segment to another point: both end cells drawn */
+                double xs[] = { x, vals[(i * 3 + 1) % nv] }, ys[] = { y, vals[(i * 5 + 2) % nv] };
+                Cell want1 = { expected_cell(xs[1], lo, hi, len), expected_cell(ys[1], lo, hi, len) };
+                Cells seg = layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys, lim, dim);
+                if (!seg.count(want) || !seg.count(want1))
+                    fail(at.str() + " to (" + std::to_string(xs[1]) + ", " + std::to_string(ys[1]) +
+                         "): segment ends not drawn" + cells_str(seg));
+            }
+        }
+    }
+    EXPECT_EQ(failed, 0u) << "of " << checked << " points; first failures:" << first.str();
+    EXPECT_GT(checked, 10000u);
+}
+
+/* #14: the issue's tick values, on a 10x14 layer (the plot area of a 40x16
+ * figure is 31x14; 5 ticks on 14 rows are on rows 0, 2, 5, 8 and 11) */
+TEST(Layer, line_on_tick_values)
+{
+    const struct { double lo, hi, v; unsigned row; } cases[] = {
+        { 0, 1, 0.2, 2 }, { 0, 1, 0.8, 11 },
+        { 0, 9, 1.8, 2 }, { 0, 9, 7.2, 11 },
+        { -250, -200, -240, 2 }, { -250, -200, -210, 11 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "y " << c.lo << ".." << c.hi << " value " << c.v);
+        const double xs[] = { 0, 1 }, ys[] = { c.v, c.v };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys, { 0, 1, c.lo, c.hi }, { 10, 14 }),
+                        rect(0, 9, c.row, c.row));
+        /* the same on X: a vertical line in column 2 or 11 of 14 */
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 2, ys, xs, { c.lo, c.hi, 0, 1 }, { 14, 10 }),
+                        rect(c.row, c.row, 0, 9));
+    }
+}
+
 TEST(Layer, bar_width_and_height)
 {
     const gint32 xs[] = { 3 }, ys[] = { 4 };

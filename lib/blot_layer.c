@@ -219,6 +219,29 @@ static inline bool blot_layer_cell(double v, double min, double max, unsigned le
 	return true;
 }
 
+/* The same mapping as a fractional coordinate, for a line end (#14).
+ *
+ * blot_canvas_draw_line() takes coordinates whose integer values are cell centres: it draws an end in cell
+ * lround(c), and the cells between the ends follow the true segment.  Cell k covers positions k .. k+1, so its
+ * centre is at position k + 0.5, and the coordinate is position - 0.5.  A value that has a cell gets a
+ * coordinate that rounds to exactly the cell blot_layer_cell() gives, the cell a scatter point and the axis tick
+ * of that value are in.  Only two edge cases need moving for that: v = min (coordinate -0.5, which lround takes
+ * to -1) and v = max (len - 0.5, which belongs in the last cell, len - 1); each moves by one ulp.  A value
+ * outside min..max keeps its plain coordinate, so a segment towards it leaves the canvas along its true
+ * direction; NaN stays NaN. */
+
+static inline double blot_layer_coord(double v, double min, double max, unsigned len)
+{
+	double c = blot_layer_pos(v, min, max, len) - 0.5;
+	unsigned cell;
+
+	/* lround(c) != cell only when c is on the edge of the cell (or a
+	 * rounding error away from it); move it to just inside the edge */
+	if (blot_layer_cell(v, min, max, len, &cell) && lround(c) != (long)cell)
+		c = nextafter(c < cell ? cell - 0.5 : cell + 0.5, cell);
+	return c;
+}
+
 /* scatter */
 
 static bool blot_layer_scatter(blot_layer *lay, const blot_xy_limits *lim,
@@ -290,10 +313,7 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 	double y_range = lim->y_max - lim->y_min;
 
 	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
-	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
-
-	double per_col = (double)(can->dim.cols-1) / x_range;
-	double per_row = (double)(can->dim.rows-1) / y_range;
+	RETURN_ERRORx(y_range <= 0, false, error, ERANGE, "invalid row limits %f..%f", lim->y_min, lim->y_max);
 
 	bool have_prev = false;
 	double px=0, py=0;
@@ -308,9 +328,9 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 
 		blot_layer_summary_update(&lay->summary, rx, ry);
 
-		// compute location
-		double dx = (double)(rx - lim->x_min) * per_col;
-		double dy = (double)(ry - lim->y_min) * per_row;
+		// compute location: the axis mapping, as a cell-centred coordinate
+		double dx = blot_layer_coord(rx, lim->x_min, lim->x_max, can->dim.cols);
+		double dy = blot_layer_coord(ry, lim->y_min, lim->y_max, can->dim.rows);
 
 		// plot it: a segment from the previous point, or the first
 		// point on its own so that a one-point series is drawn too
