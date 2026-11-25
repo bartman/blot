@@ -23,3 +23,10 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
     # Add a test
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+# the blot CLI without a terminal (#37): stdout a pipe, COLUMNS and LINES
+# unset; it must not abort (std::terminate)
+foreach(CLI_CASE help render regex)
+    add_test(NAME cli_notty_${CLI_CASE}
+        COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/cli_test.sh $<TARGET_FILE:blot> ${CLI_CASE})
+endforeach()
