@@ -53,8 +53,11 @@ foreach(blot blot_a blot_so)
         ${GLIB2_LIBRARY_DIRS}
     )
 
+    # libm: lround/round/floor, also in the inline functions of the
+    # public headers, so users of the library need it too
     TARGET_LINK_LIBRARIES(${blot}
         ${GLIB2_LIBRARIES}
+        m
     )
 
 endforeach(blot)

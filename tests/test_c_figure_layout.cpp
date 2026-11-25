@@ -480,8 +480,7 @@ TEST(Layout, DISABLED_narrow_screen_large_x_values)
     EXPECT_TRUE(r.ok) << r.message;
 }
 
-// BUG B5: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Layout, DISABLED_line_reaches_top_right_at_every_size)
+TEST(Layout, line_reaches_top_right_at_every_size)
 {
     unsigned bad = 0, total = 0;
     std::ostringstream which;
