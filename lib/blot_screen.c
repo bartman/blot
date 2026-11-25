@@ -2,7 +2,9 @@
 /* vim: set noet sw=8 ts=8 tw=120: */
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include <wchar.h>
+#include <wctype.h>
 #include "blot_screen.h"
 #include "blot_error.h"
 #include "blot_canvas.h"
@@ -93,14 +95,119 @@ static bool blot_screen_blank_lines(blot_screen *scr, unsigned lines,
 	return true;
 }
 
+/* one legend line, written so that it takes at most cols columns on the
+ * terminal: escape sequences take none, a tab moves to the next multiple of
+ * 8, anything else takes one column (two for wide characters).  The line
+ * is cut at the first character that doesn't fit. */
+struct blot_legend_line {
+	wchar_t *p, *end;
+	unsigned col, cols;
+	bool full;
+};
+
+static bool blot_legend_room(struct blot_legend_line *ll, size_t n,
+			     GError **error)
+{
+	/* n characters, then the '\n' and the terminating 0 */
+	RETURN_ERRORx((size_t)(ll->end - ll->p) < n + 2, false, error, ENOSPC,
+		      "screen buffer too small for the legend");
+	return true;
+}
+
+/* an escape sequence: no column */
+static bool blot_legend_esc(struct blot_legend_line *ll, const char *esc,
+			    GError **error)
+{
+	size_t n = strlen(esc);
+
+	if (!blot_legend_room(ll, n, error))
+		return false;
+	for (size_t i=0; i<n; i++)
+		*(ll->p++) = (unsigned char)esc[i];
+	return true;
+}
+
+/* a visible character; one that doesn't fit ends the line */
+static bool blot_legend_putc(struct blot_legend_line *ll, wchar_t wc,
+			     GError **error)
+{
+	unsigned next;
+
+	if (ll->full)
+		return true;
+
+	if (wc == L'\t') {
+		next = (ll->col / 8 + 1) * 8;
+	} else {
+		int w = wcwidth(wc);
+		next = ll->col + (w > 0 ? (unsigned)w : 1);
+	}
+
+	if (next > ll->cols) {
+		ll->full = true;
+		return true;
+	}
+
+	if (!blot_legend_room(ll, 1, error))
+		return false;
+	*(ll->p++) = wc;
+	ll->col = next;
+	return true;
+}
+
+static bool blot_legend_putws(struct blot_legend_line *ll, const wchar_t *ws,
+			      GError **error)
+{
+	for (; *ws && !ll->full; ws++)
+		if (!blot_legend_putc(ll, *ws, error))
+			return false;
+	return true;
+}
+
+/* the label: multibyte text in the current locale.  A control character
+ * (a newline, an escape...) or a byte that isn't valid text becomes '?',
+ * so the label stays on its one line and can't send escape sequences */
+static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
+			      GError **error)
+{
+	mbstate_t st;
+	size_t left = strlen(label);
+
+	memset(&st, 0, sizeof(st));
+	while (left && !ll->full) {
+		wchar_t wc;
+		size_t n = mbrtowc(&wc, label, left, &st);
+
+		if (n == (size_t)-1 || n == (size_t)-2) {
+			/* not valid text: one byte becomes one '?' */
+			memset(&st, 0, sizeof(st));
+			wc = L'?';
+			n = 1;
+		} else if (n == 0) {
+			break;
+		}
+		label += n;
+		left -= n;
+
+		if (iswcntrl(wc) || !iswprint(wc))
+			wc = L'?';
+		if (!blot_legend_putc(ll, wc, error))
+			return false;
+	}
+	return true;
+}
+
 /* write at most max_lines legend lines: the rows the margins reserved */
 static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 				   struct blot_layer *const*lays,
 				   unsigned max_lines,
 				   GError **error)
 {
-	wchar_t *p = scr->data + scr->data_used,
-		 *end = scr->data + scr->data_size;
+	struct blot_legend_line ll = {
+		.p = scr->data + scr->data_used,
+		.end = scr->data + scr->data_size,
+		.cols = scr->dim.cols,
+	};
 	bool use_color = blot_screen_use_color(scr);
 	unsigned lines = 0;
 
@@ -116,12 +223,11 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 
 		//wchar_t star = 0x2605; // does not show up in Terminus font
 		wchar_t symbol = 0x25D8; // inverse bullet ◘
-		int len;
+		wchar_t details[256] = L"";
+		int len = 0;
 
 		if (!(scr->flags & BLOT_RENDER_LEGEND_DETAILS)) {
-			len = swprintf(p, end-p, L"%s%lc %s %s\n",
-				   colstr, symbol, rststr,
-				   lay->label);
+			/* no details */
 		} else if (lay->summary.enabled) {
 			char tavg[32], tmin[32], tmax[32];
 			int ravg = blot_format_number(tavg, sizeof(tavg),
@@ -131,26 +237,37 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 			int rmax = blot_format_number(tmax, sizeof(tmax),
 				   lay->summary.ymax);
 
-			len = swprintf(p, end-p, L"%s%lc %s %s   \tavg=%s min=%s max=%s count=%u\n",
-				   colstr, symbol, rststr,
-				   lay->label,
+			len = swprintf(details, G_N_ELEMENTS(details),
+				   L"   \tavg=%s min=%s max=%s count=%u",
 				   ravg>0 ? tavg : "?",
 				   rmin>0 ? tmin : "?",
 				   rmax>0 ? tmax : "?",
 				   lay->count);
 		} else {
-			len = swprintf(p, end-p, L"%s%lc %s %s   \tcount=%u\n",
-				   colstr, symbol, rststr,
-				   lay->label,
-				   lay->count);
+			len = swprintf(details, G_N_ELEMENTS(details),
+				   L"   \tcount=%u", lay->count);
 		}
 		RETURN_ERROR(len<0, false, error, "swprintf");
-		p += len;
+
+		/* "<colour>◘ <reset> label<details>" */
+		ll.col = 0;
+		ll.full = false;
+		bool ok = blot_legend_esc(&ll, colstr, error)
+			&& blot_legend_putc(&ll, symbol, error)
+			&& blot_legend_putc(&ll, L' ', error)
+			&& blot_legend_esc(&ll, rststr, error)
+			&& blot_legend_putc(&ll, L' ', error)
+			&& blot_legend_label(&ll, lay->label, error)
+			&& blot_legend_putws(&ll, details, error);
+		RETURN_IF(!ok, false);
+
+		/* blot_legend_room() kept room for these */
+		*(ll.p++) = L'\n';
 		lines ++;
 	}
 
-	*p = 0;
-	scr->data_used = p - scr->data;
+	*ll.p = 0;
+	scr->data_used = ll.p - scr->data;
 	return true;
 }
 
@@ -363,6 +480,20 @@ bool blot_screen_render(blot_screen *scr,
 			GError **error)
 {
 	RETURN_EFAULT_IF(scr==NULL, NULL, error);
+
+	/* the plot is what the margins leave; they must fit in the screen,
+	 * and the Y-axis labels need at least the axis and a space */
+	RETURN_ERRORx((guint64)scr->mrg.top + scr->mrg.bottom > scr->dim.rows,
+		      false, error, EINVAL,
+		      "margins top=%u bottom=%u exceed rows=%u",
+		      scr->mrg.top, scr->mrg.bottom, scr->dim.rows);
+	RETURN_ERRORx((guint64)scr->mrg.left + scr->mrg.right > scr->dim.cols,
+		      false, error, EINVAL,
+		      "margins left=%u right=%u exceed cols=%u",
+		      scr->mrg.left, scr->mrg.right, scr->dim.cols);
+	RETURN_ERRORx(!(scr->flags & BLOT_RENDER_NO_Y_AXIS) && scr->mrg.left < 2,
+		      false, error, EINVAL,
+		      "left margin %u is too narrow for the Y-axis", scr->mrg.left);
 
 	scr->data_used = 0;
 	if (scr->flags & BLOT_RENDER_CLEAR) {
