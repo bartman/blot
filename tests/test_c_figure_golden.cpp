@@ -295,7 +295,9 @@ TEST(Golden, no_axes_three_plot_types)
 
 /* G13..G20, G22 have sloped lines: their interior cells depend on how
  * blot_canvas_draw_line() rounds; regenerate them (and check by eye) if
- * that changes (#4, #5) */
+ * that changes (B4, B5 in #4).  With auto limits they also pin where a line
+ * maps y (round(v * (rows-1) / range), Edge.DISABLED_point_on_tick_value_
+ * lands_on_tick_line) */
 
 TEST(Golden, auto_limits_line)
 {
@@ -352,7 +354,7 @@ TEST(Golden, auto_limits_offset_range)
 TEST(Golden, zero_crossing_both_axes)
 {
     /* zero alignment: a tick labelled exactly 0.000 on each axis.  The
-     * empty top row is #5 (the line misses its last cell). */
+     * empty top row is B5 in #4 (the line misses its last cell). */
     const double xs[] = { -0.3, 0.7 }, ys[] = { -0.3, 0.7 };
     Fig f(60, 20);
     f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
@@ -406,7 +408,7 @@ TEST(Golden, all_zero_data)
 
 TEST(Golden, negative_large_y)
 {
-    /* margin 12; the empty top row is #5 */
+    /* margin 12; the empty top row is B5 in #4 */
     const double xs[] = { 0, 1 }, ys[] = { -1000, 100 };
     Fig f(40, 14);
     f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
@@ -501,18 +503,52 @@ TEST(Golden, zero_width_x_range)
 
 TEST(Golden, bar_with_custom_x_labels)
 {
-    /* each label sits under the left edge of its bar */
+    /* mapping-neutral: limits 0..cells-1 with integer data, one cell per
+     * integer; each label sits under the left edge of its bar */
+    const gint32 xs[] = { 0, 8, 16, 24 }, ys[] = { 6, 2, 9, 2 };
+    char *labels[] = { (char *)"a", (char *)"b", (char *)"c", (char *)"d" };
+    Fig f(41, 14);
+    f.lim(0, 31, 0, 11);
+    ASSERT_TRUE(blot_figure_set_x_axis_labels(f, 4, labels, NULL));
+    f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, xs, ys);
+    expect_golden(f, F, {
+        L"        |",
+        L"        |",
+        L"  8.800 *                **",
+        L"        |                **",
+        L"  6.600 *                **",
+        L"        |**              **",
+        L"        |**              **",
+        L"  4.400 ***              **",
+        L"        |**              **",
+        L"  2.200 ***      **      **      **",
+        L"        |**      **      **      **",
+        L"  0.000 ***      **      **      **",
+        L"        +*-------*-------*-------*-------",
+        L"         a       b       c       d",
+    });
+}
+
+// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
+TEST(Golden, DISABLED_bar_with_custom_x_labels_auto_limits)
+{
+    /* auto limits (Y 0.997..4.003): bar i sits under label i at full slot
+     * width, as on master; its top follows the Y axis mapping, so it
+     * agrees with the Y ticks: 3 tops out on the 2.801 row (that cell
+     * covers 2.751..3.002) and 4 on the top row.  Master draws them two
+     * rows lower (the range+1 mapping).  X placement on a numeric axis is
+     * not pinned here (#12). */
     const gint32 ys[] = { 3, 1, 4, 1 };
     char *labels[] = { (char *)"a", (char *)"b", (char *)"c", (char *)"d" };
     Fig f(40, 14);
     ASSERT_TRUE(blot_figure_set_x_axis_labels(f, 4, labels, NULL));
     f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, NULL, ys);
     expect_golden(f, F, {
-        L"       |",
-        L"       |",
+        L"       |                *****",
+        L"       |                *****",
         L" 3.402 *                *****",
         L"       |                *****",
-        L" 2.801 *                *****",
+        L" 2.801 ******           *****",
         L"       |*****           *****",
         L"       |*****           *****",
         L" 2.199 ******           *****",
