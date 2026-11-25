@@ -331,14 +331,12 @@ prep-container:deb13-clang:
 # The unit tests under clang's AddressSanitizer and UndefinedBehavior-
 # Sanitizer (#15): ci/sanitize.sh builds twice, with address,undefined
 # and with undefined alone (see there why), and summarizes the reports.
-# allow_failure while known UB is still there: the float-to-unsigned
-# conversion of scatter heights at blot_layer.c:221 (#3, fixed in !8).
-# blot_screen's __aligned64 data[] from g_malloc was #16, fixed with
-# posix_memalign like the canvas (#15).  #19 takes allow_failure off once
-# !8, !9 and the #16 MR are merged.
+# It gates: a sanitizer report, a leak (in a RUN_ISOLATED child too) or a
+# failed test fails the job and the pipeline (#19).  It was allow_failure
+# until the known findings were fixed: scatter heights at blot_layer.c
+# (#3) and blot_screen's alignment (#16).
 .sanitize:
   stage: unit-test
-  allow_failure: true
   script:
     - sh ci/sanitize.sh build-san
   artifacts:
