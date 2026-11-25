@@ -204,3 +204,18 @@ TEST(FigureLabels, freed_by_cleanup)
         blot_figure_delete(heap);
     });
 }
+
+TEST(FigureLabels, null_entry_is_kept)
+{
+    /* a NULL string is copied as NULL; rendering it is #25 */
+    Fig f(41, 14);
+    char *labels[] = { (char *)"a", NULL, (char *)"c" };
+    ASSERT_TRUE(blot_figure_set_x_axis_labels(f, 3, labels, NULL));
+    blot_figure *fig = f;
+    ASSERT_EQ(fig->xlabels.count, 3u);
+    ASSERT_NE(fig->xlabels.strings, labels);
+    EXPECT_STREQ(fig->xlabels.strings[0], "a");
+    EXPECT_EQ(fig->xlabels.strings[1], nullptr);
+    EXPECT_STREQ(fig->xlabels.strings[2], "c");
+    EXPECT_NE(fig->xlabels.strings[2], labels[2]);
+}
