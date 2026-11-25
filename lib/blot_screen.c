@@ -474,19 +474,31 @@ skip_cell:
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		p += len;
 
-		for (unsigned c_x=0; c_x<dsp_wdh; c_x++) {
+		/* each label starts under its tick and is cut one column
+		 * before the next tick and at the edge, so the row is exactly
+		 * dsp_wdh wide and no tick loses its label to its neighbour
+		 * (the axis already made the labels fit) */
+		for (unsigned c_x=0; c_x<dsp_wdh; ) {
 			const blot_axis_tick *xtick;
 			xtick = blot_axis_get_tick_at(x_axs, c_x, error);
 			if (!xtick) {
 				*(p++) = L' ';
+				c_x ++;
 				continue;
 			}
 
-			len = swprintf(p, end-p, L"%s ", xtick->label);
+			unsigned next = c_x + 1;
+			while (next < dsp_wdh && !blot_axis_get_tick_at(x_axs, next, error))
+				next ++;
+			unsigned room = next - c_x - (next < dsp_wdh ? 1 : 0);
+			if (!room)
+				room = 1;
+
+			len = swprintf(p, end-p, L"%-*.*s", room, room, xtick->label);
 			RETURN_ERROR(len<0, false, error, "swprintf");
 			p += len;
 
-			c_x += len-1;
+			c_x += room;
 		}
 
 done_bot_line:
