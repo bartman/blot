@@ -1,5 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
 #include "blot_screen.h"
 #include "blot_layer.h"
 #include "blot_axis.h"
@@ -523,5 +528,57 @@ TEST(Screen, render_multiple_layers)
     blot_layer_delete(layer2);
     blot_axis_delete(x_axis);
     blot_axis_delete(y_axis);
+    blot_screen_delete(screen);
+}
+
+/* struct blot_screen declares data[] __aligned64, so the screen must be
+ * allocated 64-byte aligned (#16): g_malloc only guarantees 16 bytes, and
+ * UBSan reports every access to a misaligned screen.  A single allocation
+ * can be 64-byte aligned by luck, so keep many screens of varied sizes and
+ * flags alive at once and require every one to be aligned. */
+TEST(Screen, data_is_64_byte_aligned)
+{
+    const blot_margins mrg{ 1, 1, 1, 1 };
+    const blot_render_flags flags[] = {
+        BLOT_RENDER_NONE,
+        BLOT_RENDER_CLEAR,
+        BLOT_RENDER_NO_UNICODE,
+        (blot_render_flags)(BLOT_RENDER_BRAILLE | BLOT_RENDER_CLEAR),
+    };
+    /* unique_ptr: an ASSERT returns early, and must not leak the screens */
+    std::vector<std::unique_ptr<blot_screen, decltype(&blot_screen_delete)>> scrs;
+    unsigned misaligned = 0;
+    for (unsigned i = 0; i < 256; i++) {
+        const blot_dimensions dim{ 1 + (i * 7) % 97, 1 + (i * 13) % 31 };
+        GError *error = NULL;
+        blot_screen *scr = blot_screen_new(&dim, &mrg, flags[i % 4], &error);
+        if (scr)
+            scrs.emplace_back(scr, blot_screen_delete);
+        ASSERT_TRUE(scr != NULL) << dim.cols << "x" << dim.rows << ": "
+                                 << (error ? error->message : "no error");
+        ASSERT_TRUE(error == NULL) << error->message;
+        /* uintptr_t: no access through a misaligned pointer here */
+        uintptr_t base = (uintptr_t)scr;
+        uintptr_t data = base + offsetof(blot_screen, data);
+        if (base % 64 || data % 64)
+            misaligned++;
+    }
+    EXPECT_EQ(misaligned, 0u) << "of " << scrs.size() << " screens";
+}
+
+/* The buffer is cols * rows * 16 wide characters: a size that does not fit
+ * in a gsize must fail with an error, not wrap.  2^30 * 2^30 * 16 is 2^64,
+ * which wraps to an empty data[] (#16). */
+TEST(Screen, alloc_size_overflow)
+{
+    const blot_dimensions dim{ 1u << 30, 1u << 30 };
+    const blot_margins mrg{ 1, 1, 1, 1 };
+    GError *error = NULL;
+
+    blot_screen *screen = blot_screen_new(&dim, &mrg, BLOT_RENDER_NONE, &error);
+    EXPECT_TRUE(screen == NULL);
+    EXPECT_TRUE(error != NULL);
+    if (error)
+        g_error_free(error);
     blot_screen_delete(screen);
 }
