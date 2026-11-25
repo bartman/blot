@@ -1,0 +1,16 @@
+# The packages of blot's CI images (deb12 and deb13), one or more per
+# line; # starts a comment.  Entries are package names only (pkg,
+# pkg=version, pkg/release), never apt options: ci/image-tag.sh sorts
+# them.  ci/images names this file: see the top of .gitlab-ci.yml.
+#
+# dependencies.sh --ci-only installs this same list (it reads this
+# file), so a dependency added here is one for CI everywhere.
+#
+#   gcc g++ make cmake ninja-build   the build (make wraps cmake+ninja)
+#   pkgconf libglib2.0-dev           lib/: pkg_check_modules(glib-2.0)
+#   libgtest-dev                     tests/: find_package(GTest)
+#   git ca-certificates              git describe in CMake (the version)
+gcc g++ make cmake ninja-build
+pkgconf libglib2.0-dev
+libgtest-dev
+git ca-certificates

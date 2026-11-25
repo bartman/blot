@@ -1,100 +1,341 @@
+# YML documentation: https://docs.gitlab.com/ee/ci/yaml/
+#
+# Build, unit-test and smoke-test blot on Debian 12 (bookworm) and
+# Debian 13 (trixie).
+#
+# CI images (#1)
+# --------------
+# The jobs run in prebuilt images from this project's registry,
+# $CI_REGISTRY_IMAGE/ci/<name>, and don't run apt:
+#   deb12   the *-deb12 jobs, from debian:bookworm
+#   deb13   the *-deb13 jobs, from debian:trixie
+# The prep-container stage builds them with kaniko (no privileged runner)
+# from ci/image.Dockerfile, which is generic: it gets the base image and
+# the package list as build-args.  Both are in files, not here: ci/images
+# gives each image its base and its package files, and ci/common.packages
+# is the list both use.  dependencies.sh --ci-only installs that same
+# list, so the two can't drift.  To add a dependency, add it to
+# ci/common.packages: the change itself builds new images, and the jobs
+# of the same pipeline use them.  To add an image, add a line to
+# ci/images, a prep-container:<name> job and a .<name> job template.
+#
+# The tag names the content: df-<hash>, where the hash covers exactly
+# what the build gets, the base image's name, the package list and
+# ci/image.Dockerfile (ci/image-tag.sh computes it; run it to see an
+# image's tag).  Nothing in this file changes it, so editing a job here
+# builds nothing.  That includes the kaniko invocation in
+# .prep-container: a change there doesn't change the tag either, so
+# follow it with a CI_IMAGE_REBUILD=1 run on master.  The build context
+# ci/ isn't hashed: ci/image.Dockerfile has no COPY; if it ever gets one,
+# ci/image-tag.sh must hash what it copies.  In each pipeline:
+#   - prep-container:check computes the tags from the commit's files and
+#     asks the registry for them and their digests (crane, with the job
+#     token).  An image whose tag is there isn't built: its
+#     prep-container:<name> job takes a few seconds;
+#   - prep-container:<name> builds and pushes the missing ones, and
+#     passes the image reference, pinned by digest,
+#     $CI_REGISTRY_IMAGE/ci/<name>:df-<hash>@sha256:<digest>, to the jobs
+#     as a dotenv variable (CI_IMAGE_DEB12, CI_IMAGE_DEB13).  Each job's
+#     image: is that variable, through its needs: on the
+#     prep-container:<name> job.  So every job runs in the image of its
+#     own commit's files, branches with the same package list share one
+#     image, and the digest keeps all of a pipeline's jobs on one build
+#     even when another pipeline pushes the tag again meanwhile;
+#   - on master, :latest follows the image the jobs use (a build pushes
+#     it, else prep-container:check moves it), and a build also pushes
+#     :YYYY-MM-DD.  They are for people who pull by hand: no job uses
+#     them.
+#
+# Forced rebuilds: a scheduled pipeline (e.g. weekly, on master) or a
+# pipeline run with CI_IMAGE_REBUILD=1 builds even when the tag is there,
+# to pick up the distribution's updates, and pushes it again under the
+# same df-<hash>: the tag names the recipe, not one build of it.  Before
+# that, prep-container:check tags the image it replaces
+# df-<hash>-<YYYY-MM-DD>-<digest> (the day that image was built and the
+# first 12 hex digits of its digest), so a retry of an older pipeline,
+# pinned to its digest, can still pull it.  If the registry can't say
+# whether df-<hash> is there, or the tagging fails, the job fails and
+# nothing is built; retry the pipeline.  Run one forced rebuild at a
+# time.  The registry has no cleanup policy today, so every tag stays
+# until someone deletes it.
+#
+# Every job is interruptible, so a newer push cancels an older pipeline;
+# a cancelled or failed image build leaves its tag missing, and the next
+# pipeline builds it.  Only a forced rebuild on master is protected: its
+# prep-container:<name> jobs aren't interruptible and its pipeline is
+# never auto-cancelled (see workflow:).
+#
+# Images are pulled with pull_policy [always, if-not-present]: a forced
+# rebuild pushes df-<hash> again under the same name, so always first,
+# and the cached copy only if the registry is down (runners that allow
+# only always drop the fallback).
+
+workflow:
+  rules:
+    # branch pipelines only, as before (no job asks for MR pipelines)
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    # a forced image rebuild on master (see the top): a newer pipeline
+    # mustn't cancel it
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && ($CI_PIPELINE_SOURCE == "schedule" || $CI_IMAGE_REBUILD == "1")
+      auto_cancel:
+        on_new_commit: none
+    - when: always
+
+variables:
+  # CI images (see the top).  CI_IMAGE_REBUILD is for Run pipeline.
+  CI_IMAGE_REBUILD:
+    value: "0"
+    description: "1: rebuild the CI images (prep-container) even when their tags exist"
+
+default:
+  interruptible: true
+
 stages:
+  - prep-container
   - build
   - unit-test
   - smoke-test
 
 # ---
 
-.deb12-job: &deb12-job
-  image: debian:bookworm
-  before_script:
-    - bash .gitlab/ci/prepare-apt-proxy.sh
-    - bash dependencies.sh --ci-only
+# Which CI images this pipeline builds (see the top): one job for all of
+# them, in crane's image (kaniko's busybox wget can't do TLS with this
+# GitLab).  It gives each prep-container:<name> job the dotenv variables
+# CI_IMAGE_BUILD_<NAME> (1 when the image's tag is missing from the
+# registry or the pipeline forces a rebuild, else 0) and
+# CI_IMAGE_DIGEST_<NAME> (the tag's digest when it isn't rebuilt).
+prep-container:check:
+  stage: prep-container
+  image:
+    name: gcr.io/go-containerregistry/crane/debug:v0.20.3
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 1
+    GIT_FETCH_EXTRA_FLAGS: --no-tags
+    # crane's registry login, outside the build dir
+    DOCKER_CONFIG: /tmp/crane-docker
+  script:
+    - |
+      set -e
+      force=
+      if [ "$CI_PIPELINE_SOURCE" = schedule ] || [ "$CI_IMAGE_REBUILD" = 1 ]; then force=1; fi
+      echo "$CI_REGISTRY_PASSWORD" | crane auth login --password-stdin -u "$CI_REGISTRY_USER" "$CI_REGISTRY"
+      : > ci-image.env
+      # sh: crane's image has no /bin/sh, only /busybox/sh
+      names=$(sh ci/image-tag.sh --names)
+      test -n "$names"
+      for n in $names; do
+              tag=$(sh ci/image-tag.sh "$n")
+              var=$(sh ci/image-tag.sh --var "$n")
+              img=$CI_REGISTRY_IMAGE/ci/$n
+              ref=$img:$tag
+              digest=
+              if [ -n "$force" ]; then
+                      build=1; why="$CI_PIPELINE_SOURCE pipeline, CI_IMAGE_REBUILD=$CI_IMAGE_REBUILD: rebuild"
+                      # keep the image the rebuild replaces as
+                      # df-<hash>-<day it was built>-<digest> (see the
+                      # top); any error but "not found" fails the job, so
+                      # nothing is built
+                      if old=$(crane digest "$ref" 2>/tmp/crane.err); then
+                              # the image's "created", not its layers' (in
+                              # "history"); only for people to read, so
+                              # today will do
+                              cfg=$(crane config "$img@$old" || true)
+                              day=${cfg%%\"history\":*}
+                              day=${day#*\"created\":\"}
+                              day=${day%%T*}
+                              case "$day" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) day=$(date -u +%F) ;; esac
+                              alias=$tag-$day-$(echo "${old#sha256:}" | cut -c1-12)
+                              crane tag "$img@$old" "$alias"
+                              echo "$n: kept $old as $alias"
+                      elif grep -q -e MANIFEST_UNKNOWN -e NAME_UNKNOWN -e '404 Not Found' /tmp/crane.err; then
+                              echo "$n: $tag isn't in the registry: nothing to keep"
+                      else
+                              cat /tmp/crane.err
+                              echo "$n: can't read $ref: no rebuild"
+                              exit 1
+                      fi
+              # any failure counts as missing: the build then runs, and
+              # fails on its own if the registry is down
+              elif digest=$(crane digest "$ref") && [ -n "$digest" ]; then
+                      build=0; why="in the registry ($digest): no build"
+              else
+                      build=1; why="not in the registry: build"
+              fi
+              echo "$n: $ref: $why"
+              echo "CI_IMAGE_BUILD_${var#CI_IMAGE_}=$build" >> ci-image.env
+              echo "CI_IMAGE_DIGEST_${var#CI_IMAGE_}=$digest" >> ci-image.env
+              # master's :latest follows the image its jobs use (only for
+              # people: a failure doesn't stop the jobs)
+              if [ "$build" = 0 ] && [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+                      crane tag "$ref" latest || echo "$n: couldn't move :latest to $tag"
+              fi
+      done
+      cat ci-image.env
+  artifacts:
+    reports:
+      dotenv: ci-image.env
 
-.deb13-job: &deb13-job
-  image: debian:trixie
-  before_script:
-    - bash .gitlab/ci/prepare-apt-proxy.sh
-    - bash dependencies.sh --ci-only
+# Build and push one CI image when prep-container:check says so, and hand
+# its reference to the jobs (see the top); prep-container:<name> sets
+# CI_IMAGE_NAME.
+.prep-container:
+  stage: prep-container
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  needs:
+    - prep-container:check
+  rules:
+    # a forced rebuild on master: a newer pipeline mustn't cancel it
+    # half-way (see the top)
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && ($CI_PIPELINE_SOURCE == "schedule" || $CI_IMAGE_REBUILD == "1")
+      interruptible: false
+    - when: on_success
+  variables:
+    GIT_DEPTH: 1
+    GIT_FETCH_EXTRA_FLAGS: --no-tags
+    CI_IMAGE_DOCKERFILE: ci/image.Dockerfile
+    CI_IMAGE_CONTEXT: ci
+  script:
+    - |
+      set -e
+      img=$CI_REGISTRY_IMAGE/ci/$CI_IMAGE_NAME
+      tag=$(sh ci/image-tag.sh "$CI_IMAGE_NAME")
+      var=$(sh ci/image-tag.sh --var "$CI_IMAGE_NAME")
+      # the jobs get the image pinned by digest (see the top)
+      eval "build=\${CI_IMAGE_BUILD_${var#CI_IMAGE_}:-1}"
+      eval "digest=\${CI_IMAGE_DIGEST_${var#CI_IMAGE_}:-}"
+      if [ "$build" != 1 ] && [ -n "$digest" ]; then
+              echo "$var=$img:$tag@$digest" > ci-image.env
+              echo "$CI_IMAGE_NAME: no build (prep-container:check): $var=$img:$tag@$digest"
+              exit 0
+      fi
+      base=$(sh ci/image-tag.sh --base "$CI_IMAGE_NAME")
+      pkgs=$(sh ci/image-tag.sh --packages "$CI_IMAGE_NAME")
+      echo "$CI_IMAGE_NAME: from $base, packages: $pkgs"
+      dst="--destination $img:$tag"
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then dst="$dst --destination $img:latest --destination $img:$(date -u +%F)"; fi
+      echo "$CI_IMAGE_NAME: $dst"
+      mkdir -p /kaniko/.docker
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')" > /kaniko/.docker/config.json
+      /kaniko/executor --context "dir://$CI_PROJECT_DIR/$CI_IMAGE_CONTEXT" \
+              --dockerfile "$CI_PROJECT_DIR/$CI_IMAGE_DOCKERFILE" \
+              --build-arg "BASE_IMAGE=$base" \
+              --build-arg "PACKAGES=$pkgs" \
+              --label "org.opencontainers.image.source=$CI_PROJECT_URL" \
+              --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
+              --digest-file "$CI_PROJECT_DIR/ci-image.digest" \
+              --single-snapshot $dst
+      digest=$(cat "$CI_PROJECT_DIR/ci-image.digest")
+      case "$digest" in sha256:*) ;; *) echo "$CI_IMAGE_NAME: no digest from kaniko: '$digest'"; exit 1 ;; esac
+      echo "$var=$img:$tag@$digest" > ci-image.env
+      echo "$CI_IMAGE_NAME: $var=$img:$tag@$digest"
+  artifacts:
+    reports:
+      dotenv: ci-image.env
+
+prep-container:deb12:
+  extends: .prep-container
+  variables:
+    CI_IMAGE_NAME: deb12
+
+prep-container:deb13:
+  extends: .prep-container
+  variables:
+    CI_IMAGE_NAME: deb13
+
+# ---
+
+# A job in a CI image (see the top): .deb12 and .deb13 take the image
+# from the dotenv variable of the prep-container job they need.  A job
+# that also needs its build job lists both (a job's needs: replaces the
+# template's).
+.deb12:
+  image:
+    name: ${CI_IMAGE_DEB12}
+    pull_policy: [always, if-not-present]
+  needs:
+    - job: prep-container:deb12
+      optional: true
+
+.deb13:
+  image:
+    name: ${CI_IMAGE_DEB13}
+    pull_policy: [always, if-not-present]
+  needs:
+    - job: prep-container:deb13
+      optional: true
+
+.build:
+  stage: build
+  script:
+    - make
+  artifacts:
+    paths:
+      - build
+    expire_in: 1 hour
+
+.unit-test:
+  stage: unit-test
+  script:
+    - make test
+  artifacts:
+    when: always
+    paths:
+      - build/test*_report.xml
+    reports:
+      junit:
+      - build/test*_report.xml
+
+.smoke-test:
+  stage: smoke-test
+  script:
+    - make smoke
+  artifacts:
+    when: always
+    paths:
+      - build/test/smoke/smoke.log
 
 # ---
 
 build-deb12:
-  <<: *deb12-job
-  stage: build
-  script:
-    - make
-  artifacts:
-    paths:
-      - build
-    expire_in: 1 hour
+  extends: [.deb12, .build]
 
 unit-test-deb12:
-  <<: *deb12-job
-  stage: unit-test
+  extends: [.deb12, .unit-test]
   needs:
+    - job: prep-container:deb12
+      optional: true
     - job: build-deb12
       artifacts: true
-  script:
-    - make test
-  artifacts:
-    when: always
-    paths:
-      - build/test*_report.xml
-    reports:
-      junit:
-      - build/test*_report.xml
 
 smoke-test-deb12:
-  <<: *deb12-job
-  stage: smoke-test
+  extends: [.deb12, .smoke-test]
   needs:
+    - job: prep-container:deb12
+      optional: true
     - job: build-deb12
       artifacts: true
-  script:
-    - make smoke
-  artifacts:
-    when: always
-    paths:
-      - build/test/smoke/smoke.log
 
 # ---
 
 build-deb13:
-  <<: *deb13-job
-  stage: build
-  script:
-    - make
-  artifacts:
-    paths:
-      - build
-    expire_in: 1 hour
+  extends: [.deb13, .build]
 
 unit-test-deb13:
-  <<: *deb13-job
-  stage: unit-test
+  extends: [.deb13, .unit-test]
   needs:
+    - job: prep-container:deb13
+      optional: true
     - job: build-deb13
       artifacts: true
-  script:
-    - make test
-  artifacts:
-    when: always
-    paths:
-      - build/test*_report.xml
-    reports:
-      junit:
-      - build/test*_report.xml
 
 smoke-test-deb13:
-  <<: *deb13-job
-  stage: smoke-test
+  extends: [.deb13, .smoke-test]
   needs:
+    - job: prep-container:deb13
+      optional: true
     - job: build-deb13
       artifacts: true
-  script:
-    - make smoke
-  artifacts:
-    when: always
-    paths:
-      - build/test/smoke/smoke.log

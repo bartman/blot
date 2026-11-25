@@ -1,0 +1,6 @@
+# blot's CI images (see the top of .gitlab-ci.yml): one per line,
+#   <name>  <base image>  <package file in ci/>...
+# ci/image-tag.sh reads this table; each <name> has a
+# prep-container:<name> job in .gitlab-ci.yml.
+deb12  debian:bookworm  common.packages
+deb13  debian:trixie    common.packages

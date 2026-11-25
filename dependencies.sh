@@ -18,7 +18,8 @@ $self ...
 
     -h          this help
     -y          answer yes to package manager questions
-    --ci-only   install only what CI needs to build/test (implies -y)
+    --ci-only   install only what CI needs to build/test (implies -y):
+                ci/common.packages, the CI images' list
     gcc         use gcc as the compiler
     clang       use clang as the compiler
 
@@ -64,15 +65,25 @@ elif [ -f /etc/debian_version ]; then
 
     say "Installing Debian/Ubuntu dependencies"
 
+    if [ -n "$CI_ONLY" ] ; then
+        # the package list of the GitLab CI images (see the top of
+        # .gitlab-ci.yml): CI builds with gcc; clang is added when asked
+        list="$(cd "$(dirname "$0")" && pwd)/ci/common.packages"
+        [ -r "$list" ] || die "can't read $list"
+        packages=( $(sed -e 's/#.*//' "$list") )
+        [ ${#packages[@]} -gt 0 ] || die "no packages in $list"
+        case "$CC" in
+            *clang*) packages+=( clang ) ;;
+        esac
+        run apt install $YES "${packages[@]}"
+        exit 0
+    fi
+
     compiler=()
     case "$CC" in
         *gcc*) compiler=( gcc g++ ) ;;
         *clang*) compiler=( clang ) ;;
-        *) if [ -n "$CI_ONLY" ] ; then
-               compiler=( gcc g++ )             # CI builds with the default cc
-           else
-               compiler=( gcc g++ clang )
-           fi ;;
+        *) compiler=( gcc g++ clang ) ;;
     esac
 
     run apt install $YES make ninja-build cmake libglib2.0-dev git libgtest-dev "${compiler[@]}"
