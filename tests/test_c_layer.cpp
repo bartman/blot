@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "blot_test.hpp"
 
 #include "blot_terminal.h"
 #include "blot_layer.h"
@@ -1047,6 +1047,70 @@ TEST(Layer, bar_taller_than_limits_cut_at_top)
                     rect(0, 3, 0, 11));
 }
 
+/* #3: a value exactly at max is in the last cell.  The position
+ * (max - min) * len / (max - min) can round to just above len, e.g. 0.1 .. 0.7
+ * on 7 cells gives 7.000000000000001, and the point used to be dropped. */
+static bool reaches_row(const Cells &cs, unsigned row)
+{
+    for (const auto &c : cs)
+        if (c.second == row)
+            return true;
+    return false;
+}
+
+TEST(Layer, value_at_max_in_last_cell_reproducer)
+{
+    const double xs[] = { 0.7 }, ys[] = { 0.7 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys, { 0.1, 0.7, 0.1, 0.7 }, { 7, 7 }),
+                    Cells({ {6,6} }));
+    /* bar X is the slot model (#12); only its height is checked */
+    Cells bar = layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys, { 0.1, 0.7, 0.1, 0.7 }, { 7, 7 });
+    EXPECT_TRUE(reaches_row(bar, 6)) << cells_str(bar);
+}
+
+TEST(Layer, value_at_max_in_last_cell_sweep)
+{
+    const double ranges[][2] = {
+        { 0.1, 0.7 }, { 0.1, 0.3 }, { 0.2, 0.9 }, { -0.3, 0.7 }, { 0.15, 1.35 },
+        { -2.2, -0.1 }, { 1e-9, 3e-9 }, { 0.001, 0.007 }, { 3.3, 9.9 }, { -1e300, 1e300 },
+    };
+    unsigned bad = 0;
+    for (const auto &rg : ranges) {
+        for (unsigned len = 1; len <= 64; len++) {
+            SCOPED_TRACE(testing::Message() << "range " << rg[0] << ".." << rg[1] << " len " << len);
+            const blot_xy_limits lim = { rg[0], rg[1], rg[0], rg[1] };
+            const blot_dimensions dim = { len, len };
+            const double xs[] = { rg[1] }, ys[] = { rg[1] };
+            Cells sc = layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys, lim, dim);
+            EXPECT_EQ(sc, Cells({ { len - 1, len - 1 } })) << cells_str(sc);
+            Cells bar = layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys, lim, dim);
+            EXPECT_TRUE(reaches_row(bar, len - 1)) << cells_str(bar);
+            bad += sc.size() != 1 || !reaches_row(bar, len - 1);
+            if (bad > 5)
+                return;
+        }
+    }
+}
+
+/* an infinite range (-DBL_MAX .. DBL_MAX) or NaN limits give every value a
+ * NaN position: nothing is drawn, and nothing is converted to unsigned */
+TEST(Layer, infinite_or_nan_range_draws_nothing)
+{
+    const double xs[] = { 0, G_MAXDOUBLE }, ys[] = { 0, G_MAXDOUBLE };
+    const double nan = std::nan("");
+    const blot_xy_limits lims[] = {
+        { -G_MAXDOUBLE, G_MAXDOUBLE, -G_MAXDOUBLE, G_MAXDOUBLE },
+        { nan, nan, nan, nan },
+    };
+    for (const auto &lim : lims) {
+        SCOPED_TRACE(testing::Message() << "x " << lim.x_min << ".." << lim.x_max);
+        EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys, lim), Cells());
+        EXPECT_CELLS_EQ(layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 2, xs, ys, lim), Cells());
+        const gint64 xi[] = { 0, 1 }, yi[] = { 0, 1 };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT64, 2, xi, yi, lim), Cells());
+    }
+}
+
 TEST(Layer, line_fractional_tiny_huge)
 {
     const double ranges[][2] = { { 0, 1 }, { 1e-9, 3e-9 }, { -1e300, 1e300 } };
@@ -1321,8 +1385,8 @@ TEST(Layer, DISABLED_get_lim_ignores_nan)
     blot_layer_delete(lay);
 }
 
-// BUG B18: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Layer, DISABLED_index_equal_to_count_rejected)
+// B18, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Layer, index_equal_to_count_rejected)
 {
     const gint32 xs[] = { 0, 1, 2, 3 }, ys[] = { 0, 1, 2, 3 };
     blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys, 1, "l", NULL);
@@ -1351,4 +1415,32 @@ TEST(Layer, braille_scatter_dots)
         { {0,0}, 0x2840 }, { {4,2}, 0x2808 }, { {2,1}, 0x2802 },
     };
     EXPECT_EQ(glyphs(can), expected);
+}
+
+/* B18 (#11): blot_layer_render() checked the plot and data types with '>'
+ * before indexing its tables; the value MAX itself is out of range */
+TEST(Layer, render_rejects_types_at_max)
+{
+    RUN_ISOLATED(10, {
+        const gint32 xs[] = { 0, 1, 2 }, ys[] = { 0, 1, 2 };
+        const blot_xy_limits lim = { 0, 2, 0, 2 };
+        const blot_dimensions dim = { 10, 10 };
+        blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+
+        GError *error = NULL;
+        lay->data_type = BLOT_DATA_TYPE_MAX;
+        EXPECT_TRUE(blot_layer_render(lay, &lim, &dim, BLOT_RENDER_NONE, &error) == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        g_clear_error(&error);
+
+        lay->data_type = BLOT_DATA_INT32;
+        lay->plot_type = BLOT_PLOT_TYPE_MAX;
+        EXPECT_TRUE(blot_layer_render(lay, &lim, &dim, BLOT_RENDER_NONE, &error) == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        g_clear_error(&error);
+        blot_layer_delete(lay);
+    });
 }
