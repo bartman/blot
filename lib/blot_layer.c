@@ -165,8 +165,8 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 				       GError **error)
 {
 	RETURN_EFAULT_IF(lay==NULL, NULL, error);
-	RETURN_EINVAL_IF(lay->plot_type>BLOT_PLOT_TYPE_MAX, NULL, error);
-	RETURN_EINVAL_IF(lay->data_type>BLOT_DATA_TYPE_MAX, NULL, error);
+	RETURN_EINVAL_IF(lay->plot_type>=BLOT_PLOT_TYPE_MAX, NULL, error);
+	RETURN_EINVAL_IF(lay->data_type>=BLOT_DATA_TYPE_MAX, NULL, error);
 
 	blot_canvas *can = blot_canvas_new(dim->cols, dim->rows, flags, lay->color, error);
 	RETURN_IF(!can, NULL);
@@ -268,7 +268,7 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 	double per_col = (double)(can->dim.cols-1) / x_range;
 	double per_row = (double)(can->dim.rows-1) / y_range;
 
-	bool visible = false;
+	bool have_prev = false;
 	double px=0, py=0;
 
 	for (int di=0; di<lay->count; di++) {
@@ -285,15 +285,17 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 		double dx = (double)(rx - lim->x_min) * per_col;
 		double dy = (double)(ry - lim->y_min) * per_row;
 
-		// plot it
-		if (likely (visible)) {
-			blot_canvas_draw_line(can, round(px), round(py), round(dx), round(dy));
-		}
+		// plot it: a segment from the previous point, or the first
+		// point on its own so that a one-point series is drawn too
+		if (likely (have_prev))
+			blot_canvas_draw_line(can, px, py, dx, dy);
+		else
+			blot_canvas_draw_line(can, dx, dy, dx, dy);
 
 		// remember current point for next line
 		px = dx;
 		py = dy;
-		visible = true;
+		have_prev = true;
 	}
 	return true;
 }
