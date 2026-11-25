@@ -4,6 +4,7 @@
 
 #include <clocale>
 #include <cwchar>
+#include <gnu/libc-version.h>
 
 using namespace blot_test;
 
@@ -32,10 +33,19 @@ const struct { const char *name; wchar_t first, last; } BLOCKS[] = {
     { "CJK Extension B", 0x20000, 0x2a6df },
 };
 
+/* Unicode 16 (glibc 2.40) changed these: the Yijing trigrams and
+ * monograms became Wide, the halfwidth Hangul filler takes no column.  The
+ * table is from glibc 2.41; deb12's glibc 2.36 has the old widths */
+bool changed_in_unicode_16(wchar_t wc)
+{
+    return (wc >= 0x2630 && wc <= 0x2637) || (wc >= 0x268a && wc <= 0x268f) || wc == 0xffa0;
+}
+
 } // namespace
 
 /* in C.UTF-8, the built-in table and wcwidth() agree on every character
- * of the common blocks glibc knows */
+ * of the common blocks glibc knows, but for the few Unicode 16 changed
+ * when glibc is older */
 TEST(TextWidth, builtin_agrees_with_utf8_locale)
 {
     RUN_ISOLATED(30, {
@@ -47,10 +57,12 @@ TEST(TextWidth, builtin_agrees_with_utf8_locale)
                 if (w < 0)
                     continue;
                 known++;
+                EXPECT_EQ(blot_text_wcwidth(wc), w);
+                if (changed_in_unicode_16(wc) && strverscmp(gnu_get_libc_version(), "2.40") < 0)
+                    continue;
                 if (blot_text_builtin_wcwidth(wc) != w && bad++ < 5)
                     ADD_FAILURE() << b.name << ": U+" << std::hex << (unsigned)wc << " wcwidth " << std::dec
                                   << w << ", built-in " << blot_text_builtin_wcwidth(wc);
-                EXPECT_EQ(blot_text_wcwidth(wc), w);
             }
             EXPECT_EQ(bad, 0u) << b.name;
             EXPECT_GT(known, 0u) << b.name;
