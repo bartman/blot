@@ -1,4 +1,5 @@
 #include <glib.h>
+#include <signal.h>
 #include <stdio.h>
 #include <locale.h>
 #include <math.h>
@@ -8,7 +9,9 @@
 static gint32 data_xs[DATA_COUNT];
 static double sin_ys[DATA_COUNT];
 static gint32 cos_ys[DATA_COUNT];
-static gint64 tan_ys[DATA_COUNT];
+/* double, not an integer type: tan() near pi/2 goes far past any integer
+ * range (#43); blot skips the points outside the y limits */
+static double tan_ys[DATA_COUNT];
 
 #define DATA_X_MAX 100000
 #define DATA_Y_MAX 100000
@@ -20,10 +23,10 @@ blot_color data_color = 9;
 		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
 })
 
-static bool signaled = false;
+static volatile sig_atomic_t signaled = 0;
 static void sighandler(int sig)
 {
-	signaled = true;
+	signaled = 1;
 }
 
 int main(void)
@@ -95,7 +98,7 @@ again:
 
 	/* add a scatter plot */
 
-	blot_figure_scatter(fig, BLOT_DATA_(INT32,INT64),
+	blot_figure_scatter(fig, BLOT_DATA_(INT32,DOUBLE),
 			    DATA_COUNT, data_xs, tan_ys,
 			    data_color+2, "tan", &error);
 	FATAL_ERROR(error);

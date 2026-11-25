@@ -2,8 +2,10 @@
  * lines without trimming; in the expected text "\e" stands for ESC. */
 #include "blot_test.hpp"
 
+#include <cfloat>
 #include <clocale>
 #include <cwchar>
+#include <cstdlib>
 
 using namespace blot_test;
 
@@ -217,8 +219,11 @@ TEST(Text, legend_skips_unlabelled_layers)
         if (l.find(LEGEND_MARK) != std::wstring::npos)
             legend.push_back(strip_sgr(l));
     ASSERT_EQ(legend.size(), 2u);
-    EXPECT_EQ(legend[0].find(L"◘  sc "), 0u) << to_utf8(legend[0]);
-    EXPECT_EQ(legend[1].find(L"◘  a much longer label "), 0u) << to_utf8(legend[1]);
+    /* 40 columns: cut between items (#29) */
+    EXPECT_LINES_EQ(legend, (Lines{
+        L"◘  sc   \tavg=0.875 min=-2.000",
+        L"◘  a much longer label",
+    }));
 }
 
 TEST(Text, legend_keeps_screen_height)
@@ -446,7 +451,7 @@ const gint32 LEG_X[] = { 0, 5, 9 }, LEG_Y[] = { 0, 5, 9 };
 
 /* #11 (note 34933): a label far longer than the screen buffer allows
  * (cols * rows * 16 characters) failed the render; it is cut at the screen
- * width, colour escapes not counted */
+ * width, colour escapes not counted.  #29: the cut label ends in '~' */
 TEST(Text, long_label_cut_to_width)
 {
     const std::string label(2000, 'x');
@@ -461,14 +466,15 @@ TEST(Text, long_label_cut_to_width)
             expect_lines_fit(r, 20, 12);
             ASSERT_EQ(r.lines.size(), 12u);
             const std::wstring &l = legend == BLOT_RENDER_LEGEND_ABOVE ? r.lines.front() : r.lines.back();
-            EXPECT_EQ(strip_sgr(l), L"◘  " + std::wstring(17, L'x')) << to_utf8(l);
+            EXPECT_EQ(strip_sgr(l), L"◘  " + std::wstring(16, L'x') + L"~") << to_utf8(l);
             EXPECT_EQ(has_esc(r.text), colour == BLOT_RENDER_NONE);
         }
     }
 }
 
 /* #11 (note 34955): a LEGEND_DETAILS line wider than the screen wrapped on
- * the terminal; it is cut at the screen width, the tab counted to its stop */
+ * the terminal; it is cut at the screen width, the tab counted to its stop.
+ * #29: only between items, so no value is cut */
 TEST(Text, legend_details_cut_to_width)
 {
     Fig f;
@@ -477,18 +483,19 @@ TEST(Text, legend_details_cut_to_width)
     expect_lines_fit(r, 40, 16);
     ASSERT_EQ(r.lines.size(), 16u);
     EXPECT_LINES_EQ(Lines(r.lines.end() - 2, r.lines.end()), (Lines{
-        L"◘  sc   \tavg=0.875 min=-2.000 max",
-        L"◘  a much longer label   \tavg=0.87",
+        L"◘  sc   \tavg=0.875 min=-2.000",
+        L"◘  a much longer label",
     }));
 
-    /* a label that reaches the tab stop: the details start no further */
+    /* a label that reaches the tab stop: no item fits after it, and the
+     * spaces and tab before the items go with them (#29) */
     Fig g(20, 14);
     g.lim(0, 9, 0, 9);
     g.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "abcdefghijklm");
     Rendered d = render(g, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_DETAILS);
     expect_lines_fit(d, 20, 14);
     ASSERT_FALSE(d.lines.empty());
-    EXPECT_EQ(d.lines.front(), L"◘  abcdefghijklm   ") << to_utf8(d.lines.front());
+    EXPECT_EQ(d.lines.front(), L"◘  abcdefghijklm") << to_utf8(d.lines.front());
 }
 
 /* #11 (note 34955): a newline in a label added a line, and an escape
@@ -510,18 +517,19 @@ TEST(Text, legend_control_characters_replaced)
     }
 }
 
-/* not in the design's list (#11): bytes that aren't text in the locale
- * (the tests run in the C locale) failed the render with EILSEQ; each one
- * becomes '?' */
+/* not in the design's list (#11): bytes that aren't text failed the render
+ * with EILSEQ; each one becomes '?'.  #18: labels are UTF-8 in every locale
+ * (the tests run in the C locale), so "café" is kept and only a byte that
+ * isn't UTF-8 (Latin-1 é) is a '?' */
 TEST(Text, legend_label_not_valid_text)
 {
     Fig f(40, 13);
     f.lim(0, 9, 0, 9);
-    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "caf\xc3\xa9s");
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "caf\xc3\xa9s caf\xe9s");
     Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE);
     expect_lines_fit(r, 40, 13);
     ASSERT_FALSE(r.lines.empty());
-    EXPECT_EQ(r.lines.front(), L"◘  caf??s") << to_utf8(r.lines.front());
+    EXPECT_EQ(r.lines.front(), L"◘  caf\u00e9s caf?s") << to_utf8(r.lines.front());
 }
 
 /* #11 (note 34955): a legend taller than the screen can give it failed the
@@ -567,7 +575,8 @@ TEST(Text, tall_legend_is_cut)
 }
 
 /* #11 review: a tab in a label is kept, as before, and goes to its tab
- * stop; one whose tab stop is past the screen edge ends the line */
+ * stop; one whose tab stop is past the screen edge cuts the label, which
+ * ends in '~' (#29) */
 TEST(Text, legend_label_tab_kept)
 {
     Fig f(40, 13);
@@ -584,7 +593,7 @@ TEST(Text, legend_label_tab_kept)
     Rendered n = render(g, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
     expect_lines_fit(n, 20, 12);
     ASSERT_FALSE(n.lines.empty());
-    EXPECT_EQ(n.lines.front(), L"◘  abcdefghijklmno") << to_utf8(n.lines.front());
+    EXPECT_EQ(n.lines.front(), L"◘  abcdefghijklmno~") << to_utf8(n.lines.front());
 }
 
 namespace {
@@ -644,16 +653,25 @@ TEST(Text, legend_utf8_wide_characters_cut)
 {
     RUN_ISOLATED(10, {
         SET_UTF8_LOCALE();
-        /* "◘  " is 3 columns, each CJK character 2: the 9th would end in
-         * column 21 of 20 (the minimum width, #17) */
+        /* "◘  " is 3 columns, each CJK character 2, and a cut label
+         * ends in '~' (#29): at 20 columns (the minimum width, #17), 8
+         * characters and the '~' take 20 columns */
         const char *cjk = "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
                           "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e";
         std::wstring l = utf8_legend_line(cjk, 20);
-        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5") << to_utf8(l);
-        EXPECT_EQ(display_width_locale(l), 19u);
-        /* 21 columns: the 9th fits exactly */
+        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5~") << to_utf8(l);
+        EXPECT_EQ(display_width_locale(l), 20u);
+        /* 21 columns: the 9th fits, but not with the '~' */
         l = utf8_legend_line(cjk, 21);
-        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5\u672c") << to_utf8(l);
+        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5~") << to_utf8(l);
+        EXPECT_EQ(display_width_locale(l), 20u);
+        /* 22 columns: the 9th and the '~' */
+        l = utf8_legend_line(cjk, 22);
+        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5\u672c~") << to_utf8(l);
+        EXPECT_EQ(display_width_locale(l), 22u);
+        /* 23 columns: the whole label, not cut */
+        l = utf8_legend_line(cjk, 23);
+        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5\u672c\u8a9e") << to_utf8(l);
     });
 }
 
@@ -691,4 +709,607 @@ TEST(Text, legend_utf8_invalid_byte_is_one_question_mark)
         std::wstring l = utf8_legend_line("caf\xc3\xa9 \xff ok", 40);
         EXPECT_EQ(l, L"◘  caf\u00e9 ? ok") << to_utf8(l);
     });
+}
+
+/* #18: labels are UTF-8 and their width is the same in every locale.  In
+ * the C locale wcwidth() is -1 for anything past ASCII, so a wide
+ * character was counted as one column; the C locale's mbrtowc() can't
+ * read UTF-8 either, so a legend label became '?'s and a custom X label
+ * failed the render (swprintf).  Each test runs the same checks in the C
+ * locale and in C.UTF-8, each in an isolated child, on the minimum
+ * screen.  Every line is measured by display_width_utf8(), which doesn't
+ * use blot: glibc's own C.UTF-8 widths. */
+namespace {
+
+const char *const WIDE_LOCALES[] = { "C", "C.UTF-8" };
+
+/* the columns a line takes on a UTF-8 terminal, whatever the process's
+ * locale: glibc's wcwidth() in C.UTF-8 (through uselocale(), so the
+ * locale of the test stays), escapes and tabs as in display_width().  A
+ * character glibc can't measure counts 2, the most it could take */
+unsigned display_width_utf8(const std::wstring &line)
+{
+    locale_t utf8 = newlocale(LC_CTYPE_MASK, "C.UTF-8", (locale_t)0);
+    EXPECT_TRUE(utf8 != (locale_t)0) << "the C.UTF-8 locale is missing";
+    if (utf8 == (locale_t)0)
+        return ~0u;
+    locale_t old = uselocale(utf8);
+    unsigned col = 0;
+    for (wchar_t wc : strip_sgr(line)) {
+        if (wc == L'\t') {
+            col = (col / 8 + 1) * 8;
+        } else {
+            int w = wcwidth(wc);
+            col += w >= 0 ? (unsigned)w : 2;
+        }
+    }
+    uselocale(old);
+    freelocale(utf8);
+    return col;
+}
+
+void expect_lines_fit_utf8(const Rendered &r, unsigned cols, unsigned rows)
+{
+    ASSERT_TRUE(r.ok) << r.message;
+    EXPECT_EQ(r.lines.size(), rows);
+    for (size_t i = 0; i < r.lines.size(); i++)
+        EXPECT_LE(display_width_utf8(r.lines[i]), cols) << "line " << i << " |" << to_utf8(r.lines[i]) << "|";
+}
+
+#define SET_LOCALE(loc) ASSERT_TRUE(setlocale(LC_ALL, (loc)) != NULL) << "the " << (loc) << " locale is missing"
+
+/* the legend line of one labelled layer on the minimum screen, without
+ * axes (the caller is an isolated child) */
+std::wstring min_legend_line(const char *label)
+{
+    Fig f(BLOT_MIN_COLS, BLOT_MIN_ROWS);
+    f.lim(0, 9, 0, 9);
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, label);
+    Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
+    expect_lines_fit_utf8(r, BLOT_MIN_COLS, BLOT_MIN_ROWS);
+    if (r.lines.empty())
+        return L"";
+    return r.lines.front();
+}
+
+/* the X axis and its label row of a bar plot with custom X labels on a
+ * screen of the minimum width, and the legend below if it has one (the
+ * caller is an isolated child) */
+Lines min_x_rows(std::vector<const char *> labels, const char *legend = NULL)
+{
+    const gint32 ys[] = { 3, 1, 4, 1 };
+    /* one more row for the legend: the plot keeps its minimum rows */
+    unsigned rows = BLOT_MIN_ROWS + (legend ? 1 : 0);
+    Fig f(BLOT_MIN_COLS, rows);
+    EXPECT_TRUE(blot_figure_set_x_axis_labels(f, labels.size(), (char **)labels.data(), NULL));
+    f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, NULL, ys, 1, legend);
+    Rendered r = render(f, F | (legend ? BLOT_RENDER_LEGEND_BELOW : BLOT_RENDER_NONE));
+    expect_lines_fit_utf8(r, BLOT_MIN_COLS, rows);
+    if (!r.ok)
+        return {};
+    unsigned ax = r.mrg.top + r.plot_rows();
+    return Lines(r.lines.begin() + ax, r.lines.end());
+}
+
+} // namespace
+
+TEST(Text, legend_wide_characters_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            /* "◘  " is 3 columns and leaves 17; a cut label ends in '~'
+             * (#29), so 16 for the label: 8 wide characters */
+            /* CJK: 日本語テキスト日本語 */
+            EXPECT_EQ(min_legend_line("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                      "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"),
+                      L"◘  日本語テキスト日~");
+            /* Hangul: 한국어 x 4 */
+            EXPECT_EQ(min_legend_line("\xed\x95\x9c\xea\xb5\xad\xec\x96\xb4\xed\x95\x9c\xea\xb5\xad\xec\x96\xb4"
+                                      "\xed\x95\x9c\xea\xb5\xad\xec\x96\xb4\xed\x95\x9c\xea\xb5\xad\xec\x96\xb4"),
+                      L"◘  한국어한국어한국~");
+            /* fullwidth forms: ＡＢＣＤＥＦＧＨＩＪ */
+            EXPECT_EQ(min_legend_line("\xef\xbc\xa1\xef\xbc\xa2\xef\xbc\xa3\xef\xbc\xa4\xef\xbc\xa5"
+                                      "\xef\xbc\xa6\xef\xbc\xa7\xef\xbc\xa8\xef\xbc\xa9\xef\xbc\xaa"),
+                      L"◘  ＡＢＣＤＥＦＧＨ~");
+            /* emoji: 😀🚀🎉👍🔥 twice */
+            EXPECT_EQ(min_legend_line("\xf0\x9f\x98\x80\xf0\x9f\x9a\x80\xf0\x9f\x8e\x89\xf0\x9f\x91\x8d\xf0\x9f\x94\xa5"
+                                      "\xf0\x9f\x98\x80\xf0\x9f\x9a\x80\xf0\x9f\x8e\x89\xf0\x9f\x91\x8d\xf0\x9f\x94\xa5"),
+                      L"◘  \U0001f600\U0001f680\U0001f389\U0001f44d\U0001f525\U0001f600\U0001f680\U0001f389~");
+            /* a wide character can't take the last column before the
+             * '~': a日本語テキスト日本語 is cut after ト, at 18 */
+            std::wstring l = min_legend_line("a\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                             "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e");
+            EXPECT_EQ(l, L"◘  a日本語テキスト~");
+            EXPECT_EQ(display_width_utf8(l), 19u);
+            /* 8 wide characters fit whole, with no '~' */
+            EXPECT_EQ(min_legend_line("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                      "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5"),
+                      L"◘  日本語テキスト日");
+        });
+    }
+}
+
+TEST(Text, legend_combining_marks_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            /* 17 x "e" + U+0301: 17 columns, the whole label fits */
+            std::string label;
+            std::wstring whole = L"◘  ";
+            for (int i = 0; i < 17; i++) {
+                label += "e\xcc\x81";
+                whole += L"é";
+            }
+            std::wstring l = min_legend_line(label.c_str());
+            EXPECT_EQ(l, whole);
+            EXPECT_EQ(display_width_utf8(l), 20u);
+            /* one more: cut after 16, the mark stays with its letter */
+            label += "e\xcc\x81";
+            l = min_legend_line(label.c_str());
+            EXPECT_EQ(l, whole.substr(0, whole.size() - 2) + L"~");
+            EXPECT_EQ(display_width_utf8(l), 20u);
+        });
+    }
+}
+
+/* the decision for the C locale (#18): labels are read as UTF-8, as in a
+ * UTF-8 locale, not as '?'s; a byte that isn't UTF-8 is still one '?' */
+TEST(Text, legend_utf8_label_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            EXPECT_EQ(min_legend_line("caf\xc3\xa9"), L"◘  café");
+            EXPECT_EQ(min_legend_line("caf\xe9 \xe6\x97 ok"), L"◘  caf? ?? ok");
+            EXPECT_EQ(min_legend_line("\xc2\x9b" "31m"), L"◘  ?31m");
+        });
+    }
+}
+
+/* custom X labels (#9 cuts them to their room) are cut by columns.  On
+ * the minimum screen the plot is 12 columns from column 8, so with 4
+ * labels the ticks are 3 columns apart: 2 columns for each label and a
+ * blank, 3 for the last one */
+TEST(Text, x_labels_wide_characters_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            /* 日本 한국 ＡＢ 😀🚀: one wide character each */
+            EXPECT_LINES_EQ(min_x_rows({ "\xe6\x97\xa5\xe6\x9c\xac", "\xed\x95\x9c\xea\xb5\xad",
+                                         "\xef\xbc\xa1\xef\xbc\xa2",
+                                         "\xf0\x9f\x98\x80\xf0\x9f\x9a\x80" }),
+                            Lines({ L"       +*--*--*--*--",
+                                    L"        \u65e5 \ud55c \uff21 \U0001f600 " }));
+            /* éééé (combining marks) is 4 columns, cut to 2; a日 is 3,
+             * and 日 can't take the second column; 日b is cut to 日.  A
+             * CJK legend below: 日本語テキスト日本 is cut to 8 and '~' */
+            EXPECT_LINES_EQ(min_x_rows({ "e\xcc\x81" "e\xcc\x81" "e\xcc\x81" "e\xcc\x81",
+                                         "a\xe6\x97\xa5", "\xe6\x97\xa5" "b", "zz" },
+                                       "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                       "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac"),
+                            Lines({ L"       +*--*--*--*--",
+                                    L"        e\u0301e\u0301 a  \u65e5 zz ",
+                                    L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5~" }));
+            /* 日本語テキスト日本 and 日本語テキスト日本語: cut to the same
+             * text, so only the first gets a tick (#9); longer than the
+             * axis, so it is cut to 11 of its 12 columns and marked: 5
+             * wide characters and the '~' */
+            EXPECT_LINES_EQ(min_x_rows({ "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                         "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac",
+                                         "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                         "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e" }),
+                            Lines({ L"       +*-----------",
+                                    L"        \u65e5\u672c\u8a9e\u30c6\u30ad~ " }));
+        });
+    }
+}
+
+/* #18 review Low-1: a code point that isn't a printable character
+ * (unassigned: U+0378, and U+0A44, which the first table counted 0
+ * columns in the C locale) is a '?' in every locale, one column */
+TEST(Text, legend_unassigned_code_point_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            EXPECT_EQ(min_legend_line("a\xcd\xb8" "b\xe0\xa9\x84" "c"), L"◘  a?b?c");
+            /* 17 of them fill the line exactly, 18 are cut */
+            std::string label;
+            for (int i = 0; i < 17; i++)
+                label += "\xe0\xa9\x84";
+            EXPECT_EQ(min_legend_line(label.c_str()), L"◘  " + std::wstring(17, L'?'));
+            label += "\xe0\xa9\x84";
+            EXPECT_EQ(min_legend_line(label.c_str()), L"◘  " + std::wstring(16, L'?') + L"~");
+            EXPECT_EQ(min_x_rows({ "\xcd\xb8\xcd\xb8\xcd\xb8", "a", "b", "c" }),
+                      Lines({ L"       +*--*--*--*--",
+                              L"        ?? a  b  c  " }));
+        });
+    }
+}
+
+/* #18 review Low-2: a label stuffed with combining marks failed the render
+ * (ENOSPC: the screen buffer is 16 characters per column); at most
+ * BLOT_TEXT_MAX_MARKS (4) are kept after a character, the rest dropped */
+TEST(Text, many_combining_marks_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            std::string label = "e";
+            for (int i = 0; i < 5000; i++)
+                label += "\xcc\x81";
+            label += "x";
+            const std::wstring e4 = L"é́́́";
+            EXPECT_EQ(min_legend_line(label.c_str()), L"◘  " + e4 + L"x");
+            EXPECT_LINES_EQ(min_x_rows({ label.c_str(), label.c_str(), "b", "c" }, label.c_str()),
+                            Lines({ L"       +*--*--*--*--",
+                                    L"        " + e4 + L"x " + e4 + L"x b  c  ",
+                                    L"◘  " + e4 + L"x" }));
+        });
+    }
+}
+
+/* #22: the legend details of a layer with non-finite Y values.  The
+ * summary takes the points whose X and Y are both finite: avg, min and
+ * max are over them, count is how many there are, and "(+N non-finite)"
+ * says how many points were left out.  With none left, avg, min and max
+ * are "-".  No legend prints nan or inf */
+namespace {
+
+const double NF_X[] = { 0, 1, 2 };
+
+std::wstring details_line(blot_plot_type t, size_t n, const double *xs, const double *ys)
+{
+    /* wide enough for the longest line: #11 cuts it at the screen width */
+    Fig f(120, 14);
+    f.lim(0, 9, 0, 9);
+    f.plot(t, BLOT_DATA_DOUBLE, n, xs, ys, 1, "data");
+    Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_DETAILS);
+    EXPECT_TRUE(r.ok) << r.message;
+    if (r.lines.empty())
+        return L"";
+    for (const auto &l : r.lines) {
+        std::string s = to_utf8(l);
+        for (auto &c : s)
+            c = (char)tolower((unsigned char)c);
+        EXPECT_EQ(s.find("nan"), std::string::npos) << s;
+        EXPECT_EQ(s.find("inf"), std::string::npos) << s;
+    }
+    return r.lines.front();
+}
+
+} // namespace
+
+// BUG B22: https://git.jukie.net/bart/blot/-/work_items/22
+TEST(Text, legend_details_nan)
+{
+    const double ys[] = { 1, NAN, 3 };
+    for (auto t : { BLOT_SCATTER, BLOT_LINE }) {
+        SCOPED_TRACE(t);
+        EXPECT_EQ(details_line(t, 3, NF_X, ys),
+                  L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+    }
+}
+
+TEST(Text, legend_details_inf)
+{
+    const double ys[] = { 1, INFINITY, 3 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+}
+
+TEST(Text, legend_details_minus_inf)
+{
+    const double ys[] = { -INFINITY, 1, 3 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+}
+
+TEST(Text, legend_details_non_finite_x)
+{
+    /* a point with a non-finite X isn't drawn, nor summarized */
+    const double xs[] = { 0, NAN, 2 }, ys[] = { 1, 5, 3 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, xs, ys),
+              L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+}
+
+TEST(Text, legend_details_all_non_finite)
+{
+    const double ys[] = { NAN, INFINITY, -INFINITY };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=- min=- max=- count=0 (+3 non-finite)");
+}
+
+TEST(Text, legend_details_sum_overflows)
+{
+    /* each value is finite, their sum is not */
+    const double big[] = { 1e308, 1e308, 1e308 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, big),
+              L"◘  data   \tavg=1e+308 min=1e+308 max=1e+308 count=3");
+
+    const double mixed[] = { 1.5e308, 1.5e308, 0 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, mixed),
+              L"◘  data   \tavg=1e+308 min=0.000 max=1.5e+308 count=3");
+
+    /* the running sum overflows, then comes back: the mean is exactly 0 */
+    const double sym[] = { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX };
+    const double sym_x[] = { 0, 1, 2, 3 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 4, sym_x, sym),
+              L"◘  data   \tavg=0.000 min=-1.79769e+308 max=1.79769e+308 count=4");
+}
+
+TEST(Text, legend_details_finite_unchanged)
+{
+    const double ys[] = { 1, 2, 4 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=2.333 min=1.000 max=4.000 count=3");
+}
+
+/* #22 (review note 35657): the mean is of a compensated sum, so a small
+ * value next to large ones isn't lost; a plain sum gives avg=0.000 */
+TEST(Text, legend_details_compensated_sum)
+{
+    const double ys[] = { 1e17, 1, -1e17 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=0.333 min=-100000000000000000.000 max=100000000000000000.000 count=3");
+
+    /* the same past the overflow, on the scaled sum */
+    const double big[] = { 1e308, 1, 1e308, -1e308, -1e308 };
+    const double big_x[] = { 0, 1, 2, 3, 4 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 5, big_x, big),
+              L"◘  data   \tavg=0.200 min=-1e+308 max=1e+308 count=5");
+}
+
+TEST(Text, legend_details_compensated_long_series)
+{
+    /* 3000 points: 1000 times 1e16, 1, -1e16; a plain sum loses
+     * every 1 (ulp(1e16) is 2), the true mean is 1/3 */
+    std::vector<double> xs, ys;
+    for (int i = 0; i < 1000; i++) {
+        for (double y : { 1e16, 1.0, -1e16 }) {
+            xs.push_back(xs.size());
+            ys.push_back(y);
+        }
+    }
+    EXPECT_EQ(details_line(BLOT_SCATTER, ys.size(), xs.data(), ys.data()),
+              L"◘  data   \tavg=0.333 min=-10000000000000000.000 max=10000000000000000.000 count=3000");
+
+    /* 10000 points: 2500 times 1e16, 0.5, -1e16, 0.5; a plain sum
+     * loses the 0.5 after each 1e16, the true mean is 0.25 */
+    xs.clear();
+    ys.clear();
+    for (int i = 0; i < 2500; i++) {
+        for (double y : { 1e16, 0.5, -1e16, 0.5 }) {
+            xs.push_back(xs.size());
+            ys.push_back(y);
+        }
+    }
+    EXPECT_EQ(details_line(BLOT_SCATTER, ys.size(), xs.data(), ys.data()),
+              L"◘  data   \tavg=0.250 min=-10000000000000000.000 max=10000000000000000.000 count=10000");
+}
+
+/* #29: a legend line too wide for the screen was cut at any character,
+ * so a value could be cut too: max=1.5e+308 read max=1.5e+3, and the
+ * "(+N non-finite)" after count=N could go without a sign.  The line is
+ * now cut only between items: the symbol and the label, then whole
+ * "key=value" items, count=N and its suffix as one.  A label too long
+ * for the screen is cut and ends in '~' */
+namespace {
+
+/* the legend line of one layer, Y values ys at X 0, 1, ..., on a screen
+ * of cols x 12 without axes */
+std::wstring cut_line(const char *label, std::vector<double> ys, unsigned cols,
+                      blot_render_flags flags = F | BLOT_RENDER_LEGEND_DETAILS)
+{
+    std::vector<double> xs;
+    for (size_t i = 0; i < ys.size(); i++)
+        xs.push_back(i);
+    Fig f(cols, 12);
+    f.lim(0, 9, 0, 9);
+    f.plot(BLOT_SCATTER, BLOT_DATA_DOUBLE, ys.size(), xs.data(), ys.data(), 1, label);
+    Rendered r = render(f, flags | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
+    expect_lines_fit(r, cols, 12);
+    if (r.lines.empty())
+        return L"";
+    return r.lines.front();
+}
+
+/* the items after the tab: "key=value", with a "(+N non-finite)" kept
+ * on the count before it */
+std::vector<std::wstring> detail_items(const std::wstring &line)
+{
+    std::vector<std::wstring> items;
+    size_t tab = line.find(L'\t');
+    if (tab == std::wstring::npos)
+        return items;
+    std::wstring d = line.substr(tab + 1), tok;
+    size_t start = 0;
+    while (start <= d.size()) {
+        size_t sp = d.find(L' ', start);
+        tok = d.substr(start, sp == std::wstring::npos ? std::wstring::npos : sp - start);
+        bool open = !items.empty() && items.back().find(L'(') != std::wstring::npos
+            && items.back().back() != L')';
+        if (!items.empty() && (open || tok[0] == L'('))
+            items.back() += L" " + tok;
+        else
+            items.push_back(tok);
+        if (sp == std::wstring::npos)
+            break;
+        start = sp + 1;
+    }
+    return items;
+}
+
+} // namespace
+
+TEST(Text, legend_cut_between_items)
+{
+    const std::vector<double> ys = { 1, 2, 4 };
+    /* "◘  data   " is 10 columns, the tab goes to 16, then avg ends in
+     * 25, min in 35, max in 45, count in 53 */
+    EXPECT_EQ(cut_line("data", ys, 53), L"◘  data   \tavg=2.333 min=1.000 max=4.000 count=3");
+    EXPECT_EQ(cut_line("data", ys, 52), L"◘  data   \tavg=2.333 min=1.000 max=4.000");
+    EXPECT_EQ(cut_line("data", ys, 45), L"◘  data   \tavg=2.333 min=1.000 max=4.000");
+    EXPECT_EQ(cut_line("data", ys, 44), L"◘  data   \tavg=2.333 min=1.000");
+    EXPECT_EQ(cut_line("data", ys, 26), L"◘  data   \tavg=2.333");
+    EXPECT_EQ(cut_line("data", ys, 25), L"◘  data   \tavg=2.333");
+    EXPECT_EQ(cut_line("data", ys, 24), L"◘  data");
+    EXPECT_EQ(cut_line("data", ys, 20), L"◘  data");     /* the minimum width */
+}
+
+TEST(Text, legend_cut_never_splits_a_number)
+{
+    /* avg ends in 26, min in 36, max in 49, count in 57: 47 columns
+     * printed "max=1.5e+3", which reads as 1500 */
+    const std::vector<double> big = { 1.5e308, 1.5e308, 0 };
+    EXPECT_EQ(cut_line("data", big, 57), L"◘  data   \tavg=1e+308 min=0.000 max=1.5e+308 count=3");
+    EXPECT_EQ(cut_line("data", big, 49), L"◘  data   \tavg=1e+308 min=0.000 max=1.5e+308");
+    EXPECT_EQ(cut_line("data", big, 48), L"◘  data   \tavg=1e+308 min=0.000");
+    EXPECT_EQ(cut_line("data", big, 47), L"◘  data   \tavg=1e+308 min=0.000");
+
+    /* avg ends in 25, min in 43: 32 columns printed "min=-1" */
+    const std::vector<double> sym = { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX };
+    EXPECT_EQ(cut_line("data", sym, 32), L"◘  data   \tavg=0.000");
+    EXPECT_EQ(cut_line("data", sym, 42), L"◘  data   \tavg=0.000");
+    EXPECT_EQ(cut_line("data", sym, 43), L"◘  data   \tavg=0.000 min=-1.79769e+308");
+}
+
+TEST(Text, legend_cut_drops_suffix_with_count)
+{
+    /* max ends in 45, " count=2 (+1 non-finite)" in 69: 53 columns
+     * printed "count=2" without its suffix */
+    const std::vector<double> ys = { 1, NAN, 3 };
+    EXPECT_EQ(cut_line("data", ys, 69), L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+    EXPECT_EQ(cut_line("data", ys, 68), L"◘  data   \tavg=2.000 min=1.000 max=3.000");
+    EXPECT_EQ(cut_line("data", ys, 53), L"◘  data   \tavg=2.000 min=1.000 max=3.000");
+}
+
+TEST(Text, legend_long_label_cut_with_mark)
+{
+    const std::vector<double> ys = { 1, 2, 4 };
+    const char *label = "a much longer label for the legend";    /* 34: ends in 37 */
+    for (auto flags : { F, F | BLOT_RENDER_LEGEND_DETAILS }) {
+        SCOPED_TRACE(flags);
+        /* the minimum width: 16 characters and the '~' */
+        EXPECT_EQ(cut_line(label, ys, 20, flags), L"◘  a much longer la~");
+        EXPECT_EQ(cut_line(label, ys, 30, flags), L"◘  a much longer label for th~");
+        EXPECT_EQ(cut_line(label, ys, 36, flags), L"◘  a much longer label for the lege~");
+        /* the label fits exactly: not cut, no '~' */
+        EXPECT_EQ(cut_line(label, ys, 37, flags), L"◘  a much longer label for the legend");
+    }
+    /* "   " goes to 40, the tab to 48, avg ends in 57 */
+    EXPECT_EQ(cut_line(label, ys, 56), L"◘  a much longer label for the legend");
+    EXPECT_EQ(cut_line(label, ys, 57), L"◘  a much longer label for the legend   \tavg=2.333");
+}
+
+TEST(Text, legend_cut_with_colour)
+{
+    /* the escapes take no column: the same cuts as without colour */
+    const std::vector<double> ys = { 1, 2, 4 };
+    const blot_render_flags colour = BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_DETAILS;
+    EXPECT_EQ(cut_line("data", ys, 36, colour), sgr(L"\\e[38;5;1m◘ \\e[0m data   \tavg=2.333 min=1.000"));
+    EXPECT_EQ(cut_line("data", ys, 24, colour), sgr(L"\\e[38;5;1m◘ \\e[0m data"));
+    EXPECT_EQ(cut_line("a much longer label for the legend", ys, 20, colour),
+              sgr(L"\\e[38;5;1m◘ \\e[0m a much longer la~"));
+}
+
+TEST(Text, legend_cut_with_tabs)
+{
+    const std::vector<double> ys = { 1, 2, 4 };
+    /* "◘  a" is 4 columns, its tab goes to 8, "b   " to 12, the next tab
+     * to 16; avg ends in 25, min in 35 */
+    EXPECT_EQ(cut_line("a\tb", ys, 34), L"◘  a\tb   \tavg=2.333");
+    EXPECT_EQ(cut_line("a\tb", ys, 35), L"◘  a\tb   \tavg=2.333 min=1.000");
+    /* a label cut after its tab: "◘  ab" is 5, the tab goes to 8, then
+     * 11 characters to 19 and the '~' */
+    EXPECT_EQ(cut_line("ab\tcdefghijklmnopqrstu", ys, 20), L"◘  ab\tcdefghijklm~");
+    EXPECT_EQ(cut_line("ab\tcdefghijklmnopqrstu", ys, 22), L"◘  ab\tcdefghijklmno~");
+    /* "◘  abcdefghijklmn" is 17, its tab goes to 24, the z ends in 25: it
+     * fits in 25; in 24 the tab doesn't fit with the '~' and the label is
+     * cut before it */
+    EXPECT_EQ(cut_line("abcdefghijklmn\tz", ys, 25), L"◘  abcdefghijklmn\tz");
+    EXPECT_EQ(cut_line("abcdefghijklmn\tz", ys, 24), L"◘  abcdefghijklmn~");
+}
+
+/* a combining mark stays with its base character at a '~' cut */
+TEST(Text, legend_utf8_combining_mark_at_cut)
+{
+    RUN_ISOLATED(10, {
+        SET_UTF8_LOCALE();
+        /* 18 x "e" + U+0301 take 18 columns, 21 with "◘  ": at the
+         * minimum width 16 pairs and the '~' are kept */
+        std::string label;
+        std::wstring expected = L"◘  ";
+        for (int i = 0; i < 18; i++)
+            label += "e\xcc\x81";
+        for (int i = 0; i < 16; i++)
+            expected += L"e\u0301";
+        expected += L"~";
+        std::wstring l = utf8_legend_line(label.c_str(), 20);
+        EXPECT_EQ(l, expected) << to_utf8(l);
+        EXPECT_EQ(display_width_locale(l), 20u);
+    });
+}
+
+/* at every width, the line is the label and as many whole items as fit,
+ * and each visible value is the full value */
+TEST(Text, legend_cut_values_are_whole)
+{
+    const std::vector<std::vector<double>> series = {
+        { 1, 2, 4 },
+        { 1.5e308, 1.5e308, 0 },
+        { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX },
+        { 1, NAN, 3 },
+        { NAN, INFINITY, -INFINITY },
+        { 1e17, 1, -1e17 },
+    };
+    for (const auto &ys : series) {
+        const std::wstring full = cut_line("data", ys, 200);
+        const std::vector<std::wstring> items = detail_items(full);
+        SCOPED_TRACE(to_utf8(full));
+        ASSERT_EQ(items.size(), 4u);
+        EXPECT_EQ(full, L"◘  data   \t" + items[0] + L" " + items[1] + L" " + items[2] + L" " + items[3]);
+
+        for (unsigned cols = BLOT_MIN_COLS; cols <= display_width(full) + 2; cols++) {
+            SCOPED_TRACE(cols);
+            const std::wstring l = cut_line("data", ys, cols);
+
+            /* the longest line of whole items that fits */
+            std::wstring expected = L"◘  data";
+            for (size_t k = 0; k < items.size(); k++) {
+                std::wstring next = expected + (k ? L" " : L"   \t") + items[k];
+                if (display_width(next) > cols)
+                    break;
+                expected = next;
+            }
+            EXPECT_EQ(l, expected) << to_utf8(l);
+
+            /* each visible key=value is that of the full line */
+            std::vector<std::wstring> seen = detail_items(l);
+            ASSERT_LE(seen.size(), items.size());
+            for (size_t k = 0; k < seen.size(); k++) {
+                EXPECT_EQ(seen[k], items[k]);
+                size_t eq = seen[k].find(L'=');
+                ASSERT_NE(eq, std::wstring::npos) << to_utf8(seen[k]);
+                std::string v = to_utf8(seen[k].substr(eq + 1)), fv = to_utf8(items[k].substr(items[k].find(L'=') + 1));
+                if (v == "-" || seen[k].compare(0, 6, L"count=") == 0) {
+                    EXPECT_EQ(v, fv);
+                    continue;
+                }
+                char *end = NULL;
+                double d = strtod(v.c_str(), &end);
+                EXPECT_EQ(*end, '\0') << v;
+                EXPECT_EQ(d, strtod(fv.c_str(), NULL)) << v << " vs " << fv;
+            }
+        }
+    }
 }

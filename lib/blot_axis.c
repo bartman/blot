@@ -3,11 +3,13 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <limits.h>
 #include "blot_axis.h"
 #include "blot_error.h"
 #include "blot_layer.h"
 #include "blot_types.h"
 #include "blot_utils.h"
+#include "blot_text.h"
 
 /* Where the ticks go: tick ti is at about the value d_base + ti*d_jump +
  * data_min and the screen offset s_base + ti*s_jump; blot_axis_place_tick()
@@ -256,18 +258,11 @@ static enum blot_axis_fit blot_axis_numbers_fit(const struct blot_axis_layout *l
 	return last_fits ? BLOT_AXIS_FITS : BLOT_AXIS_LAST_DOES_NOT_FIT;
 }
 
-/* The first n characters of a UTF-8 label (n bytes if it isn't UTF-8);
- * returns the bytes they take. */
+/* The bytes of the longest start of a UTF-8 label that takes at most n
+ * columns, wide characters two in every locale (#18). */
 static size_t blot_axis_label_prefix(const char *label, size_t n)
 {
-	size_t bytes = strlen(label);
-
-	if (!g_utf8_validate(label, bytes, NULL))
-		return min_t(size_t, n, bytes);
-
-	if ((size_t)g_utf8_strlen(label, bytes) <= n)
-		return bytes;
-	return g_utf8_offset_to_pointer(label, n) - label;
+	return blot_text_prefix(label, (unsigned)min_t(size_t, n, UINT_MAX), NULL);
 }
 
 /* Custom X labels: which get a tick, and how they are cut. */
@@ -540,13 +535,14 @@ blot_axis * blot_axis_new_with_room(bool is_vertical, bool is_visible,
 			/* cut, never dropped */
 			unsigned room = blot_axis_custom_room(&lay, ti, cus.step, screen_length);
 			p += blot_axis_cut_label(p, custom, room, cus.mark_cuts) + 1;
+		} else if (use_labels_arg) {
+			/* a NULL custom label: a tick with no text, never a
+			 * number, which would read as a category */
+			*p++ = 0;
 		} else {
 			/* the layout above made sure it is good (the last
 			 * resort for a tiny axis is no text) */
-			unsigned room = !is_vertical && use_labels_arg
-				? min_t(unsigned, BLOT_AXIS_LABEL_MAX + 1,
-					blot_axis_custom_room(&lay, ti, cus.step, screen_length))
-				: blot_axis_number_room(&lay, ti, screen_length);
+			unsigned room = blot_axis_number_room(&lay, ti, screen_length);
 			double half_cell = 0.5 * (data_max - data_min) / screen_length;
 			int rc = blot_axis_good_text(p, room, d_val, half_cell) ? (int)strlen(p) : -1;
 			if (rc < 0)

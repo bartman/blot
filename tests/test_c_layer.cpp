@@ -1,5 +1,7 @@
 #include "blot_test.hpp"
 
+#include <cfloat>
+
 #include "blot_terminal.h"
 #include "blot_layer.h"
 #include "blot_types.h"
@@ -10,6 +12,25 @@
 template <typename T>
 T combine(T a, T b) {
     return static_cast<T>(static_cast<int>(a) | static_cast<int>(b));
+}
+
+/* blot_layer_new()'s error message is "blot_layer_new:<line>: <text>: <strerror>";
+ * this returns "<text>: <strerror>", or the whole message, marked, if it
+ * doesn't start with "blot_layer_new:<line>: " (#34) */
+static std::string layer_new_error_text(const GError *error)
+{
+    const std::string prefix = "blot_layer_new:";
+    const std::string msg = error->message;
+
+    if (msg.compare(0, prefix.size(), prefix) != 0)
+        return "unexpected location in: " + msg;
+    size_t i = prefix.size();
+    size_t digits = i;
+    while (i < msg.size() && isdigit((unsigned char)msg[i]))
+        i++;
+    if (i == digits || msg.compare(i, 2, ": ") != 0)
+        return "unexpected location in: " + msg;
+    return msg.substr(i + 2);
 }
 
 TEST(BaseTest, AssertionTrue)
@@ -48,6 +69,10 @@ TEST(Layer, alloc_zero_count)
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer == NULL);
+    /* a zero count is an invalid value, not a NULL pointer (#34) */
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EINVAL);
+    EXPECT_EQ(layer_new_error_text(error), "data_count is 0: Invalid argument");
     blot_layer_delete(layer);
     g_clear_error(&error);
 }
@@ -83,6 +108,9 @@ TEST(Layer, alloc_NULL_ys)
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer == NULL);
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EFAULT);
+    EXPECT_EQ(layer_new_error_text(error), "data_ys is NULL: Bad address");
     blot_layer_delete(layer);
     g_clear_error(&error);
 }
@@ -1388,6 +1416,76 @@ TEST(Layer, summary_disabled_and_reset)
     blot_layer_delete(lay);
 }
 
+// BUG B22: https://git.jukie.net/bart/blot/-/work_items/22
+TEST(Layer, summary_skips_non_finite)
+{
+    /* a point is summarized when its X and Y are both finite */
+    const blot_xy_limits lim = { 0, 5, 0, 9 };
+    const double xs[] = { 0, 1, 2, 3, 4, NAN }, ys[] = { 2, NAN, INFINITY, -INFINITY, 4, 7 };
+    for (auto t : { BLOT_SCATTER, BLOT_LINE, BLOT_BAR }) {
+        SCOPED_TRACE(testing::Message() << "plot " << t);
+        blot_layer *lay = blot_layer_new(t, BLOT_DATA_DOUBLE, 6, xs, ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+        blot_canvas_delete(blot_layer_render(lay, &lim, &DIM10,
+                                             BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_DETAILS, NULL));
+        const blot_layer_summary &s = lay->summary;
+        EXPECT_TRUE(s.enabled);
+        EXPECT_EQ(s.count, 2u);
+        EXPECT_DOUBLE_EQ(s.xmin, 0);
+        EXPECT_DOUBLE_EQ(s.xmax, 4);
+        EXPECT_DOUBLE_EQ(s.xttl, 4);
+        EXPECT_DOUBLE_EQ(s.ymin, 2);
+        EXPECT_DOUBLE_EQ(s.ymax, 4);
+        EXPECT_DOUBLE_EQ(s.yttl, 6);
+        blot_layer_delete(lay);
+    }
+}
+
+/* #22: the mean of finite values whose sum overflows stays finite, and
+ * between ymin and ymax even where the scaled sum rounds up; the sums
+ * are compensated */
+TEST(Layer, summary_yavg_overflow)
+{
+    const blot_xy_limits lim = { 0, 5, 0, 9 };
+    const double xs[] = { 0, 1, 2, 3, 4 };
+    const struct {
+        size_t n;
+        double ys[5];
+        double avg;
+    } cases[] = {
+        { 3, { DBL_MAX, DBL_MAX, DBL_MAX }, DBL_MAX },
+        { 4, { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX }, 0 },
+        { 2, { -DBL_MAX, -DBL_MAX }, -DBL_MAX },
+        { 2, { 1e308, 1e308 }, 1e308 },
+        { 3, { 1, 2, 4 }, 7.0 / 3 },
+        /* compensated: plain and scaled sums keep the 1 */
+        { 3, { 1e17, 1, -1e17 }, 1.0 / 3 },
+        { 5, { 1e308, 1, 1e308, -1e308, -1e308 }, 0.2 },
+        /* the clamp on the plain path: 0.3 / 3 is 0.10000000000000002 */
+        { 3, { 0.1, 0.1, 0.1 }, 0.1 },
+        /* the scaled sum's mean rounds past max, or below min: the
+         * true means round to max and min */
+        { 3, { 0x1.fffffffffffeap+1023, 0x1.fffffffffffe9p+1023, 0x1.fffffffffffeap+1023 },
+          0x1.fffffffffffeap+1023 },
+        { 3, { 0x1.fffffffffffe6p+1023, 0x1.fffffffffffe7p+1023, 0x1.fffffffffffe6p+1023 },
+          0x1.fffffffffffe6p+1023 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "ys[0] " << c.ys[0] << " n " << c.n);
+        blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_DOUBLE, c.n, xs, c.ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+        blot_canvas_delete(blot_layer_render(lay, &lim, &DIM10,
+                                             BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_DETAILS, NULL));
+        EXPECT_EQ(lay->summary.count, c.n);
+        EXPECT_EQ(blot_layer_summary_yavg(&lay->summary), c.avg);
+        blot_layer_delete(lay);
+    }
+
+    blot_layer_summary none = {};
+    none.enabled = true;
+    EXPECT_TRUE(std::isnan(blot_layer_summary_yavg(&none)));
+}
+
 /* B6 (#6): a NaN no longer makes get_lim forget the values before it */
 TEST(Layer, get_lim_ignores_nan)
 {
@@ -1561,23 +1659,20 @@ TEST(Layer, huge_range_mapping)
     EXPECT_CELLS_EQ(got, Cells({ { 0, 0 }, { 500, 5 }, { 999, 9 } }));
 }
 
-/* #6: in the overflow regime of blot_layer_pos ((v - min) * len is inf),
- * the axis's tick values are drawn
- * - exactly where the plain formula puts them on the same data scaled
+/* #6, #31: in the overflow regime of blot_layer_pos ((v - min) * len is
+ * inf), every tick's value is within the limits and is drawn
+ * - exactly where the plain formula puts it on the same data scaled
  *   down by 2^-600, a normal range where it doesn't overflow (scaling by
  *   a power of two changes no rounding), and
- * - in their tick's cell, or one cell off: the axis computes its ticks
- *   with its own d_jump/s_jump arithmetic, and on ordinary ranges too a
- *   tick value on a cell boundary can round into the cell below, and the
- *   zero-aligned tick's cell can be one low (-1..1 on 74 rows: the 0 tick
- *   is in cell 36, 0 maps to 37).
+ * - in its tick's cell: since #31 a tick's cell is the cell of its value
+ *   (#45 made this exact; it allowed one cell off before #31).
  * By scatter and by line, on both axes. */
 TEST(Layer, huge_range_ticks_land_in_their_cells)
 {
     const double D = DBL_MAX;
     const double ranges[][2] = { { 0, D }, { -D, 0 }, { -D / 2, D / 2 }, { 1e307, D },
                                  { -1e308, 7e307 }, { 0, 1e308 }, { -D, -1e308 } };
-    unsigned checked = 0, exact = 0;
+    unsigned checked = 0;
     for (const auto &rg : ranges) {
         for (unsigned len = 18; len <= 200; len += 7) {
             ASSERT_FALSE(std::isfinite((rg[1] - rg[0]) * len)) << "not the fallback regime";
@@ -1593,15 +1688,10 @@ TEST(Layer, huge_range_ticks_land_in_their_cells)
                                                     << (vertical ? " V" : " H") << " tick " << i
                                                     << " value " << t->value);
                     double v = t->value;
-                    /* with the zero alignment, tick 0 can be an ulp below
-                     * min; such a value has no cell (an axis rounding,
-                     * the same on ordinary ranges) */
-                    if (!(v >= rg[0] && v <= rg[1]))
-                        continue;
+                    EXPECT_TRUE(v >= rg[0] && v <= rg[1]) << "tick value outside the limits";
                     unsigned plain = expected_cell(std::ldexp(v, -600), std::ldexp(rg[0], -600),
                                                    std::ldexp(rg[1], -600), len);
-                    EXPECT_LE(std::abs((int)plain - (int)i), 1) << "plain cell " << plain;
-                    exact += plain == i;
+                    EXPECT_EQ(plain, i) << "plain cell of the tick value";
 
                     /* the tick value on the axis under test, 0 on the other */
                     blot_xy_limits lim = vertical ? blot_xy_limits{ -1, 1, rg[0], rg[1] }
@@ -1622,8 +1712,6 @@ TEST(Layer, huge_range_ticks_land_in_their_cells)
         }
     }
     EXPECT_GT(checked, 1000u);
-    /* the one-off cases are rare */
-    EXPECT_GT(exact, checked * 95 / 100) << exact << " of " << checked;
 }
 
 /* #6: the overflow-safe mapping changes no cell for ordinary ranges: a
@@ -1738,4 +1826,109 @@ TEST(Layer, render_rejects_types_at_max)
         g_clear_error(&error);
         blot_layer_delete(lay);
     });
+}
+
+/* #34: each invalid argument of blot_layer_new() returns NULL, with its
+ * own errno and a message that names it: EINVAL for an invalid value,
+ * EFAULT for a NULL pointer.  Argument checks run in argument order. */
+
+static blot_layer *layer_new_bad(blot_plot_type plot_type, blot_data_type data_type,
+                                 size_t count, const void *ys, GError **error)
+{
+    static const int32_t xs[] = { 1, 2, 3 };
+    return blot_layer_new(plot_type, data_type, count, xs, ys, 1, "label", error);
+}
+
+TEST(Layer, new_bad_plot_type)
+{
+    const int32_t ys[] = { 4, 5, 6 };
+    GError *error = NULL;
+
+    blot_layer *lay = layer_new_bad(BLOT_PLOT_TYPE_MAX, BLOT_DATA_INT32, 3, ys, &error);
+    EXPECT_TRUE(lay == NULL);
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EINVAL);
+    EXPECT_EQ(layer_new_error_text(error), "plot_type 3 is not valid: Invalid argument");
+    g_clear_error(&error);
+    blot_layer_delete(lay);
+
+    /* a value past BLOT_PLOT_TYPE_MAX, or a negative one, would be
+     * undefined behaviour in C++ (UBSan -fsanitize=enum), so it is not
+     * tested from here: the check is on the value as unsigned */
+}
+
+TEST(Layer, new_bad_data_type)
+{
+    const int32_t ys[] = { 4, 5, 6 };
+    const struct {
+        unsigned data_type;
+        const char *text;
+    } cases[] = {
+        /* X past BLOT_DATA_X_DOUBLE */
+        { 0x05,  "data_type 0x5 is not valid: Invalid argument" },
+        /* Y past BLOT_DATA_Y_DOUBLE */
+        { 0x50,  "data_type 0x50 is not valid: Invalid argument" },
+        /* both nibbles all ones */
+        { BLOT_DATA_TYPE_MAX, "data_type 0xff is not valid: Invalid argument" },
+        /* a bit outside both masks would be past the enum's range,
+         * undefined behaviour in C++, so it is not tested from here */
+    };
+
+    for (const auto &c : cases) {
+        SCOPED_TRACE(c.data_type);
+        GError *error = NULL;
+
+        blot_layer *lay = layer_new_bad(BLOT_SCATTER, (blot_data_type)c.data_type, 3, ys, &error);
+        EXPECT_TRUE(lay == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        EXPECT_EQ(layer_new_error_text(error), c.text);
+        g_clear_error(&error);
+        blot_layer_delete(lay);
+    }
+}
+
+TEST(Layer, new_mixed_data_types_are_valid)
+{
+    const int32_t ys[] = { 4, 5, 6 };
+
+    /* every X type with every Y type */
+    for (unsigned x = 0; x <= 4; x++) {
+        for (unsigned y = 0; y <= 4; y++) {
+            SCOPED_TRACE(x + y * 16);
+            GError *error = NULL;
+            blot_data_type dt = BLOT_DATA_TYPE(x, y << 4);
+
+            blot_layer *lay = layer_new_bad(BLOT_LINE, dt, 3, ys, &error);
+            EXPECT_TRUE(lay != NULL);
+            EXPECT_TRUE(error == NULL);
+            g_clear_error(&error);
+            blot_layer_delete(lay);
+        }
+    }
+}
+
+TEST(Layer, new_zero_count_with_NULL_ys)
+{
+    GError *error = NULL;
+
+    /* the count is checked first: it is EINVAL, not EFAULT */
+    blot_layer *lay = layer_new_bad(BLOT_SCATTER, BLOT_DATA_INT32, 0, NULL, &error);
+    EXPECT_TRUE(lay == NULL);
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EINVAL);
+    EXPECT_EQ(layer_new_error_text(error), "data_count is 0: Invalid argument");
+    g_clear_error(&error);
+    blot_layer_delete(lay);
+}
+
+TEST(Layer, new_bad_argument_without_error)
+{
+    const int32_t ys[] = { 4, 5, 6 };
+
+    /* a NULL GError ** is allowed: still NULL, and no crash */
+    EXPECT_TRUE(layer_new_bad(BLOT_PLOT_TYPE_MAX, BLOT_DATA_INT32, 3, ys, NULL) == NULL);
+    EXPECT_TRUE(layer_new_bad(BLOT_SCATTER, BLOT_DATA_TYPE_MAX, 3, ys, NULL) == NULL);
+    EXPECT_TRUE(layer_new_bad(BLOT_SCATTER, BLOT_DATA_INT32, 0, ys, NULL) == NULL);
+    EXPECT_TRUE(layer_new_bad(BLOT_SCATTER, BLOT_DATA_INT32, 3, NULL, NULL) == NULL);
 }
