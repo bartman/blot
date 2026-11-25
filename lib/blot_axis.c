@@ -8,14 +8,13 @@
 #include "blot_types.h"
 #include "blot_utils.h"
 
-#define BLOT_AXIS_LABEL_MAX 16
-
 /* Where the ticks go: tick ti has the value d_base + ti*d_jump + data_min
  * and sits in screen cell (unsigned)(s_base + ti*s_jump). */
 struct blot_axis_layout {
 	unsigned count;
 	double d_jump, s_jump;
 	double d_base, s_base;
+	unsigned y_room;	/* vertical: the room of every number label */
 };
 
 static void blot_axis_layout_init(struct blot_axis_layout *lay, unsigned tick_count,
@@ -73,6 +72,10 @@ static unsigned blot_axis_room_to(unsigned cell, unsigned next_cell, unsigned sc
 static unsigned blot_axis_number_room(const struct blot_axis_layout *lay, unsigned ti,
 				      unsigned screen_length)
 {
+	/* Y labels each have a row of the margin */
+	if (lay->y_room)
+		return lay->y_room;
+
 	unsigned cell = blot_axis_tick_cell(lay, ti);
 	unsigned next = ti + 1 < lay->count ? blot_axis_tick_cell(lay, ti + 1) : screen_length;
 	unsigned room = blot_axis_room_to(cell, next, screen_length);
@@ -88,25 +91,41 @@ enum blot_axis_fit {
 	BLOT_AXIS_DOES_NOT_FIT,
 };
 
+/* The text of number label d_val in room: the formatter's, with the
+ * precision the ticks need, within half a cell (half_cell) of the value
+ * where the room allows (0.0012, not 0.001, for 0.0012 with a cell of
+ * 2e-5; 1.4e-09, not 0.000, for 1.4e-9: #10). */
+static int blot_axis_format(char *text, unsigned room, double d_val, double half_cell)
+{
+	return blot_format_number_within(text, room, d_val, half_cell);
+}
+
 /* The text of d_val in room, if it is a good label: one that fits, and
  * that names a value within half a cell (half_cell) of the tick (not 0.02
  * for 0.018036 in 4 columns, nor 2e+09 for 2.4e9).  When even the text
- * with all the room it could want is further off (0.000 for 1e-9: the
- * formatter's precision, #10), the text may be no further off than that. */
+ * with all the room it could want is further off (a value that needs more
+ * than 16 characters), the text may be no further off than that. */
 static bool blot_axis_good_text(char *text, unsigned room, double d_val, double half_cell)
 {
-	if (blot_format_number(text, room, d_val) < 0)
+	if (blot_axis_format(text, room, d_val, half_cell) < 0)
 		return false;
 
 	if (!(fabs(strtod(text, NULL) - d_val) > half_cell))
 		return true;
 
-	/* the full text is off too: the shorter one may be no further off
-	 * (0.02 for 0.01842 is not, when the full text is 0.018) */
+	/* the full text is off too: the shorter one may be no further off */
 	char full[BLOT_AXIS_LABEL_MAX + 1];
-	if (blot_format_number(full, sizeof(full), d_val) < 0)
+	if (blot_axis_format(full, sizeof(full), d_val, half_cell) < 0)
 		return true;
 	return fabs(strtod(text, NULL) - d_val) <= fabs(strtod(full, NULL) - d_val) * (1 + 1e-9);
+}
+
+int blot_axis_number_label(const blot_axis *axs, char *text, unsigned room, double d_val)
+{
+	double half_cell = 0.5 * (axs->data_max - axs->data_min) / axs->screen_length;
+	if (!blot_axis_good_text(text, room, d_val, half_cell))
+		return -1;
+	return strlen(text);
 }
 
 /* Every label must have a good text, and no two may be the same text only
@@ -139,8 +158,10 @@ static enum blot_axis_fit blot_axis_numbers_fit(const struct blot_axis_layout *l
 				continue;
 
 			char a[BLOT_AXIS_LABEL_MAX + 1], b[BLOT_AXIS_LABEL_MAX + 1];
-			int ra = blot_format_number(a, sizeof(a), blot_axis_tick_value(lay, ti, data_min));
-			int rb = blot_format_number(b, sizeof(b), blot_axis_tick_value(lay, tj, data_min));
+			int ra = blot_axis_format(a, sizeof(a), blot_axis_tick_value(lay, ti, data_min),
+						  half_cell);
+			int rb = blot_axis_format(b, sizeof(b), blot_axis_tick_value(lay, tj, data_min),
+						  half_cell);
 			if (ra >= 0 && rb >= 0 && strcmp(a, b))
 				return BLOT_AXIS_DOES_NOT_FIT;
 		}
@@ -271,6 +292,18 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 			  const blot_strv *labels,
 			  GError **error)
 {
+	return blot_axis_new_with_room(is_vertical, is_visible, color, screen_length,
+				       data_min, data_max, labels, BLOT_AXIS_Y_LABEL_COLS, error);
+}
+
+blot_axis * blot_axis_new_with_room(bool is_vertical, bool is_visible,
+				    blot_color color,
+				    unsigned screen_length,
+				    double data_min, double data_max,
+				    const blot_strv *labels,
+				    unsigned y_label_cols,
+				    GError **error)
+{
 	RETURN_ERRORx(screen_length == 0, NULL, error, EINVAL, "screen_length cannot be zero");
 	RETURN_ERRORx(data_min >= data_max, NULL, error, EINVAL, "data_min must be less than data_max");
 
@@ -318,17 +351,20 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 	struct blot_axis_layout lay;
 	blot_axis_layout_init(&lay, tick_count, screen_length, data_min, data_max,
 			      !use_labels_arg);
+	lay.y_room = is_vertical ? min_t(unsigned, y_label_cols, BLOT_AXIS_Y_LABEL_COLS) + 1 : 0;
 
-	/* Horizontal number labels are written side by side, so they must
-	 * fit between the ticks, and say the value of their own tick to
-	 * within half a cell.  When the zero alignment left the last label
-	 * too little room for that, drop that one tick: the others keep their
-	 * place.  When other labels don't fit, use fewer ticks.  One tick at
-	 * the start of the axis always has room (BLOT_MIN_COLS); on a tiny
-	 * axis a label that still doesn't fit is left empty, the render never
-	 * fails on it. */
+	/* Number labels must say the value of their own tick to within half
+	 * a cell, in their room: horizontal ones are written side by side, so
+	 * they must fit between the ticks; vertical ones each have a row of
+	 * the margin, y_label_cols wide (#10).  When the zero alignment left
+	 * the last label too little room for that, drop that one tick: the
+	 * others keep their place.  When other labels don't fit, use fewer
+	 * ticks.  One horizontal tick at the start of the axis always has
+	 * room (BLOT_MIN_COLS); on a tiny axis or margin a label that still
+	 * doesn't fit is left empty, never a misleading number, and the render
+	 * never fails on it. */
 
-	if (!is_vertical && !use_labels_arg) {
+	if (!use_labels_arg) {
 		for (;;) {
 			enum blot_axis_fit fit = blot_axis_numbers_fit(&lay, screen_length,
 								       data_min, data_max);
@@ -412,15 +448,14 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 			unsigned room = blot_axis_custom_room(&lay, ti, cus.step, screen_length);
 			p += blot_axis_cut_label(p, custom, room, cus.mark_cuts) + 1;
 		} else {
-			/* the layout above made sure it fits (the last
+			/* the layout above made sure it is good (the last
 			 * resort for a tiny axis is no text) */
-			unsigned room = BLOT_AXIS_LABEL_MAX;
-			if (!is_vertical)
-				room = use_labels_arg
-					? min_t(unsigned, BLOT_AXIS_LABEL_MAX + 1,
-						blot_axis_custom_room(&lay, ti, cus.step, screen_length))
-					: blot_axis_number_room(&lay, ti, screen_length);
-			int rc = blot_format_number(p, room, d_val);
+			unsigned room = !is_vertical && use_labels_arg
+				? min_t(unsigned, BLOT_AXIS_LABEL_MAX + 1,
+					blot_axis_custom_room(&lay, ti, cus.step, screen_length))
+				: blot_axis_number_room(&lay, ti, screen_length);
+			double half_cell = 0.5 * (data_max - data_min) / screen_length;
+			int rc = blot_axis_good_text(p, room, d_val, half_cell) ? (int)strlen(p) : -1;
 			if (rc < 0)
 				rc = 0;
 			p[rc] = 0;

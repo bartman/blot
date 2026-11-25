@@ -438,6 +438,60 @@ TEST(Axis, y_labels_within_half_a_cell_sweep)
     }
 }
 
+/* #10: Y labels in a narrow margin (blot_axis_new_with_room): each fits
+ * the columns and names a value within half a cell of its tick, or no
+ * further off than its text with all 15 columns; else the ticks are
+ * fewer, down to one at the start of the axis, whose label is empty when
+ * even that has no such text */
+TEST(Axis, y_labels_in_room_sweep)
+{
+    const double RANGES[][2] = {
+        { 1e-9, 3e-9 }, { -3e-9, -1e-9 }, { 0.001, 0.002 }, { -0.0005, 0.0005 }, { -0.01003, 0.02003 },
+        { 0, 1 }, { -7.01, 3.01 }, { 1e9, 5.2e9 }, { -200100, -99900 }, { 0, 12345678901.0 },
+        { 1e6, 1e6 + 0.001 }, { -1e100, 1e100 }, { -1e15, 1e15 },
+    };
+    for (const auto &rg : RANGES) {
+        for (unsigned cols = 0; cols <= 16; cols++) {
+            for (unsigned len = 3; len <= 60; len++) {
+                SCOPED_TRACE(testing::Message() << "V len " << len << " cols " << cols << " [" << rg[0] << ","
+                                                << rg[1] << "]");
+                GError *e = NULL;
+                blot_axis *axs = blot_axis_new_with_room(true, true, 7, len, rg[0], rg[1], NULL, cols, &e);
+                ASSERT_TRUE(axs) << e->message;
+                double half_cell = 0.5 * (rg[1] - rg[0]) / len;
+                std::set<std::string> seen;
+                unsigned n = 0;
+                for (unsigned i = 0; i < len; i++) {
+                    const blot_axis_tick *t = blot_axis_get_tick_at(axs, i, NULL);
+                    if (!t)
+                        continue;
+                    n++;
+                    std::string label = t->label;
+                    EXPECT_LE(label.size(), std::min(cols, 15u)) << "label '" << label << "'";
+                    if (label.empty()) {
+                        /* only a lone tick at the start */
+                        EXPECT_EQ(i, 0u);
+                        continue;
+                    }
+                    char full[17];
+                    ASSERT_GE(blot_format_number_within(full, 16, t->value, half_cell), 0);
+                    double v = strtod(label.c_str(), NULL);
+                    double err = std::fabs(v - t->value), full_err = std::fabs(strtod(full, NULL) - t->value);
+                    EXPECT_LE(err, std::max(half_cell, full_err * (1 + 1e-9)))
+                        << "tick " << i << " " << t->value << " label '" << label << "' full '" << full << "'";
+                    EXPECT_FALSE(label[0] == '-' && v == 0) << "label '" << label << "'";
+                    EXPECT_TRUE(seen.insert(label).second) << "duplicate label " << label;
+                }
+                EXPECT_GE(n, 1u);
+                if (seen.empty()) {
+                    EXPECT_EQ(n, 1u);
+                }
+                blot_axis_delete(axs);
+            }
+        }
+    }
+}
+
 TEST(Axis, custom_labels_evenly_spaced)
 {
     /* no zero alignment with custom labels */

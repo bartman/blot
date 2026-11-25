@@ -261,6 +261,27 @@ static unsigned blot_figure_int_width(double v)
 	return w;
 }
 
+/* the columns of the widest Y label with all the room it could want, on
+ * a Y-axis of len rows */
+static unsigned blot_figure_y_label_cols(unsigned len, const blot_xy_limits *lim)
+{
+	if (!len)
+		return 0;
+
+	blot_axis *axs = blot_axis_new(true, true, 0, len, lim->y_min, lim->y_max, NULL, NULL);
+	if (!axs)
+		return 0;
+
+	unsigned cols = 0;
+	for (unsigned i=0; i<len; i++) {
+		const blot_axis_tick *t = blot_axis_get_tick_at(axs, i, NULL);
+		if (t && t->label)
+			cols = max_t(unsigned, cols, strlen(t->label));
+	}
+	blot_axis_delete(axs);
+	return cols;
+}
+
 static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 						 blot_render_flags flags,
 						 const blot_xy_limits *lim,
@@ -331,6 +352,13 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 
 	mrg.top += above;
 	mrg.bottom += below;
+
+	/* a Y label may need more columns than the magnitude says, for the
+	 * digits that tell its tick from the next (1.4e-09, 0.0012: #10) */
+	if (!(flags & BLOT_RENDER_NO_Y_AXIS) && mrg.top + mrg.bottom < dim->rows) {
+		unsigned want = blot_figure_y_label_cols(dim->rows - mrg.top - mrg.bottom, lim) + 2;
+		mrg.left = max_t(unsigned, mrg.left, min_t(unsigned, want, dim->cols / 2));
+	}
 
 	return mrg;
 }
@@ -433,11 +461,13 @@ static blot_screen * blot_figure_render_error(blot_figure *fig,
 	RETURN_IF(*error, NULL);
 
 	bool y_axs_visible = !(flags & BLOT_RENDER_NO_Y_AXIS);
-	y_axs = blot_axis_new(1, y_axs_visible,
+	/* the labels take the margin, less the blank and the axis */
+	y_axs = blot_axis_new_with_room(1, y_axs_visible,
 					fig->axis_color,
 					dim.rows - mrg.top - mrg.bottom,
 					lim.y_min, lim.y_max,
-					NULL, error);
+					NULL, mrg.left >= 2 ? mrg.left - 2 : 0,
+					error);
 	if (*error) __free_canvases_array(cans, fig->layer_count);
 	RETURN_IF(*error, NULL);
 
