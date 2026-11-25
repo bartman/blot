@@ -224,6 +224,13 @@ blot --timing line --watch 'nvidia-smi --id=0 -q | grep -m1 "Average Power Draw"
 `blot` is being used in other projects as a library, and it comes with many
 examples for the C and C++ usage.
 
+The screen is at least 20 columns by 12 rows (`BLOT_MIN_COLS` x
+`BLOT_MIN_ROWS` in [blot_figure.h](include/blot_figure.h)): a 10x10 plot area
+plus room for the axes, so every size that is accepted renders with any flags.
+`blot_figure_set_screen_size()` and `blot_terminal_set_size()` reject a
+smaller size with `EINVAL`, and a smaller terminal is plotted at the minimum.
+Up to v0.0.11 the minimum was 10x10, which rendered only without axes.
+
 Generated from [simple.c](examples/c/c-simple.c) (see also [simple.cpp](examples/cpp/cpp-simple.cpp) for C++ wrapper usage)
 
     ./build/examples/c/c-simple
