@@ -54,20 +54,9 @@ extern BLOT_API bool have_color_support;
 
 BLOT_EXTERN_C_END
 
-/* runtime support */
-static inline char *mkcol_runtime(char *buf, size_t size, const char *fmt, int col)
-{
-	g_snprintf(buf, COL_BUF_LEN, fmt, col & 0xFF);
-	return buf;
-}
-
 /* constant expression support */
 #define mkcol_constant(prefix,col) \
 	(prefix __stringify(col) COL_SUFFIX)
-
-/* this allocates a color buffer on the stack */
-#define colbuf(name) \
-	char name[COL_BUF_LEN] = {}
 
 /* the escape sequence for a runtime colour (col & 0xFF): a pointer into a
  * static table, so it needs no buffer and stays valid; fg() and bg() used
