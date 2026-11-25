@@ -14,6 +14,25 @@ T combine(T a, T b) {
     return static_cast<T>(static_cast<int>(a) | static_cast<int>(b));
 }
 
+/* blot_layer_new()'s error message is "blot_layer_new:<line>: <text>: <strerror>";
+ * this returns "<text>: <strerror>", or the whole message, marked, if it
+ * doesn't start with "blot_layer_new:<line>: " (#34) */
+static std::string layer_new_error_text(const GError *error)
+{
+    const std::string prefix = "blot_layer_new:";
+    const std::string msg = error->message;
+
+    if (msg.compare(0, prefix.size(), prefix) != 0)
+        return "unexpected location in: " + msg;
+    size_t i = prefix.size();
+    size_t digits = i;
+    while (i < msg.size() && isdigit((unsigned char)msg[i]))
+        i++;
+    if (i == digits || msg.compare(i, 2, ": ") != 0)
+        return "unexpected location in: " + msg;
+    return msg.substr(i + 2);
+}
+
 TEST(BaseTest, AssertionTrue)
 {
     ASSERT_TRUE(true);
@@ -50,6 +69,10 @@ TEST(Layer, alloc_zero_count)
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer == NULL);
+    /* a zero count is an invalid value, not a NULL pointer (#34) */
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EINVAL);
+    EXPECT_EQ(layer_new_error_text(error), "data_count is 0: Invalid argument");
     blot_layer_delete(layer);
     g_clear_error(&error);
 }
@@ -85,6 +108,9 @@ TEST(Layer, alloc_NULL_ys)
 
     blot_layer *layer = blot_layer_new(plot_type, data_type, data_count, data_xs, data_ys, data_color, data_label, &error);
     ASSERT_TRUE(layer == NULL);
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EFAULT);
+    EXPECT_EQ(layer_new_error_text(error), "data_ys is NULL: Bad address");
     blot_layer_delete(layer);
     g_clear_error(&error);
 }
@@ -1810,4 +1836,109 @@ TEST(Layer, render_rejects_types_at_max)
         g_clear_error(&error);
         blot_layer_delete(lay);
     });
+}
+
+/* #34: each invalid argument of blot_layer_new() returns NULL, with its
+ * own errno and a message that names it: EINVAL for an invalid value,
+ * EFAULT for a NULL pointer.  Argument checks run in argument order. */
+
+static blot_layer *layer_new_bad(blot_plot_type plot_type, blot_data_type data_type,
+                                 size_t count, const void *ys, GError **error)
+{
+    static const int32_t xs[] = { 1, 2, 3 };
+    return blot_layer_new(plot_type, data_type, count, xs, ys, 1, "label", error);
+}
+
+TEST(Layer, new_bad_plot_type)
+{
+    const int32_t ys[] = { 4, 5, 6 };
+    GError *error = NULL;
+
+    blot_layer *lay = layer_new_bad(BLOT_PLOT_TYPE_MAX, BLOT_DATA_INT32, 3, ys, &error);
+    EXPECT_TRUE(lay == NULL);
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EINVAL);
+    EXPECT_EQ(layer_new_error_text(error), "plot_type 3 is not valid: Invalid argument");
+    g_clear_error(&error);
+    blot_layer_delete(lay);
+
+    /* a value past BLOT_PLOT_TYPE_MAX, or a negative one, would be
+     * undefined behaviour in C++ (UBSan -fsanitize=enum), so it is not
+     * tested from here: the check is on the value as unsigned */
+}
+
+TEST(Layer, new_bad_data_type)
+{
+    const int32_t ys[] = { 4, 5, 6 };
+    const struct {
+        unsigned data_type;
+        const char *text;
+    } cases[] = {
+        /* X past BLOT_DATA_X_DOUBLE */
+        { 0x05,  "data_type 0x5 is not valid: Invalid argument" },
+        /* Y past BLOT_DATA_Y_DOUBLE */
+        { 0x50,  "data_type 0x50 is not valid: Invalid argument" },
+        /* both nibbles all ones */
+        { BLOT_DATA_TYPE_MAX, "data_type 0xff is not valid: Invalid argument" },
+        /* a bit outside both masks would be past the enum's range,
+         * undefined behaviour in C++, so it is not tested from here */
+    };
+
+    for (const auto &c : cases) {
+        SCOPED_TRACE(c.data_type);
+        GError *error = NULL;
+
+        blot_layer *lay = layer_new_bad(BLOT_SCATTER, (blot_data_type)c.data_type, 3, ys, &error);
+        EXPECT_TRUE(lay == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        EXPECT_EQ(layer_new_error_text(error), c.text);
+        g_clear_error(&error);
+        blot_layer_delete(lay);
+    }
+}
+
+TEST(Layer, new_mixed_data_types_are_valid)
+{
+    const int32_t ys[] = { 4, 5, 6 };
+
+    /* every X type with every Y type */
+    for (unsigned x = 0; x <= 4; x++) {
+        for (unsigned y = 0; y <= 4; y++) {
+            SCOPED_TRACE(x + y * 16);
+            GError *error = NULL;
+            blot_data_type dt = BLOT_DATA_TYPE(x, y << 4);
+
+            blot_layer *lay = layer_new_bad(BLOT_LINE, dt, 3, ys, &error);
+            EXPECT_TRUE(lay != NULL);
+            EXPECT_TRUE(error == NULL);
+            g_clear_error(&error);
+            blot_layer_delete(lay);
+        }
+    }
+}
+
+TEST(Layer, new_zero_count_with_NULL_ys)
+{
+    GError *error = NULL;
+
+    /* the count is checked first: it is EINVAL, not EFAULT */
+    blot_layer *lay = layer_new_bad(BLOT_SCATTER, BLOT_DATA_INT32, 0, NULL, &error);
+    EXPECT_TRUE(lay == NULL);
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EINVAL);
+    EXPECT_EQ(layer_new_error_text(error), "data_count is 0: Invalid argument");
+    g_clear_error(&error);
+    blot_layer_delete(lay);
+}
+
+TEST(Layer, new_bad_argument_without_error)
+{
+    const int32_t ys[] = { 4, 5, 6 };
+
+    /* a NULL GError ** is allowed: still NULL, and no crash */
+    EXPECT_TRUE(layer_new_bad(BLOT_PLOT_TYPE_MAX, BLOT_DATA_INT32, 3, ys, NULL) == NULL);
+    EXPECT_TRUE(layer_new_bad(BLOT_SCATTER, BLOT_DATA_TYPE_MAX, 3, ys, NULL) == NULL);
+    EXPECT_TRUE(layer_new_bad(BLOT_SCATTER, BLOT_DATA_INT32, 0, ys, NULL) == NULL);
+    EXPECT_TRUE(layer_new_bad(BLOT_SCATTER, BLOT_DATA_INT32, 3, NULL, NULL) == NULL);
 }

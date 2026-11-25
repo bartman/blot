@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <string>
 #include <cstdint>
 #include <vector>
 
@@ -181,6 +182,20 @@ TEST(Figure, add_plot_null_ys)
     const std::vector<int32_t> xs = {1, 2, 3};
     const std::vector<int32_t> ys = {};
     ASSERT_THROW(fig.scatter(xs, ys, 1, "scatter"), Blot::Exception);
+
+    /* what() names the problem (#34) */
+    try {
+        fig.scatter(xs, ys, 1, "scatter");
+        FAIL() << "no exception";
+    } catch (const Blot::Exception &e) {
+        EXPECT_EQ(e.code(), EINVAL);
+        /* the wrapper names the empty ys: "data_ys.empty()" here, "ys_count != 0"
+         * after !31 (#24) rewrote the plot overloads */
+        const std::string what = e.what();
+        EXPECT_TRUE(what.find("data_ys.empty()") != std::string::npos ||
+                    what.find("ys_count != 0") != std::string::npos) << what;
+    }
+    EXPECT_EQ(fig.layer_count, 0u);
 }
 
 TEST(Figure, add_plot_zero_count)
@@ -190,4 +205,27 @@ TEST(Figure, add_plot_zero_count)
     const std::vector<int32_t> xs = {};
     const std::vector<int32_t> ys = {};
     ASSERT_THROW(fig.scatter(xs, ys, 1, "scatter"), Blot::Exception);
+}
+
+/* #34: an invalid plot type throws, what() names the plot type, and the
+ * figure is unchanged */
+TEST(Figure, plot_bad_plot_type)
+{
+    Blot::Figure fig;
+
+    const std::vector<int32_t> xs = {1, 2, 3};
+    const std::vector<int32_t> ys = {4, 5, 6};
+    fig.line(xs, ys, 2, "first");
+    ASSERT_EQ(fig.layer_count, 1u);
+
+    try {
+        fig.plot(BLOT_PLOT_TYPE_MAX, xs, ys, 1, "bad");
+        FAIL() << "no exception";
+    } catch (const Blot::Exception &e) {
+        EXPECT_EQ(e.code(), EINVAL);
+        EXPECT_NE(std::string(e.what()).find("plot_type 3 is not valid: Invalid argument"), std::string::npos) << e.what();
+        EXPECT_EQ(std::string(e.what()).find("x_min"), std::string::npos) << e.what();
+    }
+    EXPECT_EQ(fig.layer_count, 1u);
+    EXPECT_STREQ(fig.layers[0]->label, "first");
 }
