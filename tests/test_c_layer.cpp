@@ -1372,6 +1372,31 @@ TEST(Layer, summary_disabled_and_reset)
     blot_layer_delete(lay);
 }
 
+// BUG B22: https://git.jukie.net/bart/blot/-/work_items/22
+TEST(Layer, summary_skips_non_finite)
+{
+    /* a point is summarized when its X and Y are both finite */
+    const blot_xy_limits lim = { 0, 5, 0, 9 };
+    const double xs[] = { 0, 1, 2, 3, 4, NAN }, ys[] = { 2, NAN, INFINITY, -INFINITY, 4, 7 };
+    for (auto t : { BLOT_SCATTER, BLOT_LINE, BLOT_BAR }) {
+        SCOPED_TRACE(testing::Message() << "plot " << t);
+        blot_layer *lay = blot_layer_new(t, BLOT_DATA_DOUBLE, 6, xs, ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+        blot_canvas_delete(blot_layer_render(lay, &lim, &DIM10,
+                                             BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_DETAILS, NULL));
+        const blot_layer_summary &s = lay->summary;
+        EXPECT_TRUE(s.enabled);
+        EXPECT_EQ(s.count, 2u);
+        EXPECT_DOUBLE_EQ(s.xmin, 0);
+        EXPECT_DOUBLE_EQ(s.xmax, 4);
+        EXPECT_DOUBLE_EQ(s.xttl, 4);
+        EXPECT_DOUBLE_EQ(s.ymin, 2);
+        EXPECT_DOUBLE_EQ(s.ymax, 4);
+        EXPECT_DOUBLE_EQ(s.yttl, 6);
+        blot_layer_delete(lay);
+    }
+}
+
 // BUG B6: https://git.jukie.net/bart/blot/-/work_items/6
 TEST(Layer, DISABLED_get_lim_ignores_nan)
 {
