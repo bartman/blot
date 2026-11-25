@@ -54,40 +54,32 @@ extern BLOT_API bool have_color_support;
 
 BLOT_EXTERN_C_END
 
-/* runtime support */
-static inline char *mkcol_runtime(char *buf, size_t size, const char *fmt, int col)
-{
-	g_snprintf(buf, COL_BUF_LEN, fmt, col & 0xFF);
-	return buf;
-}
-
 /* constant expression support */
 #define mkcol_constant(prefix,col) \
 	(prefix __stringify(col) COL_SUFFIX)
 
-/* this allocates a color buffer on the stack */
-#define colbuf(name) \
-	char name[COL_BUF_LEN] = {}
+/* the escape sequence for a runtime colour (col & 0xFF): a pointer into a
+ * static table, so it needs no buffer and stays valid; fg() and bg() used
+ * to alloca() one per call, which overflowed the stack in a loop (#11) */
+BLOT_EXTERN_C_START
+
+BLOT_API const char *blot_color_fg(int col);
+BLOT_API const char *blot_color_bg(int col);
+
+BLOT_EXTERN_C_END
 
 /* macros to build char colors */
 #define fg(col) ( \
 	have_color_support ? ( \
 		__builtin_constant_p(col) ? ( \
 			mkcol_constant(COL_FG_PREFIX, col) \
-		) : ({ \
-			char *buf = (char*)alloca(COL_BUF_LEN); \
-			mkcol_runtime(buf, COL_BUF_LEN, COL_FG_FMT, col); \
-		}) \
+		) : blot_color_fg(col) \
 	) : "" \
 )
 #define bg(col) ( \
 	have_color_support ? ( \
 		__builtin_constant_p(col) ? ( \
 			mkcol_constant(COL_BG_PREFIX, col) \
-		) : ({ \
-			char *buf = (char*)alloca(COL_BUF_LEN); \
-			mkcol_runtime(buf, COL_BUF_LEN, COL_BG_FMT, col); \
-		}) \
+		) : blot_color_bg(col) \
 	) : "" \
 )
-

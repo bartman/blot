@@ -165,8 +165,8 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 				       GError **error)
 {
 	RETURN_EFAULT_IF(lay==NULL, NULL, error);
-	RETURN_EINVAL_IF(lay->plot_type>BLOT_PLOT_TYPE_MAX, NULL, error);
-	RETURN_EINVAL_IF(lay->data_type>BLOT_DATA_TYPE_MAX, NULL, error);
+	RETURN_EINVAL_IF(lay->plot_type>=BLOT_PLOT_TYPE_MAX, NULL, error);
+	RETURN_EINVAL_IF(lay->data_type>=BLOT_DATA_TYPE_MAX, NULL, error);
 
 	blot_canvas *can = blot_canvas_new(dim->cols, dim->rows, flags, lay->color, error);
 	RETURN_IF(!can, NULL);
@@ -192,16 +192,63 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 	return can;
 }
 
+/* data to canvas mapping
+ *
+ * A value v between min and max goes to cell floor((v - min) * len / (max - min)), and max itself to the last
+ * cell, len - 1.  This is the mapping the axis ticks use (blot_axis_new), so a mark is drawn in the cell whose
+ * tick reads its value.  The arithmetic is done in double; a value outside min..max (or NaN) has no cell. */
+
+static inline double blot_layer_pos(double v, double min, double max, unsigned len)
+{
+	return (v - min) * len / (max - min);
+}
+
+static inline bool blot_layer_cell(double v, double min, double max, unsigned len, unsigned *cell)
+{
+	/* written so that NaN fails too; tested on v, not on the position:
+	 * for v = max the position can round to just above len (0.1 .. 0.7
+	 * on 7 cells gives 7.000000000000001) */
+	if (!(v >= min && v <= max))
+		return false;
+
+	double pos = blot_layer_pos(v, min, max, len);
+	if (isnan(pos))		/* an infinite range */
+		return false;
+
+	*cell = pos < len ? (unsigned)floor(pos) : len - 1;
+	return true;
+}
+
+/* The same mapping as a fractional coordinate, for a line end (#14).
+ *
+ * blot_canvas_draw_line() takes coordinates whose integer values are cell centres: it draws an end in cell
+ * lround(c), and the cells between the ends follow the true segment.  Cell k covers positions k .. k+1, so its
+ * centre is at position k + 0.5, and the coordinate is position - 0.5.  A value that has a cell gets a
+ * coordinate that rounds to exactly the cell blot_layer_cell() gives, the cell a scatter point and the axis tick
+ * of that value are in.  Only two edge cases need moving for that: v = min (coordinate -0.5, which lround takes
+ * to -1) and v = max (len - 0.5, which belongs in the last cell, len - 1); each moves by one ulp.  A value
+ * outside min..max keeps its plain coordinate, so a segment towards it leaves the canvas along its true
+ * direction; NaN stays NaN. */
+
+static inline double blot_layer_coord(double v, double min, double max, unsigned len)
+{
+	double c = blot_layer_pos(v, min, max, len) - 0.5;
+	unsigned cell;
+
+	/* lround(c) != cell only when c is on the edge of the cell (or a
+	 * rounding error away from it); move it to just inside the edge */
+	if (blot_layer_cell(v, min, max, len, &cell) && lround(c) != (long)cell)
+		c = nextafter(c < cell ? cell - 0.5 : cell + 0.5, cell);
+	return c;
+}
+
 /* scatter */
 
 static bool blot_layer_scatter(blot_layer *lay, const blot_xy_limits *lim,
 			 blot_canvas *can, GError **error)
 {
-	double x_range = lim->x_max - lim->x_min + 1;
-	double y_range = lim->y_max - lim->y_min + 1;
-
-	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
-	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(lim->x_max <= lim->x_min, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(lim->y_max <= lim->y_min, false, error, ERANGE, "invalid row limits %f..%f", lim->y_min, lim->y_max);
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location
@@ -213,12 +260,14 @@ static bool blot_layer_scatter(blot_layer *lay, const blot_xy_limits *lim,
 
 		blot_layer_summary_update(&lay->summary, rx, ry);
 
-		// compute location
-		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
-		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
+		// compute location, skip points outside the limits
+		unsigned cx, cy;
+		if (!blot_layer_cell(rx, lim->x_min, lim->x_max, can->dim.cols, &cx)
+		    || !blot_layer_cell(ry, lim->y_min, lim->y_max, can->dim.rows, &cy))
+			continue;
 
 		// plot it
-		blot_canvas_draw_point(can, round(dx), round(dy));
+		blot_canvas_draw_point(can, cx, cy);
 	}
 	return true;
 }
@@ -233,9 +282,8 @@ static bool blot_layer_scatter_int64(blot_layer *lay, const blot_xy_limits *lim,
 	const gint64 *ys = lay->ys;
 
 	RETURN_ERRORx(!lay->ys, false, error, ENOENT, "Y-data is NULL");
-
-	double x_range = lim->x_max - lim->x_min + 1;
-	double y_range = lim->y_max - lim->y_min + 1;
+	RETURN_ERRORx(lim->x_max <= lim->x_min, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(lim->y_max <= lim->y_min, false, error, ERANGE, "invalid row limits %f..%f", lim->y_min, lim->y_max);
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location
@@ -246,12 +294,14 @@ static bool blot_layer_scatter_int64(blot_layer *lay, const blot_xy_limits *lim,
 
 		blot_layer_summary_update(&lay->summary, rx, ry);
 
-		// compute location
-		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
-		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
+		// compute location, skip points outside the limits
+		unsigned cx, cy;
+		if (!blot_layer_cell(rx, lim->x_min, lim->x_max, can->dim.cols, &cx)
+		    || !blot_layer_cell(ry, lim->y_min, lim->y_max, can->dim.rows, &cy))
+			continue;
 
 		// plot it
-		blot_canvas_draw_point(can, round(dx), round(dy));
+		blot_canvas_draw_point(can, cx, cy);
 	}
 	return true;
 }
@@ -263,10 +313,7 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 	double y_range = lim->y_max - lim->y_min;
 
 	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
-	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
-
-	double per_col = (double)(can->dim.cols-1) / x_range;
-	double per_row = (double)(can->dim.rows-1) / y_range;
+	RETURN_ERRORx(y_range <= 0, false, error, ERANGE, "invalid row limits %f..%f", lim->y_min, lim->y_max);
 
 	bool have_prev = false;
 	double px=0, py=0;
@@ -281,9 +328,9 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 
 		blot_layer_summary_update(&lay->summary, rx, ry);
 
-		// compute location
-		double dx = (double)(rx - lim->x_min) * per_col;
-		double dy = (double)(ry - lim->y_min) * per_row;
+		// compute location: the axis mapping, as a cell-centred coordinate
+		double dx = blot_layer_coord(rx, lim->x_min, lim->x_max, can->dim.cols);
+		double dy = blot_layer_coord(ry, lim->y_min, lim->y_max, can->dim.rows);
 
 		// plot it: a segment from the previous point, or the first
 		// point on its own so that a one-point series is drawn too
@@ -303,15 +350,20 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 static bool blot_layer_bar(blot_layer *lay, const blot_xy_limits *lim,
 		      blot_canvas *can, GError **error)
 {
-	double x_range = lim->x_max - lim->x_min + 1;
-	double y_range = lim->y_max - lim->y_min + 1;
+	RETURN_ERRORx(lim->x_max <= lim->x_min, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	RETURN_ERRORx(lim->y_max <= lim->y_min, false, error, ERANGE, "invalid row limits %f..%f", lim->y_min, lim->y_max);
 
-	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
-	RETURN_ERRORx(x_range <= 0, false, error, ERANGE, "invalid column limits %f..%f", lim->x_min, lim->x_max);
+	/* X uses a slot model, not the axis mapping: the X range is cut
+	 * into (x_max - x_min + 1) slots of equal width, one per integer
+	 * from x_min to x_max, and a bar fills the left half of its slot.
+	 * With x = 0..N-1 (xs NULL) that is N slots, and bar i sits under
+	 * custom X label i, which blot_axis_new spreads at the same
+	 * len / N spacing.  On a numeric X axis the slots and the tick
+	 * values disagree; that is the bar layout question of #12. */
 
-	/* bar graphs are plotted as rectangles of this width */
-
-	double wx = (double)(0.5) * can->dim.cols / x_range;
+	double slots = lim->x_max - lim->x_min + 1;
+	double slot_cols = can->dim.cols / slots;
+	double half_slot = 0.5 * slot_cols;
 
 	for (int di=0; di<lay->count; di++) {
 		// read the location
@@ -323,12 +375,26 @@ static bool blot_layer_bar(blot_layer *lay, const blot_xy_limits *lim,
 
 		blot_layer_summary_update(&lay->summary, rx, ry);
 
-		// compute location
-		double dx = (double)(rx - lim->x_min) * can->dim.cols / x_range;
-		double dy = (double)(ry - lim->y_min) * can->dim.rows / y_range;
+		// skip a bar whose x is outside the limits (also NaN)
+		if (!(rx >= lim->x_min && rx <= lim->x_max))
+			continue;
+
+		// columns: the left edge of the slot, and half a slot to the right;
+		// x_max is in slot (slots - 1), which starts before the last column
+		double sx = (rx - lim->x_min) * slot_cols;
+		unsigned x0 = min_t(double, round(sx), can->dim.cols - 1);
+		unsigned x1 = min_t(double, round(sx + half_slot), can->dim.cols - 1);
+
+		// height: the axis mapping; skip a bar whose top is below the
+		// limits, cut one that is taller at the top row
+		unsigned cy;
+		if (ry > lim->y_max)
+			cy = can->dim.rows - 1;
+		else if (!blot_layer_cell(ry, lim->y_min, lim->y_max, can->dim.rows, &cy))
+			continue;
 
 		// plot it
-		blot_canvas_fill_rect(can, round(dx), 0, round(dx+wx), round(dy));
+		blot_canvas_fill_rect(can, x0, 0, x1, cy);
 	}
 
 	return true;

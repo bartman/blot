@@ -55,8 +55,7 @@ int top_row_in(const Cells &cs, unsigned c0, unsigned c1)
 
 } // namespace
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_scatter_agrees_with_axes)
+TEST(Edge, scatter_agrees_with_axes)
 {
     const double v[] = { 0, 0.25, 0.5, 0.75, 1 };
     Rendered r = render_one(40, 16, BLOT_SCATTER, BLOT_DATA_DOUBLE, 5, v, v);
@@ -120,24 +119,66 @@ void expect_marks_on_ticks(blot_plot_type type)
 
 } // namespace
 
-// BUG: https://git.jukie.net/bart/blot/-/work_items/14
-// a line maps y with round(v * (rows-1) / range), the Y axis with
-// floor(v * rows / range); a point on a tick value lands one row off its
-// tick (y 0..1, 40x16: 0.2 on row 3, its tick on row 2)
-TEST(Edge, DISABLED_point_on_tick_value_lands_on_tick_line)
+/* #14: a line used to map y with round(v * (rows-1) / range), the Y axis
+ * floor(v * rows / range); a point on a tick value landed one row off its
+ * tick (y 0..1, 40x16: 0.2 on row 3, its tick on row 2) */
+TEST(Edge, point_on_tick_value_lands_on_tick_line)
 {
     expect_marks_on_ticks(BLOT_LINE);
 }
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_point_on_tick_value_lands_on_tick_scatter_bar)
+/* #14, the same on X: for every X tick, a mark at the tick's value is in
+ * the tick's column.  The limits don't cross 0, so tick i of n has the
+ * value lo + i * ((hi - lo) / n), as blot_axis_new() computes it (the
+ * labels are rounded, and narrow ones cut, so they are not parsed) */
+TEST(Edge, point_on_x_tick_value_lands_on_tick_column)
+{
+    const double xlims[][2] = { { 0, 1 }, { 0, 9 }, { -250, -200 } };
+    for (blot_plot_type type : { BLOT_LINE, BLOT_SCATTER }) {
+        for (const auto &xl : xlims) {
+            for (unsigned width : { 40u, 60u, 80u }) {
+                Rendered axes;
+                {
+                    const double xs[] = { xl[0], xl[1] }, ys[] = { 0, 1 };
+                    Fig f(width, 16);
+                    f.lim(xl[0], xl[1], 0, 1);
+                    f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
+                    axes = render(f, F);
+                    ASSERT_TRUE(axes.ok) << axes.message;
+                }
+                auto ticks = x_ticks(axes);
+                unsigned n = ticks.size();
+                ASSERT_GE(n, 3u);
+                for (unsigned ti = 1; ti < n; ti++) {
+                    double v = xl[0] + ti * ((xl[1] - xl[0]) / n);
+                    SCOPED_TRACE(testing::Message() << "x " << xl[0] << ".." << xl[1] << " width " << width
+                                                    << " tick " << ti << " of " << n << " value " << v
+                                                    << " plot " << type);
+                    const double xs[] = { v, v }, ys[] = { 0.25, 0.75 };
+                    Fig f(width, 16);
+                    f.lim(xl[0], xl[1], 0, 1);
+                    f.plot(type, BLOT_DATA_DOUBLE, 2, xs, ys);
+                    Rendered r = render(f, F);
+                    ASSERT_TRUE(r.ok) << r.message;
+                    Cells m = plot_cells(r);
+                    ASSERT_FALSE(m.empty());
+                    std::set<unsigned> cols;
+                    for (const auto &c : m)
+                        cols.insert(c.first);
+                    EXPECT_EQ(cols, std::set<unsigned>({ ticks[ti].first })) << cells_str(m);
+                }
+            }
+        }
+    }
+}
+
+TEST(Edge, point_on_tick_value_lands_on_tick_scatter_bar)
 {
     expect_marks_on_ticks(BLOT_SCATTER);
     expect_marks_on_ticks(BLOT_BAR);
 }
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_scatter_and_line_share_cells)
+TEST(Edge, scatter_and_line_share_cells)
 {
     const gint32 v[] = { 0, 5, 10 };
     for (blot_plot_type type : { BLOT_LINE, BLOT_SCATTER }) {
@@ -150,8 +191,7 @@ TEST(Edge, DISABLED_scatter_and_line_share_cells)
     }
 }
 
-// BUG B2: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_wide_range_scatter_keeps_all_points)
+TEST(Edge, wide_range_scatter_keeps_all_points)
 {
     const gint32 v[] = { 0, 500, 1000 };
     Rendered r = render_one(40, 16, BLOT_SCATTER, BLOT_DATA_INT32, 3, v, v);
@@ -161,8 +201,7 @@ TEST(Edge, DISABLED_wide_range_scatter_keeps_all_points)
     EXPECT_TRUE(rows_of(m).count(r.plot_rows() - 1)) << cells_str(m);
 }
 
-// BUG B2: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_wide_range_bar_keeps_tallest)
+TEST(Edge, wide_range_bar_keeps_tallest)
 {
     const gint32 v[] = { 0, 500, 1000 };
     Rendered r = render_one(40, 16, BLOT_BAR, BLOT_DATA_INT32, 3, v, v);
@@ -171,8 +210,7 @@ TEST(Edge, DISABLED_wide_range_bar_keeps_tallest)
     EXPECT_TRUE(rows_of(m).count(r.plot_rows() - 1)) << cells_str(m);
 }
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_single_point_is_centred)
+TEST(Edge, single_point_is_centred)
 {
     const double xs[] = { 5 }, ys[] = { -250 };
     Rendered r = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys);
@@ -180,8 +218,15 @@ TEST(Edge, DISABLED_single_point_is_centred)
     ASSERT_EQ(r.plot_cols(), 29u);
     ASSERT_EQ(r.plot_rows(), 12u);
     EXPECT_EQ(plot_cells(r), Cells({ { 14, 6 } })) << cells_str(plot_cells(r));
+}
 
-    r = render_one(40, 14, BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys);
+/* bar X uses a slot per integer of the X range, not the axis mapping (#3):
+ * on this numeric axis the bar starts in column 7, not 14 */
+// BUG B21: https://git.jukie.net/bart/blot/-/work_items/12
+TEST(Edge, DISABLED_single_point_bar_is_centred)
+{
+    const double xs[] = { 5 }, ys[] = { -250 };
+    Rendered r = render_one(40, 14, BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys);
     ASSERT_TRUE(r.ok) << r.message;
     Cells m = plot_cells(r);
     ASSERT_FALSE(m.empty());

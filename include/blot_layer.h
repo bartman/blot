@@ -50,7 +50,7 @@ BLOT_EXTERN_C_END
 static inline bool blot_layer_get_x(const blot_layer *lay, unsigned index,
 				    double *x, GError **error)
 {
-	RETURN_ERRORx(index > lay->count, false, error, ERANGE,
+	RETURN_ERRORx(index >= lay->count, false, error, ERANGE,
 		      "index %u is out of range %u", index, lay->count);
 
 	if (unlikely (!lay->xs)) {
@@ -88,7 +88,7 @@ static inline bool blot_layer_get_y(const blot_layer *lay, unsigned index,
 				    double *y, GError **error)
 {
 	RETURN_ERRORx(!lay->ys, false, error, ENOENT, "Y-data is NULL");
-	RETURN_ERRORx(index > lay->count, false, error, ERANGE,
+	RETURN_ERRORx(index >= lay->count, false, error, ERANGE,
 		      "index %u is out of range %u", index, lay->count);
 
 	switch (lay->data_type & BLOT_DATA_Y_MASK) {
