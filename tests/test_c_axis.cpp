@@ -452,14 +452,16 @@ TEST(Axis, custom_label_ticks_in_their_cells)
  * it, even when its value rounded to just below it (5/7 on 21 cells over
  * 0..1 is 0.71428571428571419, in cell 14 by an ulp): its value is raised
  * into that cell by the rounding error, so the ticks stay evenly spaced
- * and a point on the tick's value is still drawn on the tick (#31). */
+ * and a point on the tick's value is still drawn on the tick (#31).  Its
+ * label is in that cell too (#42): 0.572 for 4/7 at 12, not 0.571, which
+ * is at 11.991 (0.715 for 5/7, 0.858 for 6/7). */
 TEST(Axis, ticks_on_cell_edges_evenly_spaced)
 {
     {
         Axis a(true, 21, 0, 1);
         ASSERT_TRUE(a.axs) << a.error;
         EXPECT_EQ(a.labels(), zip({ 0, 3, 6, 9, 12, 15, 18 },
-                                  { "0.000", "0.143", "0.286", "0.429", "0.571", "0.714", "0.857" }));
+                                  { "0.000", "0.143", "0.286", "0.429", "0.572", "0.715", "0.858" }));
         ticks_in_their_cells(a, true, 21, 0, 1);
     }
     {
@@ -627,9 +629,12 @@ TEST(Axis, tiny_range_labels_exact)
         EXPECT_EQ(a.labels(), zip({ 0, 2, 4, 7, 9 }, { "1e-09", "1.4e-09", "1.8e-09", "2.2e-09", "2.6e-09" }));
     }
     {
+        /* #42: the double 0.0012 is at 9.999999999999993, in cell 9,
+         * where a point at 0.0012 is drawn, not the tick's cell 10:
+         * 0.00121, the middle of cell 10 (0.0014 and 0.0018 too) */
         Axis a(false, 50, 0.001, 0.002);
         ASSERT_TRUE(a.axs) << a.error;
-        EXPECT_EQ(a.labels(), zip({ 0, 10, 20, 30, 40 }, { "0.001", "0.0012", "0.0014", "0.0016", "0.0018" }));
+        EXPECT_EQ(a.labels(), zip({ 0, 10, 20, 30, 40 }, { "0.001", "0.00121", "0.00141", "0.0016", "0.00181" }));
     }
     {
         /* three ticks have 6 columns each: 0.00133 doesn't fit, and

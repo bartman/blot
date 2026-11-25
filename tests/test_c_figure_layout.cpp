@@ -870,9 +870,10 @@ void expect_x_labels_exact(const Rendered &r, double x_min, double x_max)
 } // namespace
 
 /* #10 review L1: an autoscaled axis whose minimum is a tiny positive
- * value (1.09e-7, 4.1e-5) labels its first tick 0.000, as before: within
- * half a cell, fixed point is taken even when it is less precise than
- * %.1g (not 1.1e-07, 4.1e-05) */
+ * value (1.09e-7, 4.1e-5) labels its first tick in fixed point, even
+ * when it is less precise than %.1g (not 1.1e-07, 4.1e-05).  #42: 0.001,
+ * not 0.000: 0 is below the minimum, off the axis, and a point at 0 isn't
+ * drawn; 0.001 is in row 0, within half a cell */
 TEST(Layout, near_zero_minimum_labels_exact)
 {
     for (double lo : { 0.00099911, 0.00104 }) {
@@ -883,7 +884,7 @@ TEST(Layout, near_zero_minimum_labels_exact)
         Rendered r = render(f, F);
         ASSERT_TRUE(r.ok) << r.message;
         EXPECT_EQ(r.mrg.left, 8u);
-        EXPECT_EQ(labels_of(y_ticks(r)), std::vector<std::string>({ "0.000", "0.200", "0.400", "0.601", "0.801" }));
+        EXPECT_EQ(labels_of(y_ticks(r)), std::vector<std::string>({ "0.001", "0.200", "0.400", "0.601", "0.801" }));
         EXPECT_EQ(labels_of(x_ticks(r)), std::vector<std::string>({ "0.000", "0.334", "0.668" }));
     }
 }
