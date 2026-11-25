@@ -14,7 +14,11 @@
 namespace Blot {
 
 /* the C code already allocated a "GError", this class just
- * carries it through the exception mechanism, then cleans up. */
+ * carries it through the exception mechanism, then cleans up.
+ *
+ * An Exception can be empty, without a GError: after a move, or when made
+ * from nullptr.  It still has a message, unknown_error, so what() and
+ * str() never give nullptr or an empty text (#27); its code() is 0. */
 class Exception final : public std::exception {
 protected:
 	GError *m_error;
@@ -46,14 +50,28 @@ public:
 		return *this;
 	}
 
-	operator bool() const { return m_error != nullptr; }
-	int code() const { return m_error ? m_error->code : 0; }
-	std::string str() const { if (m_error) return m_error->message; return {}; }
+	static constexpr const char *unknown_error = "blot: unknown error";
 
-	const char * what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW override {
-		return m_error ? m_error->message : nullptr;
+	/* true when it carries a GError */
+	operator bool() const noexcept { return m_error != nullptr; }
+	int code() const noexcept { return m_error ? m_error->code : 0; }
+	std::string str() const { return what(); }
+
+	const char * what() const noexcept override {
+		if (m_error && m_error->message)
+			return m_error->message;
+		return unknown_error;
 	}
 };
+
+/* throw the error a C call gave; one that failed without setting an error
+ * still throws an Exception that names it, with code 0 */
+[[noreturn]] inline void throw_error(GError *error, const char *call)
+{
+	if (!error)
+		error = g_error_new(G_UNIX_ERROR, 0, "blot: %s() failed without an error", call);
+	throw Exception(error);
+}
 
 
 #if (defined(DEBUG) && DEBUG) || (defined(NDEBUG) && !NDEBUG)
@@ -107,9 +125,8 @@ struct Dimensions final : public blot_dimensions {
 public:
 	explicit Dimensions() {
 		GError *error = nullptr;
-		blot_terminal_get_size(this, &error);
-		if (error)
-			throw Exception(error);
+		if (!blot_terminal_get_size(this, &error))
+			throw_error(error, "blot_terminal_get_size");
 	}
 };
 
@@ -145,7 +162,7 @@ public:
 		gsize tmp_size;
 		auto txt = blot_screen_get_text(m_screen, &tmp_size, &error);
 		if (!txt)
-			throw Exception(error);
+			throw_error(error, "blot_screen_get_text");
 		size = tmp_size;
 		return txt;
 	}
@@ -160,7 +177,7 @@ public:
 		GError *error = nullptr;
 
 		if (!blot_figure_init(this, &error)) [[unlikely]] {
-			throw Exception(error);
+			throw_error(error, "blot_figure_init");
 		}
 	}
 	~Figure() {
@@ -197,25 +214,25 @@ public:
 	void set_axis_color(blot_color color) {
 		GError *error = nullptr;
 		if (!blot_figure_set_axis_color(this, color, &error))
-			throw Exception(error);
+			throw_error(error, "blot_figure_set_axis_color");
 	}
 
 	void set_screen_size(unsigned cols, unsigned rows) {
 		GError *error = nullptr;
 		if (!blot_figure_set_screen_size(this, cols, rows, &error)) {
-			throw Exception(error);
+			throw_error(error, "blot_figure_set_screen_size");
 		}
 	}
 
 	void set_x_limits(double x_min, double x_max) {
 		GError *error = nullptr;
 		if (!blot_figure_set_x_limits(this, x_min, x_max, &error))
-			throw Exception(error);
+			throw_error(error, "blot_figure_set_x_limits");
 	}
 	void set_y_limits(double y_min, double y_max) {
 		GError *error = nullptr;
 		if (!blot_figure_set_y_limits(this, y_min, y_max, &error))
-			throw Exception(error);
+			throw_error(error, "blot_figure_set_y_limits");
 	}
 
 	void set_x_axis_labels(const std::vector<const char *> &labels) {
@@ -224,7 +241,7 @@ public:
 		size_t label_count = labels.size();
 		char **x_labels = (char**)labels.data(); // TOOD: fix this cast!
 		if (!blot_figure_set_x_axis_labels(this, label_count, x_labels, &error))
-			throw Exception(error);
+			throw_error(error, "blot_figure_set_x_axis_labels");
 	}
 
 	/* add layers */
@@ -248,7 +265,7 @@ public:
 		blot_data_type data_type = BLOT_DATA_TYPE(x_data_type, y_data_type);
 
 		if (!blot_figure_plot(this, plot_type, data_type, data_count, ptr_xs, ptr_ys, data_color, data_label, &error)) {
-			throw Exception(error);
+			throw_error(error, "blot_figure_plot");
 		}
 	}
 
@@ -296,7 +313,7 @@ public:
 		GError *error = nullptr;
 		blot_screen * screen = blot_figure_render(this, flags, &error);
 		if (!screen)
-			throw Exception(error);
+			throw_error(error, "blot_figure_render");
 		return Screen(screen);
 	}
 

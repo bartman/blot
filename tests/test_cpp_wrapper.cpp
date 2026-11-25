@@ -391,3 +391,28 @@ TEST(CppException, accessors_of_error)
 	EXPECT_EQ(e.str(), "error 34");
 	EXPECT_STREQ(e.what(), "error 34");
 }
+
+TEST(CppException, throw_error_without_error)
+{
+	/* a C call that fails without setting an error still throws a
+	 * message that names it */
+	try {
+		Blot::throw_error(nullptr, "blot_figure_render");
+	} catch (const Blot::Exception &e) {
+		EXPECT_TRUE(e);
+		EXPECT_EQ(e.code(), 0);
+		EXPECT_STREQ(e.what(), "blot: blot_figure_render() failed without an error");
+		EXPECT_EQ(e.str(), e.what());
+	}
+}
+
+TEST(CppException, throw_error_with_error)
+{
+	/* the C call's own error is passed on as it is */
+	try {
+		Blot::throw_error(g_error_new(G_UNIX_ERROR, ERANGE, "out of range"), "blot_figure_plot");
+	} catch (const Blot::Exception &e) {
+		EXPECT_EQ(e.code(), ERANGE);
+		EXPECT_STREQ(e.what(), "out of range");
+	}
+}
