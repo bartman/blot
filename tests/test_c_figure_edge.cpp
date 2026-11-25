@@ -395,6 +395,79 @@ TEST(Edge, range_wider_than_dbl_max)
     });
 }
 
+/* #6 with #7: only an auto-ranged axis needs finite data.  An axis with
+ * user limits keeps them whatever its data is: all NaN or inf draws
+ * nothing there, and data wider than DBL_MAX is no error.  The free axis
+ * still fails with ENOENT when it has no finite value, and with ERANGE
+ * when its data is wider than DBL_MAX. */
+TEST(Edge, one_sided_limits_with_non_finite_data)
+{
+    const double N = NAN, I = INFINITY, D = DBL_MAX;
+    const double fin[] = { 1, 2, 3 }, bad[] = { N, I, -I }, wide[] = { -D, 0, D };
+    for (bool limit_y : { true, false }) {
+        for (blot_plot_type type : { BLOT_SCATTER, BLOT_LINE, BLOT_BAR }) {
+            SCOPED_TRACE(testing::Message() << (limit_y ? "y" : "x") << " limits, plot " << type);
+            RUN_ISOLATED(5, {
+                /* the limited axis has no finite value: nothing is drawn */
+                Fig f(40, 14);
+                if (limit_y)
+                    f.ylim(0, 10);
+                else
+                    f.xlim(0, 10);
+                f.plot(type, BLOT_DATA_DOUBLE, 3, limit_y ? fin : bad, limit_y ? bad : fin);
+                Rendered r = render(f, F);
+                ASSERT_TRUE(r.ok) << r.message;
+                EXPECT_TRUE(plot_cells(r).empty()) << cells_str(plot_cells(r));
+                expect_no_nan_label(r);
+                std::vector<std::string> lim_labels = labels_of(limit_y ? y_ticks(r) : x_ticks(r));
+                ASSERT_FALSE(lim_labels.empty());
+                EXPECT_EQ(lim_labels.front(), "0.000");
+            });
+            /* the limited axis's data is wider than DBL_MAX: only the
+             * 0, inside the limits, is drawn.  Not for a line: a segment
+             * to a point far outside the limits hangs until #5 clips */
+            if (type != BLOT_LINE) RUN_ISOLATED(5, {
+                Fig f(40, 14);
+                if (limit_y)
+                    f.ylim(-1, 10);
+                else
+                    f.xlim(-1, 10);
+                f.plot(type, BLOT_DATA_DOUBLE, 3, limit_y ? fin : wide, limit_y ? wide : fin);
+                Rendered r = render(f, F);
+                ASSERT_TRUE(r.ok) << r.message;
+                expect_no_nan_label(r);
+                if (type == BLOT_SCATTER) {
+                    EXPECT_EQ(plot_cells(r).size(), 1u) << cells_str(plot_cells(r));
+                }
+            });
+            RUN_ISOLATED(5, {
+                /* the free axis has no finite value: no data */
+                Fig f(40, 14);
+                if (limit_y)
+                    f.ylim(0, 10);
+                else
+                    f.xlim(0, 10);
+                f.plot(type, BLOT_DATA_DOUBLE, 3, limit_y ? bad : fin, limit_y ? fin : bad);
+                Rendered r = render(f, F);
+                EXPECT_FALSE(r.ok);
+                EXPECT_EQ(r.code, ENOENT) << r.message;
+            });
+            RUN_ISOLATED(5, {
+                /* the free axis's data is wider than DBL_MAX: ERANGE */
+                Fig f(40, 14);
+                if (limit_y)
+                    f.ylim(0, 10);
+                else
+                    f.xlim(0, 10);
+                f.plot(type, BLOT_DATA_DOUBLE, 3, limit_y ? wide : fin, limit_y ? fin : wide);
+                Rendered r = render(f, F);
+                EXPECT_FALSE(r.ok);
+                EXPECT_EQ(r.code, ERANGE) << r.message;
+            });
+        }
+    }
+}
+
 TEST(Edge, huge_values)
 {
     const double v[] = { -1e300, 1e300 };
