@@ -1403,6 +1403,10 @@ TEST(Layer, cell_mapping_unchanged_for_normal_ranges)
     std::mt19937_64 rng(6);
     for (const auto &r : ranges) {
         for (unsigned len : lens) {
+            /* ordinary: the plain formula doesn't overflow anywhere in
+             * the range (huge_range_mapping has the others) */
+            if (!std::isfinite((r[1] - r[0]) * len))
+                continue;
             SCOPED_TRACE(testing::Message() << r[0] << ".." << r[1] << " len " << len);
             std::vector<double> vs;
             for (unsigned k = 0; k <= len; k++) {

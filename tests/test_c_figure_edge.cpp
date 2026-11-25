@@ -293,12 +293,14 @@ TEST(Edge, all_non_finite_data_is_no_data)
     }
 }
 
-/* #6: a layer with no finite value next to one with data: the limits and
- * the picture are those of the other layer alone */
+/* #6: a layer with no finite y next to one with data: the limits and the
+ * picture are those of the other layer alone.  Limits are per coordinate,
+ * so the finite x of the first layer still count; they are inside the
+ * other layer's x range here. */
 TEST(Edge, non_finite_layer_beside_finite_layer)
 {
     const double xs[] = { 0, 1, 2, 3 }, ys[] = { 4, 1, 7, 2 };
-    const double nx[] = { 9, 10, 11 }, ny[] = { NAN, INFINITY, -INFINITY };
+    const double nx[] = { 1, 2, NAN }, ny[] = { NAN, INFINITY, -INFINITY };
 
     Fig alone(40, 14);
     alone.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 4, xs, ys);
