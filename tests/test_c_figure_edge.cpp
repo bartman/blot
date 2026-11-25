@@ -120,9 +120,10 @@ void expect_marks_on_ticks(blot_plot_type type)
 
 } // namespace
 
-// BUG (new, issue not filed yet): a line maps y with round(v * (rows-1) / range),
-// the Y axis with floor(v * rows / range); a point on a tick value lands one
-// row off its tick (y 0..1, 40x16: 0.2 on row 3, its tick on row 2)
+// BUG: https://git.jukie.net/bart/blot/-/work_items/14
+// a line maps y with round(v * (rows-1) / range), the Y axis with
+// floor(v * rows / range); a point on a tick value lands one row off its
+// tick (y 0..1, 40x16: 0.2 on row 3, its tick on row 2)
 TEST(Edge, DISABLED_point_on_tick_value_lands_on_tick_line)
 {
     expect_marks_on_ticks(BLOT_LINE);

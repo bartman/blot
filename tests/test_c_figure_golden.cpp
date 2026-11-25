@@ -296,9 +296,8 @@ TEST(Golden, no_axes_three_plot_types)
 /* G13..G20, G22 have sloped lines: their interior cells depend on how
  * blot_canvas_draw_line() rounds (both ends rounded to the nearest cell,
  * integer steps between, since #4); regenerate them and check them
- * against the data if that changes.  With auto limits they also pin where a line
- * maps y (round(v * (rows-1) / range), Edge.DISABLED_point_on_tick_value_
- * lands_on_tick_line) */
+ * against the data if that changes.  With auto limits they also pin where a
+ * line maps y (round(v * (rows-1) / range), #14) */
 
 TEST(Golden, auto_limits_line)
 {
