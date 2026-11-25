@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <cerrno>
+#include <cfloat>
+#include <cmath>
+
 #include "blot_terminal.h"
 #include "blot_figure.h"
 #include "blot_error.h"
@@ -92,6 +96,48 @@ TEST(Figure, set_y_limits)
     blot_figure_delete(fig);
 }
 
+/* #6: limits must be finite and no further apart than the largest
+ * double; a rejected call leaves the figure as it was */
+TEST(Figure, set_limits_rejects_non_finite)
+{
+    const double bad[][2] = { { NAN, 1 }, { 0, NAN }, { NAN, NAN }, { 0, INFINITY },
+                              { -INFINITY, 0 }, { -INFINITY, INFINITY }, { -DBL_MAX, DBL_MAX },
+                              { -1e308, 1e308 } };
+    for (bool x : { true, false }) {
+        for (const auto &l : bad) {
+            SCOPED_TRACE(testing::Message() << (x ? "x" : "y") << " [" << l[0] << "," << l[1] << "]");
+            blot_figure *fig = blot_figure_new(NULL);
+            ASSERT_TRUE(fig != NULL);
+            GError *error = NULL;
+            bool ok = x ? blot_figure_set_x_limits(fig, l[0], l[1], &error)
+                        : blot_figure_set_y_limits(fig, l[0], l[1], &error);
+            EXPECT_FALSE(ok);
+            ASSERT_TRUE(error != NULL);
+            bool finite = std::isfinite(l[0]) && std::isfinite(l[1]);
+            EXPECT_EQ(error->code, finite ? ERANGE : EINVAL) << error->message;
+            g_clear_error(&error);
+            EXPECT_FALSE(fig->x_limits_set);
+            EXPECT_FALSE(fig->y_limits_set);
+            EXPECT_EQ(fig->lim.x_min, 0);
+            EXPECT_EQ(fig->lim.x_max, 0);
+            EXPECT_EQ(fig->lim.y_min, 0);
+            EXPECT_EQ(fig->lim.y_max, 0);
+            blot_figure_delete(fig);
+        }
+    }
+
+    /* the widest finite ranges are still accepted */
+    const double good[][2] = { { 0, DBL_MAX }, { -DBL_MAX, 0 }, { -DBL_MAX / 2, DBL_MAX / 2 } };
+    for (const auto &l : good) {
+        SCOPED_TRACE(testing::Message() << "[" << l[0] << "," << l[1] << "]");
+        blot_figure *fig = blot_figure_new(NULL);
+        ASSERT_TRUE(fig != NULL);
+        EXPECT_TRUE(blot_figure_set_x_limits(fig, l[0], l[1], NULL));
+        EXPECT_TRUE(blot_figure_set_y_limits(fig, l[0], l[1], NULL));
+        blot_figure_delete(fig);
+    }
+}
+
 TEST(Figure, set_x_axis_labels)
 {
     GError *error = NULL;
@@ -103,7 +149,11 @@ TEST(Figure, set_x_axis_labels)
     ASSERT_TRUE(blot_figure_set_x_axis_labels(fig, 3, labels, &error));
     ASSERT_TRUE(error == NULL);
     ASSERT_EQ(fig->xlabels.count, 3);
-    ASSERT_EQ(fig->xlabels.strings, labels);
+    /* the figure keeps a copy (#23) */
+    ASSERT_NE(fig->xlabels.strings, labels);
+    ASSERT_STREQ(fig->xlabels.strings[0], "a");
+    ASSERT_STREQ(fig->xlabels.strings[1], "b");
+    ASSERT_STREQ(fig->xlabels.strings[2], "c");
 
     // Test invalid labels
     ASSERT_FALSE(blot_figure_set_x_axis_labels(fig, 0, labels, &error));
