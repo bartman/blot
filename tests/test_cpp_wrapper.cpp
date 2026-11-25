@@ -151,20 +151,20 @@ TEST(CppFigure, move_construct)
 {
 	Blot::Figure a = make_figure(2);
 	a.set_x_limits(0, 5);
-	ASSERT_EQ(a.layer_count, 2u);
-	blot_layer **layers = a.layers;
+	ASSERT_EQ(a.c_ptr()->layer_count, 2u);
+	blot_layer **layers = a.c_ptr()->layers;
 
 	Blot::Figure b(std::move(a));
-	EXPECT_EQ(b.layer_count, 2u);
-	EXPECT_EQ(b.layers, layers);
-	EXPECT_TRUE(b.x_limits_set);
-	EXPECT_EQ(b.lim.x_max, 5);
+	EXPECT_EQ(b.c_ptr()->layer_count, 2u);
+	EXPECT_EQ(b.c_ptr()->layers, layers);
+	EXPECT_TRUE(b.c_ptr()->x_limits_set);
+	EXPECT_EQ(b.c_ptr()->lim.x_max, 5);
 
 	/* the source is a fresh, empty figure */
-	EXPECT_EQ(a.layer_count, 0u);
-	EXPECT_EQ(a.layers, nullptr);
-	EXPECT_FALSE(a.x_limits_set);
-	EXPECT_FALSE(a.screen_dimensions_set);
+	EXPECT_EQ(a.c_ptr()->layer_count, 0u);
+	EXPECT_EQ(a.c_ptr()->layers, nullptr);
+	EXPECT_FALSE(a.c_ptr()->x_limits_set);
+	EXPECT_FALSE(a.c_ptr()->screen_dimensions_set);
 
 	Blot::Screen scr = b.render(BLOT_RENDER_NO_COLOR);
 	EXPECT_FALSE(text_of(scr).empty());
@@ -180,14 +180,14 @@ TEST(CppFigure, move_assign)
 {
 	Blot::Figure a = make_figure(2);
 	Blot::Figure b = make_figure(1);
-	blot_layer **layers = a.layers;
+	blot_layer **layers = a.c_ptr()->layers;
 
 	/* b's one layer is freed (LeakSanitizer would see it otherwise) */
 	b = std::move(a);
-	EXPECT_EQ(b.layer_count, 2u);
-	EXPECT_EQ(b.layers, layers);
-	EXPECT_EQ(a.layer_count, 0u);
-	EXPECT_EQ(a.layers, nullptr);
+	EXPECT_EQ(b.c_ptr()->layer_count, 2u);
+	EXPECT_EQ(b.c_ptr()->layers, layers);
+	EXPECT_EQ(a.c_ptr()->layer_count, 0u);
+	EXPECT_EQ(a.c_ptr()->layers, nullptr);
 
 	Blot::Screen scr = b.render(BLOT_RENDER_NO_COLOR);
 	EXPECT_FALSE(text_of(scr).empty());
@@ -196,11 +196,11 @@ TEST(CppFigure, move_assign)
 TEST(CppFigure, self_move_assign)
 {
 	Blot::Figure a = make_figure(2);
-	blot_layer **layers = a.layers;
+	blot_layer **layers = a.c_ptr()->layers;
 
 	self_move(a);
-	EXPECT_EQ(a.layer_count, 2u);
-	EXPECT_EQ(a.layers, layers);
+	EXPECT_EQ(a.c_ptr()->layer_count, 2u);
+	EXPECT_EQ(a.c_ptr()->layers, layers);
 
 	Blot::Screen scr = a.render(BLOT_RENDER_NO_COLOR);
 	EXPECT_FALSE(text_of(scr).empty());
@@ -213,7 +213,7 @@ TEST(CppFigure, moved_from_destroyed_twice_over)
 	for (int i = 0; i < 5; i++)
 		figs.push_back(make_figure(1));
 	for (auto &fig : figs)
-		EXPECT_EQ(fig.layer_count, 1u);
+		EXPECT_EQ(fig.c_ptr()->layer_count, 1u);
 }
 
 // ------------------------------------------------------------------------

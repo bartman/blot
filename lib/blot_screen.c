@@ -13,6 +13,7 @@
 #include "blot_color.h"
 #include "blot_axis.h"
 #include "blot_utils.h"
+#include "blot_text.h"
 
 /* create/delete */
 
@@ -111,7 +112,9 @@ static bool blot_screen_blank_lines(blot_screen *scr, unsigned lines,
 /* one legend line, written so that it takes at most cols columns on the
  * terminal: escape sequences take none, a tab moves to the next multiple of
  * 8, anything else takes one column (two for wide characters).  The line
- * is cut at the first character that doesn't fit. */
+ * is cut only between items (#29): the label, then whole "key=value"
+ * items, so that no value is ever cut.  A label too long for the line is
+ * cut and ends in '~'. */
 struct blot_legend_line {
 	wchar_t *p, *end;
 	unsigned col, cols;
@@ -140,6 +143,18 @@ static bool blot_legend_esc(struct blot_legend_line *ll, const char *esc,
 	return true;
 }
 
+/* the column after wc, written at column col */
+static unsigned blot_legend_next_col(unsigned col, wchar_t wc)
+{
+	if (wc == L'\t')
+		return (col / 8 + 1) * 8;
+
+	/* combining marks take no column, wide characters two, in every
+	 * locale (#18); the label reader made the rest a '?' */
+	int w = blot_text_wcwidth(wc);
+	return col + (w >= 0 ? (unsigned)w : 1);
+}
+
 /* a visible character; one that doesn't fit ends the line */
 static bool blot_legend_putc(struct blot_legend_line *ll, wchar_t wc,
 			     GError **error)
@@ -149,15 +164,7 @@ static bool blot_legend_putc(struct blot_legend_line *ll, wchar_t wc,
 	if (ll->full)
 		return true;
 
-	if (wc == L'\t') {
-		next = (ll->col / 8 + 1) * 8;
-	} else {
-		/* combining marks and the like take no column; a
-		 * character the locale can't measure takes one */
-		int w = wcwidth(wc);
-		next = ll->col + (w >= 0 ? (unsigned)w : 1);
-	}
-
+	next = blot_legend_next_col(ll->col, wc);
 	if (next > ll->cols) {
 		ll->full = true;
 		return true;
@@ -179,36 +186,75 @@ static bool blot_legend_putws(struct blot_legend_line *ll, const wchar_t *ws,
 	return true;
 }
 
-/* the label: multibyte text in the current locale.  A control character
- * (a newline, an escape...) or a byte that isn't valid text becomes '?',
- * so the label stays on its one line and can't send escape sequences.  A
- * tab is kept: it goes to its tab stop, as before */
+/* one item of the details, its separator first: all of it, or nothing and
+ * the line ends */
+static bool blot_legend_item(struct blot_legend_line *ll, const wchar_t *ws,
+			     GError **error)
+{
+	unsigned col = ll->col;
+
+	if (ll->full)
+		return true;
+	for (const wchar_t *w = ws; *w && col <= ll->cols; w++)
+		col = blot_legend_next_col(col, *w);
+	if (col > ll->cols) {
+		ll->full = true;
+		return true;
+	}
+	return blot_legend_putws(ll, ws, error);
+}
+
+/* the next character of a label: UTF-8 in every locale (#18), read by
+ * blot_text_read().  A control character (a newline, an escape...) or a
+ * byte that isn't valid UTF-8 becomes '?', so the label stays on its one
+ * line and can't send escape sequences; zero-width marks past
+ * BLOT_TEXT_MAX_MARKS are dropped.  A tab is kept: it goes to its tab
+ * stop, as before.  False at the end of the label */
+static bool blot_legend_label_next(struct blot_text_reader *r, wchar_t *wcp)
+{
+	unsigned w;
+
+	return blot_text_read(r, wcp, &w);
+}
+
+/* the label: all of it if it fits, else as much as fits with a '~' after
+ * it, which ends the line */
 static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
 			      GError **error)
 {
-	mbstate_t st;
-	size_t left = strlen(label);
+	struct blot_text_reader r;
+	wchar_t wc;
+	unsigned col = ll->col, cols = ll->cols;
 
-	memset(&st, 0, sizeof(st));
-	while (left && !ll->full) {
-		wchar_t wc;
-		size_t n = mbrtowc(&wc, label, left, &st);
+	if (ll->full)
+		return true;
 
-		if (n == (size_t)-1 || n == (size_t)-2) {
-			/* not valid text: one byte becomes one '?' */
-			memset(&st, 0, sizeof(st));
-			wc = L'?';
-			n = 1;
-		} else if (n == 0) {
-			break;
+	/* does it all fit? */
+	blot_text_reader_init(&r, label, true);
+	while (col <= cols && blot_legend_label_next(&r, &wc))
+		col = blot_legend_next_col(col, wc);
+	bool cut = col > cols;
+
+	if (cut) {
+		if (ll->col >= cols) {
+			ll->full = true;
+			return true;
 		}
-		label += n;
-		left -= n;
+		/* keep the last column for the '~' */
+		ll->cols = cols - 1;
+	}
 
-		if (wc != L'\t' && (iswcntrl(wc) || !iswprint(wc)))
-			wc = L'?';
+	blot_text_reader_init(&r, label, true);
+	while (!ll->full && blot_legend_label_next(&r, &wc))
 		if (!blot_legend_putc(ll, wc, error))
 			return false;
+
+	if (cut) {
+		ll->cols = cols;
+		ll->full = false;
+		if (!blot_legend_putc(ll, L'~', error))
+			return false;
+		ll->full = true;
 	}
 	return true;
 }
@@ -239,33 +285,54 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 
 		//wchar_t star = 0x2605; // does not show up in Terminus font
 		wchar_t symbol = 0x25D8; // inverse bullet ◘
-		wchar_t details[256] = L"";
-		int len = 0;
+		/* the details: items, each with the separator before it.
+		 * The line is cut between them, never inside one, so a value
+		 * is shown whole or not at all; count and its "(+N
+		 * non-finite)" are one item */
+		wchar_t items[4][96];
+		unsigned n_items = 0;
 
 		if (!(scr->flags & BLOT_RENDER_LEGEND_DETAILS)) {
 			/* no details */
 		} else if (lay->summary.enabled) {
-			char tavg[32], tmin[32], tmax[32];
-			int ravg = blot_format_number(tavg, sizeof(tavg),
-				   lay->summary.yttl / lay->count);
-			int rmin = blot_format_number(tmin, sizeof(tmin),
-				   lay->summary.ymin);
-			int rmax = blot_format_number(tmax, sizeof(tmax),
-				   lay->summary.ymax);
+			/* the summary is of the points whose X and Y are
+			 * finite; "(+N non-finite)" counts the others, and
+			 * with none left there is no avg, min or max: "-" */
+			const struct blot_layer_summary *sum = &lay->summary;
+			size_t skipped = lay->count - sum->count;
+			char tavg[32] = "-", tmin[32] = "-", tmax[32] = "-";
+			char tskip[48] = "";
 
-			len = swprintf(details, G_N_ELEMENTS(details),
-				   L"   \tavg=%s min=%s max=%s count=%u",
-				   ravg>0 ? tavg : "?",
-				   rmin>0 ? tmin : "?",
-				   rmax>0 ? tmax : "?",
-				   lay->count);
+			if (sum->count) {
+				if (blot_format_number(tavg, sizeof(tavg),
+						       blot_layer_summary_yavg(sum)) <= 0)
+					strcpy(tavg, "?");
+				if (blot_format_number(tmin, sizeof(tmin), sum->ymin) <= 0)
+					strcpy(tmin, "?");
+				if (blot_format_number(tmax, sizeof(tmax), sum->ymax) <= 0)
+					strcpy(tmax, "?");
+			}
+			if (skipped)
+				snprintf(tskip, sizeof(tskip), " (+%zu non-finite)", skipped);
+
+			int len = swprintf(items[0], G_N_ELEMENTS(items[0]), L"   \tavg=%s", tavg);
+			RETURN_ERROR(len<0, false, error, "swprintf");
+			len = swprintf(items[1], G_N_ELEMENTS(items[1]), L" min=%s", tmin);
+			RETURN_ERROR(len<0, false, error, "swprintf");
+			len = swprintf(items[2], G_N_ELEMENTS(items[2]), L" max=%s", tmax);
+			RETURN_ERROR(len<0, false, error, "swprintf");
+			len = swprintf(items[3], G_N_ELEMENTS(items[3]), L" count=%zu%s",
+				       sum->count, tskip);
+			RETURN_ERROR(len<0, false, error, "swprintf");
+			n_items = 4;
 		} else {
-			len = swprintf(details, G_N_ELEMENTS(details),
-				   L"   \tcount=%u", lay->count);
+			int len = swprintf(items[0], G_N_ELEMENTS(items[0]),
+					   L"   \tcount=%zu", lay->count);
+			RETURN_ERROR(len<0, false, error, "swprintf");
+			n_items = 1;
 		}
-		RETURN_ERROR(len<0, false, error, "swprintf");
 
-		/* "<colour>◘ <reset> label<details>" */
+		/* "<colour>◘ <reset> label<items>" */
 		ll.col = 0;
 		ll.full = false;
 		bool ok = blot_legend_esc(&ll, colstr, error)
@@ -273,8 +340,9 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 			&& blot_legend_putc(&ll, L' ', error)
 			&& blot_legend_esc(&ll, rststr, error)
 			&& blot_legend_putc(&ll, L' ', error)
-			&& blot_legend_label(&ll, lay->label, error)
-			&& blot_legend_putws(&ll, details, error);
+			&& blot_legend_label(&ll, lay->label, error);
+		for (unsigned i=0; ok && i<n_items; i++)
+			ok = blot_legend_item(&ll, items[i], error);
 		RETURN_IF(!ok, false);
 
 		/* blot_legend_room() kept room for these */
@@ -284,6 +352,39 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 
 	*ll.p = 0;
 	scr->data_used = ll.p - scr->data;
+	return true;
+}
+
+/* an X label in room columns: as much of it as fits, then blanks to fill
+ * them.  Its width is counted as the axis cut it (#18), so a wide
+ * character takes two columns in every locale; the text is read as
+ * UTF-8, not converted by the locale (#18: the C locale can't).  Zero-width
+ * marks past BLOT_TEXT_MAX_MARKS are dropped, so a label is at most
+ * BLOT_TEXT_MAX_MARKS + (BLOT_TEXT_MAX_MARKS + 1) * room characters, well
+ * within the screen buffer's 16 per column. */
+static bool blot_screen_x_label(wchar_t **pp, wchar_t *end, const char *label,
+				unsigned room, GError **error)
+{
+	struct blot_text_reader r;
+	wchar_t *p = *pp;
+	unsigned col = 0, w;
+	wchar_t wc;
+
+	blot_text_reader_init(&r, label, false);
+	while (blot_text_read(&r, &wc, &w)) {
+		if (col + w > room)
+			break;
+		/* this one and the blanks, and one more for the '\n' */
+		RETURN_ERRORx((size_t)(end - p) <= room - col + 1, false, error,
+			      ENOSPC, "screen buffer too small for the X labels");
+		*(p++) = wc;
+		col += w;
+	}
+	RETURN_ERRORx((size_t)(end - p) <= room - col, false, error,
+		      ENOSPC, "screen buffer too small for the X labels");
+	for (; col < room; col++)
+		*(p++) = L' ';
+	*pp = p;
 	return true;
 }
 
@@ -486,9 +587,8 @@ skip_cell:
 			if (!room)
 				room = 1;
 
-			len = swprintf(p, end-p, L"%-*.*s", room, room, xtick->label);
-			RETURN_ERROR(len<0, false, error, "swprintf");
-			p += len;
+			if (!blot_screen_x_label(&p, end, xtick->label, room, error))
+				return false;
 
 			c_x += room;
 		}

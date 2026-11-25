@@ -85,9 +85,14 @@ test check: build
 	@echo "### unit-testing from ${BUILDDIR}"
 	${Q}cd ${BUILDDIR} && ctest --output-on-failure --output-junit test_report.xml
 
+# the CLI and the examples end to end (tests/smoke/smoke.sh); the log is
+# kept in ${BUILDDIR}/test/smoke/smoke.log (a CI artifact)
+SMOKELOG = ${BUILDDIR}/test/smoke/smoke.log
 smoke: build
 	@echo "### smoke-testing from ${BUILDDIR}"
-	@echo there are no smoke tests yet
+	${Q}mkdir -p $(dir ${SMOKELOG})
+	${Q}{ sh tests/smoke/smoke.sh ${BUILDDIR}; echo $$? > ${SMOKELOG}.rc; } 2>&1 | tee ${SMOKELOG}
+	${Q}exit $$(cat ${SMOKELOG}.rc)
 
 # ---------------------------------------------------------------------------
 

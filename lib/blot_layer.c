@@ -8,6 +8,16 @@
 
 /* create/delete */
 
+/* X and Y are each one of the BLOT_DATA_{X,Y}_* types, and no other bit is set */
+static bool blot_data_type_valid(blot_data_type data_type)
+{
+	unsigned dt = (unsigned)data_type;
+
+	return !(dt & ~(unsigned)(BLOT_DATA_X_MASK | BLOT_DATA_Y_MASK))
+		&& (dt & BLOT_DATA_X_MASK) <= BLOT_DATA_X_DOUBLE
+		&& (dt & BLOT_DATA_Y_MASK) <= BLOT_DATA_Y_DOUBLE;
+}
+
 blot_layer * blot_layer_new(blot_plot_type plot_type,
 				   blot_data_type data_type,
 				   size_t count,
@@ -19,11 +29,14 @@ blot_layer * blot_layer_new(blot_plot_type plot_type,
 {
 	blot_layer *lay;
 
-	RETURN_ERRORx(!count, NULL, error, EFAULT, "count is NULL");
-	RETURN_ERRORx(!ys, NULL, error, EFAULT, "ys pointer is NULL");
-
-	RETURN_ERRORx(plot_type >= BLOT_PLOT_TYPE_MAX, false, error, EINVAL,
-		      "x_min >= x_max");
+	/* in argument order: EINVAL for an invalid value, EFAULT for a NULL
+	 * pointer.  xs and label may be NULL, any color is valid (#34) */
+	RETURN_ERRORx((unsigned)plot_type >= BLOT_PLOT_TYPE_MAX, NULL, error, EINVAL,
+		      "plot_type %u is not valid", (unsigned)plot_type);
+	RETURN_ERRORx(!blot_data_type_valid(data_type), NULL, error, EINVAL,
+		      "data_type 0x%x is not valid", (unsigned)data_type);
+	RETURN_ERRORx(!count, NULL, error, EINVAL, "data_count is 0");
+	RETURN_ERRORx(!ys, NULL, error, EFAULT, "data_ys is NULL");
 
 	lay = g_new(blot_layer, 1);
 	RETURN_ERROR(!lay, NULL, error, "new blot_layer");
@@ -97,9 +110,28 @@ static inline void blot_layer_summary_init(struct blot_layer_summary *sum, blot_
 	sum->enabled = true;
 }
 
+/* Neumaier's compensated sum: add v to *ttl, and what rounding took out
+ * of *ttl to *comp.  Once *ttl overflows, *comp is no longer finite */
+static inline void blot_layer_summary_add(double *ttl, double *comp, double v)
+{
+	double t = *ttl + v;
+
+	if (fabs(*ttl) >= fabs(v))
+		*comp += (*ttl - t) + v;
+	else
+		*comp += (v - t) + *ttl;
+	*ttl = t;
+}
+
 static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, double y)
 {
 	if (likely (!sum->enabled))
+		return;
+
+	/* only points with a finite X and Y are summarized, whether they
+	 * are drawn or not (one outside the limits isn't); the legend counts
+	 * the others as non-finite */
+	if (unlikely (!isfinite(x) || !isfinite(y)))
 		return;
 
 	if (likely (sum->count)) {
@@ -108,7 +140,9 @@ static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, 
 		sum->xttl += x;
 		if (sum->ymax < y) sum->ymax = y;
 		if (sum->ymin > y) sum->ymin = y;
-		sum->yttl += y;
+		blot_layer_summary_add(&sum->yttl, &sum->ycomp, y);
+		blot_layer_summary_add(&sum->yttl_scaled, &sum->ycomp_scaled,
+				       y * BLOT_LAYER_SUMMARY_SCALE);
 		sum->count ++;
 	} else {
 		sum->xmax = x;
@@ -117,6 +151,9 @@ static void blot_layer_summary_update(struct blot_layer_summary *sum, double x, 
 		sum->ymax = y;
 		sum->ymin = y;
 		sum->yttl = y;
+		sum->ycomp = 0;
+		sum->yttl_scaled = y * BLOT_LAYER_SUMMARY_SCALE;
+		sum->ycomp_scaled = 0;
 		sum->count = 1;
 	}
 }

@@ -2,12 +2,16 @@
 #include <chrono>
 #include <thread>
 #include <ranges>
+#include <cstdio>
+#include <cstring>
+#include <cerrno>
 
 #include "config.hpp"
 #include "reader.hpp"
 #include "plotter.hpp"
 
 #include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 #include "fmt/format.h"
 
 static bool signaled = false;
@@ -16,9 +20,44 @@ static void sighandler(int sig)
 	signaled = true;
 }
 
+static int run(int argc, char *argv[]);
+
+/* nothing in blot is caught on the way here: a Blot::Exception (from
+ * the library) or another std::exception (e.g. a bad --regex) is a
+ * message and exit code 1, not std::terminate (#37) */
 int main(int argc, char *argv[])
 {
+	try {
+		/* stdout is the plot: messages go to stderr, not into it, and
+		 * still show when stdout can't be written (#40) */
+		spdlog::set_default_logger(std::make_shared<spdlog::logger>("",
+			std::make_shared<spdlog::sinks::stderr_color_sink_mt>()));
+		return run(argc, argv);
+	} catch (const std::exception &e) {
+		const char *what = e.what();
+		spdlog::error("{}", what ? what : "unknown error");
+	} catch (...) {
+		spdlog::error("unknown error");
+	}
+	return 1;
+}
+
+static int run(int argc, char *argv[])
+{
 	Config config(argc, argv);
+
+	/* a plot fills the terminal, so it needs its size: from the tty, or
+	 * from COLUMNS and LINES when stdout isn't one.  Fail here, not after
+	 * reading all the input */
+	try {
+		Blot::Dimensions term;
+	} catch (const Blot::Exception &e) {
+		const char *what = e.what();
+		spdlog::error("cannot get the terminal size ({}); "
+			"set COLUMNS and LINES when stdout is not a terminal",
+			what ? what : "unknown error");
+		return 1;
+	}
 
 	spdlog::debug("output_type = {}", config.output_type_name());
 
@@ -122,4 +161,10 @@ int main(int argc, char *argv[])
 
 	plotter.plot();
 	std::puts("");
+	/* the output is the plot: a write error is a failure (#40) */
+	if (std::fflush(stdout) != 0 || std::ferror(stdout)) {
+		spdlog::error("cannot write the plot: {}", std::strerror(errno));
+		return 1;
+	}
+	return 0;
 }

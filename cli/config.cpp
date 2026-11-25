@@ -140,13 +140,21 @@ Config::Config(int argc, char *argv[])
 	}
 
 	if (show_help) {
-		Blot::Dimensions term;
-		unsigned doc_start = std::min(32u, term.cols/2);
+		/* the terminal's width, or 80 columns when there is none
+		 * (e.g. blot --help | less, without COLUMNS and LINES) */
+		unsigned cols = 80;
+		try {
+			Blot::Dimensions term;
+			if (term.cols)
+				cols = term.cols;
+		} catch (const Blot::Exception &) {
+		}
+		unsigned doc_start = std::min(32u, cols/2);
 		auto fmt = clipp::doc_formatting{}
 			.indent_size(4)
 			.first_column(4)
 			.doc_column(doc_start)
-			.last_column(term.cols);
+			.last_column(cols);
 		std::cout << clipp::make_man_page(cli, m_self, fmt)
 			.append_section("EXAMPLES",
 		   "\n"

@@ -35,7 +35,7 @@ void plot_bars(Blot::Figure &fig)
 
 std::vector<std::string> rendered_labels(Blot::Figure &fig)
 {
-	blot_test::Rendered r = blot_test::render(&fig, F);
+	blot_test::Rendered r = blot_test::render(fig.c_ptr(), F);
 	EXPECT_TRUE(r.ok) << r.message;
 	return blot_test::labels_of(blot_test::x_ticks(r));
 }
@@ -105,14 +105,14 @@ TEST(CppFigureLabels, move_construct)
 		Blot::Figure a;
 		plot_bars(a);
 		set_from_temporaries(a, MONTHS);
-		char **strings = a.xlabels.strings;
+		char **strings = a.c_ptr()->xlabels.strings;
 
 		/* the copy moves with the layers, the source has none */
 		Blot::Figure b(std::move(a));
-		EXPECT_EQ(b.xlabels.count, 4u);
-		EXPECT_EQ(b.xlabels.strings, strings);
-		EXPECT_EQ(a.xlabels.count, 0u);
-		EXPECT_EQ(a.xlabels.strings, nullptr);
+		EXPECT_EQ(b.c_ptr()->xlabels.count, 4u);
+		EXPECT_EQ(b.c_ptr()->xlabels.strings, strings);
+		EXPECT_EQ(a.c_ptr()->xlabels.count, 0u);
+		EXPECT_EQ(a.c_ptr()->xlabels.strings, nullptr);
 		EXPECT_EQ(rendered_labels(b), MONTHS);
 
 		/* the moved-from figure gets labels of its own */
@@ -129,20 +129,20 @@ TEST(CppFigureLabels, move_assign)
 		Blot::Figure a;
 		plot_bars(a);
 		set_from_temporaries(a, MONTHS);
-		char **strings = a.xlabels.strings;
+		char **strings = a.c_ptr()->xlabels.strings;
 
 		/* b's own labels are freed (LeakSanitizer checks the child) */
 		Blot::Figure b;
 		plot_bars(b);
 		set_from_temporaries(b, DAYS);
 		b = std::move(a);
-		EXPECT_EQ(b.xlabels.strings, strings);
-		EXPECT_EQ(a.xlabels.count, 0u);
-		EXPECT_EQ(a.xlabels.strings, nullptr);
+		EXPECT_EQ(b.c_ptr()->xlabels.strings, strings);
+		EXPECT_EQ(a.c_ptr()->xlabels.count, 0u);
+		EXPECT_EQ(a.c_ptr()->xlabels.strings, nullptr);
 		EXPECT_EQ(rendered_labels(b), MONTHS);
 
 		self_move(b);
-		EXPECT_EQ(b.xlabels.strings, strings);
+		EXPECT_EQ(b.c_ptr()->xlabels.strings, strings);
 		EXPECT_EQ(rendered_labels(b), MONTHS);
 	});
 }
