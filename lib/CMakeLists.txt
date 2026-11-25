@@ -8,6 +8,7 @@ SET(LIBBLOT_SRCS
     blot_screen.c
     blot_utils.c
     blot_terminal.c
+    blot_text.c
 )
 
 # we need glib

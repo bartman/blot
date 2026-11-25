@@ -13,6 +13,7 @@
 #include "blot_color.h"
 #include "blot_axis.h"
 #include "blot_utils.h"
+#include "blot_text.h"
 
 /* create/delete */
 
@@ -148,9 +149,9 @@ static unsigned blot_legend_next_col(unsigned col, wchar_t wc)
 	if (wc == L'\t')
 		return (col / 8 + 1) * 8;
 
-	/* combining marks and the like take no column; a character the
-	 * locale can't measure takes one */
-	int w = wcwidth(wc);
+	/* combining marks take no column, wide characters two, in every
+	 * locale (#18); the label reader made the rest a '?' */
+	int w = blot_text_wcwidth(wc);
 	return col + (w >= 0 ? (unsigned)w : 1);
 }
 
@@ -203,35 +204,20 @@ static bool blot_legend_item(struct blot_legend_line *ll, const wchar_t *ws,
 	return blot_legend_putws(ll, ws, error);
 }
 
-/* the next character of a label: multibyte text in the current locale.  A
- * control character (a newline, an escape...) or a byte that isn't valid
- * text becomes '?', so the label stays on its one line and can't send
- * escape sequences.  A tab is kept: it goes to its tab stop, as before.
- * False at the end of the label */
+/* the next character of a label: UTF-8 in every locale (#18), read by
+ * blot_text_next().  A control character (a newline, an escape...) or a
+ * byte that isn't valid UTF-8 becomes '?', so the label stays on its one
+ * line and can't send escape sequences.  A tab is kept: it goes to its tab
+ * stop, as before.  False at the end of the label */
 static bool blot_legend_label_next(const char **label, size_t *left,
-				   mbstate_t *st, wchar_t *wcp)
+				   wchar_t *wcp)
 {
-	wchar_t wc;
-	size_t n;
+	size_t n = blot_text_next(*label, *left, true, wcp);
 
-	if (!*left)
+	if (!n)
 		return false;
-
-	n = mbrtowc(&wc, *label, *left, st);
-	if (n == (size_t)-1 || n == (size_t)-2) {
-		/* not valid text: one byte becomes one '?' */
-		memset(st, 0, sizeof(*st));
-		wc = L'?';
-		n = 1;
-	} else if (n == 0) {
-		return false;
-	}
 	*label += n;
 	*left -= n;
-
-	if (wc != L'\t' && (iswcntrl(wc) || !iswprint(wc)))
-		wc = L'?';
-	*wcp = wc;
 	return true;
 }
 
@@ -242,7 +228,6 @@ static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
 {
 	const char *s;
 	size_t left;
-	mbstate_t st;
 	wchar_t wc;
 	unsigned col = ll->col, cols = ll->cols;
 
@@ -252,8 +237,7 @@ static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
 	/* does it all fit? */
 	s = label;
 	left = strlen(label);
-	memset(&st, 0, sizeof(st));
-	while (col <= cols && blot_legend_label_next(&s, &left, &st, &wc))
+	while (col <= cols && blot_legend_label_next(&s, &left, &wc))
 		col = blot_legend_next_col(col, wc);
 	bool cut = col > cols;
 
@@ -268,8 +252,7 @@ static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
 
 	s = label;
 	left = strlen(label);
-	memset(&st, 0, sizeof(st));
-	while (!ll->full && blot_legend_label_next(&s, &left, &st, &wc))
+	while (!ll->full && blot_legend_label_next(&s, &left, &wc))
 		if (!blot_legend_putc(ll, wc, error))
 			return false;
 
@@ -378,6 +361,39 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 
 	*ll.p = 0;
 	scr->data_used = ll.p - scr->data;
+	return true;
+}
+
+/* an X label in room columns: as much of it as fits, then blanks to fill
+ * them.  Its width is counted as the axis cut it (#18), so a wide
+ * character takes two columns in every locale; the text is read as
+ * UTF-8, not converted by the locale (#18: the C locale can't). */
+static bool blot_screen_x_label(wchar_t **pp, wchar_t *end, const char *label,
+				unsigned room, GError **error)
+{
+	wchar_t *p = *pp;
+	size_t left = strlen(label);
+	unsigned col = 0;
+	wchar_t wc;
+	size_t n;
+
+	while ((n = blot_text_next(label, left, false, &wc))) {
+		unsigned w = (unsigned)blot_text_wcwidth(wc);
+		if (col + w > room)
+			break;
+		/* this one and the blanks, and one more for the '\n' */
+		RETURN_ERRORx((size_t)(end - p) <= room - col + 1, false, error,
+			      ENOSPC, "screen buffer too small for the X labels");
+		*(p++) = wc;
+		col += w;
+		label += n;
+		left -= n;
+	}
+	RETURN_ERRORx((size_t)(end - p) <= room - col, false, error,
+		      ENOSPC, "screen buffer too small for the X labels");
+	for (; col < room; col++)
+		*(p++) = L' ';
+	*pp = p;
 	return true;
 }
 
@@ -580,9 +596,8 @@ skip_cell:
 			if (!room)
 				room = 1;
 
-			len = swprintf(p, end-p, L"%-*.*s", room, room, xtick->label);
-			RETURN_ERROR(len<0, false, error, "swprintf");
-			p += len;
+			if (!blot_screen_x_label(&p, end, xtick->label, room, error))
+				return false;
 
 			c_x += room;
 		}
