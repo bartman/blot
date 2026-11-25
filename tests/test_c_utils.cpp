@@ -215,9 +215,16 @@ TEST(Utils, format_number_most_precise_fit)
         { 1234567.891, 8, "1234568" },
         { 1234567.0, 8, "1234567" },
         { -1234567.891, 9, "-1234568" },
+        /* the tie-break: both texts are exact, the integer comes first */
         { 1e15, 17, "1000000000000000" },
         { 1e15, 16, "1e+15" },
-        { 99999.9996, 7, "100000" }, /* tie of %.0f and %.6g: the integer */
+        { 99999.9996, 7, "100000" }, /* %.0f and %.6g print the same text */
+        /* from 2^53 on, no %.0f: its digits past the 16th are noise */
+        { 9007199254740991.0, 17, "9007199254740991" }, /* 2^53 - 1 */
+        { 9007199254740992.0, 17, "9.0072e+15" },       /* 2^53 */
+        { 1e16, 18, "1e+16" },
+        { -1e16, 19, "-1e+16" },
+        { 1.5e30, 32, "1.5e+30" }, /* the legend's room; not 1500000000000000019884624838656 */
         { 99999.9996, 6, "1e+05" },
         /* %.6g down to %.1g, when the integer doesn't fit */
         { 123456789012.0, 13, "123456789012" },
@@ -234,7 +241,7 @@ TEST(Utils, format_number_most_precise_fit)
         { -123456789012.0, 8, "-1e+11" },
         { -123456789012.0, 7, "-1e+11" },
         { -123456789012.0, 6, "-1" },
-        /* two digits instead of one (#9's duplicate -2e+05 labels) */
+        /* two digits instead of one where they fit */
         { -190000.0, 8, "-190000" },
         { -210000.0, 8, "-210000" },
         { -190000.0, 7, "-2e+05" }, /* -1.9e+05 needs 9 */
