@@ -911,6 +911,53 @@ TEST(Text, x_labels_wide_characters_any_locale)
     }
 }
 
+/* #18 review Low-1: a code point that isn't a printable character
+ * (unassigned: U+0378, and U+0A44, which the first table counted 0
+ * columns in the C locale) is a '?' in every locale, one column */
+TEST(Text, legend_unassigned_code_point_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            EXPECT_EQ(min_legend_line("a\xcd\xb8" "b\xe0\xa9\x84" "c"), L"◘  a?b?c");
+            /* 17 of them fill the line exactly, 18 are cut */
+            std::string label;
+            for (int i = 0; i < 17; i++)
+                label += "\xe0\xa9\x84";
+            EXPECT_EQ(min_legend_line(label.c_str()), L"◘  " + std::wstring(17, L'?'));
+            label += "\xe0\xa9\x84";
+            EXPECT_EQ(min_legend_line(label.c_str()), L"◘  " + std::wstring(16, L'?') + L"~");
+            EXPECT_EQ(min_x_rows({ "\xcd\xb8\xcd\xb8\xcd\xb8", "a", "b", "c" }),
+                      Lines({ L"       +*--*--*--*--",
+                              L"        ?? a  b  c  " }));
+        });
+    }
+}
+
+/* #18 review Low-2: a label stuffed with combining marks failed the render
+ * (ENOSPC: the screen buffer is 16 characters per column); at most
+ * BLOT_TEXT_MAX_MARKS (4) are kept after a character, the rest dropped */
+TEST(Text, many_combining_marks_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            std::string label = "e";
+            for (int i = 0; i < 5000; i++)
+                label += "\xcc\x81";
+            label += "x";
+            const std::wstring e4 = L"é́́́";
+            EXPECT_EQ(min_legend_line(label.c_str()), L"◘  " + e4 + L"x");
+            EXPECT_LINES_EQ(min_x_rows({ label.c_str(), label.c_str(), "b", "c" }, label.c_str()),
+                            Lines({ L"       +*--*--*--*--",
+                                    L"        " + e4 + L"x " + e4 + L"x b  c  ",
+                                    L"◘  " + e4 + L"x" }));
+        });
+    }
+}
+
 /* #22: the legend details of a layer with non-finite Y values.  The
  * summary takes the points whose X and Y are both finite: avg, min and
  * max are over them, count is how many there are, and "(+N non-finite)"
