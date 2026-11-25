@@ -3,11 +3,13 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <limits.h>
 #include "blot_axis.h"
 #include "blot_error.h"
 #include "blot_layer.h"
 #include "blot_types.h"
 #include "blot_utils.h"
+#include "blot_text.h"
 
 /* Where the ticks go: tick ti is at about the value d_base + ti*d_jump +
  * data_min and the screen offset s_base + ti*s_jump; blot_axis_place_tick()
@@ -256,18 +258,11 @@ static enum blot_axis_fit blot_axis_numbers_fit(const struct blot_axis_layout *l
 	return last_fits ? BLOT_AXIS_FITS : BLOT_AXIS_LAST_DOES_NOT_FIT;
 }
 
-/* The first n characters of a UTF-8 label (n bytes if it isn't UTF-8);
- * returns the bytes they take. */
+/* The bytes of the longest start of a UTF-8 label that takes at most n
+ * columns, wide characters two in every locale (#18). */
 static size_t blot_axis_label_prefix(const char *label, size_t n)
 {
-	size_t bytes = strlen(label);
-
-	if (!g_utf8_validate(label, bytes, NULL))
-		return min_t(size_t, n, bytes);
-
-	if ((size_t)g_utf8_strlen(label, bytes) <= n)
-		return bytes;
-	return g_utf8_offset_to_pointer(label, n) - label;
+	return blot_text_prefix(label, (unsigned)min_t(size_t, n, UINT_MAX), NULL);
 }
 
 /* Custom X labels: which get a tick, and how they are cut. */
