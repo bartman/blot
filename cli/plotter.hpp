@@ -6,6 +6,71 @@
 #include "blot.hpp"
 #include "spdlog/spdlog.h"
 
+#include <cerrno>
+#include <climits>
+#include <clocale>
+#include <cstdio>
+#include <cstring>
+#include <cwchar>
+#include <stdexcept>
+#include <string>
+
+/* the plot is wide text, written in the encoding of the locale's
+ * LC_CTYPE.  The C and POSIX locales (no LANG, as in a docker container
+ * or CI) encode only ASCII, and a plot isn't ASCII even with --ascii (the
+ * legend's symbol), so use UTF-8 there (#40) */
+inline void plot_locale()
+{
+	static bool done;
+	if (done)
+		return;
+	done = true;
+
+	const char *loc = setlocale(LC_CTYPE, "");
+	if (!loc || !strcmp(loc, "C") || !strcmp(loc, "POSIX"))
+		setlocale(LC_CTYPE, "C.UTF-8");
+}
+
+/* write the rendered text to f in the locale's encoding, all of it.
+ * printf("%ls") gave up at the first character the locale can't encode
+ * and returned -1, unchecked: the plot was cut off mid-line, at a spot
+ * that depends on glibc's version and stdout's buffering (#40).  A
+ * character the locale can't encode is written as '?', one column like
+ * the plot's characters.  Throws on a write error */
+inline void plot_write(FILE *f, const wchar_t *txt, size_t len)
+{
+	std::string out;
+	out.reserve(len);
+
+	char mb[MB_LEN_MAX];
+	mbstate_t state{};
+	bool replaced = false;
+	for (size_t i = 0; i < len && txt[i]; i++) {
+		size_t n = wcrtomb(mb, txt[i], &state);
+		if (n == (size_t)-1) {
+			state = mbstate_t{};
+			mb[0] = '?';
+			n = 1;
+			replaced = true;
+		}
+		out.append(mb, n);
+	}
+
+	if (replaced) {
+		static bool warned;
+		if (!warned)
+			spdlog::warn("the locale ({}) can't encode some of "
+				"the plot's characters; they are written as '?'",
+				setlocale(LC_CTYPE, nullptr));
+		warned = true;
+	}
+
+	if (fwrite(out.data(), 1, out.size(), f) != out.size()
+	    || fflush(f) != 0)
+		throw std::runtime_error(std::string("cannot write the plot: ")
+					 + strerror(errno));
+}
+
 template <typename X, typename Y>
 class Plotter final {
 protected:
@@ -92,7 +157,7 @@ public:
 
 	void plot() {
 
-		setlocale(LC_CTYPE, "");
+		plot_locale();
 
 		bool timing = m_config.show_timing();
 
@@ -145,8 +210,7 @@ public:
 
 		spdlog::debug("rendered size = %zu", txt_size);
 
-		printf("%ls", txt);
-		fflush(stdout);
+		plot_write(stdout, txt, txt_size);
 
 		double t_print = timing ? blot_double_time() : 0;
 
