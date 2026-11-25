@@ -320,8 +320,8 @@ TEST(Edge, int64_extremes_line)
     EXPECT_NE(std::find(labels.begin(), labels.end(), "0.000"), labels.end());
 }
 
-// BUG B14: https://git.jukie.net/bart/blot/-/work_items/9
-TEST(Edge, DISABLED_int64_extremes_scatter_narrow)
+// #9 (B14): the render failed
+TEST(Edge, int64_extremes_scatter_narrow)
 {
     Rendered r = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_INT64, 3, I64, I64);
     EXPECT_TRUE(r.ok) << r.message;

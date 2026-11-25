@@ -201,7 +201,9 @@ TEST(Axis, zero_alignment)
     {
         Axis a(false, 52, -1.003, 2.003);
         ASSERT_TRUE(a.axs) << a.error;
-        EXPECT_EQ(a.labels(), zip({ 6, 17, 27, 38, 48 }, { "-0.601", "0.000", "0.601", "1.202", "1.804" }));
+        /* the last label has 4 columns before the edge (#9: 1.804 ran
+         * one past it), so it is shortened; 3 * 0.6012 = 1.8036 */
+        EXPECT_EQ(a.labels(), zip({ 6, 17, 27, 38, 48 }, { "-0.601", "0.000", "0.601", "1.202", "1.80" }));
     }
     {
         Axis a(true, 18, -1.003, 2.003);
@@ -273,8 +275,18 @@ TEST(Axis, tick_count_formula)
                 unsigned n = vertical ? len / 3 : len / 10;
                 if (!(n & 1))
                     n++;
-                EXPECT_EQ(a.ticks().size(), n)
-                    << (vertical ? "V" : "H") << " len " << len << " [" << rg[0] << "," << rg[1] << "]";
+                auto ticks = a.ticks();
+                SCOPED_TRACE(testing::Message() << (vertical ? "V" : "H") << " len " << len
+                                                << " [" << rg[0] << "," << rg[1] << "]");
+                if (ticks.size() + 1 == n && !vertical && rg[0] < 0 && 0 < rg[1]) {
+                    /* #9: the zero alignment pushed the last tick so close
+                     * to the edge that no text of its value fits; that one
+                     * tick is dropped, the others stay where they were */
+                    double s_jump = (double)len / n;
+                    EXPECT_GT(ticks.back().index + 2 * s_jump, len - 2.0);
+                    continue;
+                }
+                EXPECT_EQ(ticks.size(), n);
             }
         }
     }
@@ -303,8 +315,8 @@ TEST(Axis, horizontal_labels_fit_spacing)
     }
 }
 
-// BUG B14: https://git.jukie.net/bart/blot/-/work_items/9
-TEST(Axis, DISABLED_narrow_axis_with_long_labels)
+// #9 (B14): creation failed
+TEST(Axis, narrow_axis_with_long_labels)
 {
     {
         Axis a(false, 20, -200100, -99900);
@@ -316,30 +328,26 @@ TEST(Axis, DISABLED_narrow_axis_with_long_labels)
     }
 }
 
-// BUG B14: https://git.jukie.net/bart/blot/-/work_items/9
+// #9 (B14): with room for 6 characters -200100 and -166700 were both -2e+05
+TEST(Axis, x_labels_are_distinct)
+{
+    Axis a(false, 21, -200100, -99900);
+    ASSERT_TRUE(a.axs) << a.error;
+    std::set<std::string> seen;
+    for (const auto &t : a.ticks())
+        EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
+    /* fewer ticks, each with the value of its cell */
+    EXPECT_EQ(a.labels(), zip({ 0, 10 }, { "-200100.0", "-150000.0" }));
+}
+
 // BUG B16: https://git.jukie.net/bart/blot/-/work_items/10
 TEST(Axis, DISABLED_labels_are_distinct)
 {
-    const struct {
-        bool vertical;
-        unsigned len;
-        double min, max;
-    } cases[] = {
-        { false, 21, -200100, -99900 },
-        { true, 12, 1e-9, 3e-9 },
-    };
-    for (const auto &c : cases) {
-        SCOPED_TRACE(testing::Message() << (c.vertical ? "V" : "H") << " len " << c.len
-                                        << " [" << c.min << "," << c.max << "]");
-        Axis a(c.vertical, c.len, c.min, c.max);
-        if (!a.axs) {
-            ADD_FAILURE() << a.error;
-            continue;
-        }
-        std::set<std::string> seen;
-        for (const auto &t : a.ticks())
-            EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
-    }
+    Axis a(true, 12, 1e-9, 3e-9);
+    ASSERT_TRUE(a.axs) << a.error;
+    std::set<std::string> seen;
+    for (const auto &t : a.ticks())
+        EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
 }
 
 TEST(Axis, custom_labels_evenly_spaced)
@@ -364,15 +372,10 @@ TEST(Axis, more_custom_labels_than_cells)
     blot_strv l7 = { 7, ag };
     Axis a(false, 5, 0, 7, &l7);
     ASSERT_TRUE(a.axs) << a.error;
-    auto ticks = a.ticks();
-    ASSERT_EQ(ticks.size(), 5u);
-    /* every index has a tick, and the labels keep their order (today
-     * b c e f g: several labels round to one cell, the last one wins) */
-    std::string order;
-    for (const auto &t : ticks)
-        order += t.label;
-    EXPECT_TRUE(std::is_sorted(order.begin(), order.end())) << order;
-    EXPECT_EQ(std::set<char>(order.begin(), order.end()).size(), order.size()) << order;
+    /* #9: 7 labels can't each have a tick in 5 cells (several labels
+     * rounded to one cell and the last one won, hiding a and d); every
+     * third label gets a tick, at its own cell, with a blank between */
+    EXPECT_EQ(a.labels(), zip({ 0, 2, 4 }, { "a", "d", "g" }));
 }
 
 TEST(Axis, large_axis_label_storage)
