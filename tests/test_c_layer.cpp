@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "blot_test.hpp"
 
 #include "blot_terminal.h"
 #include "blot_layer.h"
@@ -1122,27 +1122,42 @@ TEST(Layer, line_fractional_tiny_huge)
     }
 }
 
-// BUG B4: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Layer, DISABLED_line_draws_last_point)
+TEST(Layer, line_draws_last_point)
 {
     const gint32 xs[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, ys[10] = {};
     EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_INT32, 10, xs, ys), rect(0, 9, 0, 0));
 }
 
-// BUG B4: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Layer, DISABLED_line_single_point)
+TEST(Layer, line_single_point)
 {
     const gint32 xs[] = { 5 }, ys[] = { 5 };
     EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_INT32, 1, xs, ys), Cells({ {5,5} }));
 }
 
-// BUG B5: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Layer, DISABLED_line_shallow_segment_endpoint)
+TEST(Layer, line_shallow_segment_endpoint)
 {
     const gint32 xs[] = { 0, 10 }, ys[] = { 0, 1 };
     Cells got = layer_cells(BLOT_LINE, BLOT_DATA_INT32, 2, xs, ys, { 0, 10, 0, 9 }, { 11, 10 });
     EXPECT_TRUE(got.count({10, 1})) << cells_str(got);
     EXPECT_EQ(got.size(), 11u) << cells_str(got);
+}
+
+/* a NaN point must not hang the walk (lround(NaN) is LONG_MIN on x86-64);
+ * how NaN should look is #6, so only the finite segment is pinned */
+TEST(Layer, line_with_nan_terminates)
+{
+    RUN_ISOLATED(5, {
+        const double xs[] = { 0, 1, 2, 3 }, ys[] = { 0, NAN, 2, 3 };
+        Cells got = layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 4, xs, ys, { 0, 3, 0, 3 });
+        for (unsigned i = 6; i <= 9; i++)
+            EXPECT_TRUE(got.count({ i, i })) << cells_str(got);
+    });
+    RUN_ISOLATED(5, {
+        const double xs[] = { 0, NAN, 2, 3 }, ys[] = { 0, 1, 2, 3 };
+        Cells got = layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 4, xs, ys, { 0, 3, 0, 3 });
+        for (unsigned i = 6; i <= 9; i++)
+            EXPECT_TRUE(got.count({ i, i })) << cells_str(got);
+    });
 }
 
 TEST(Layer, line_right_to_left_and_downward)
@@ -1193,8 +1208,9 @@ TEST(Layer, DISABLED_line_far_outside_limits_terminates)
     });
 }
 
-// BUG B7: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Layer, DISABLED_line_infinite_value_terminates)
+/* B7 (#6): terminates since #4 (a non-finite segment is not drawn); #6
+ * still owns how inf should look */
+TEST(Layer, line_infinite_value_terminates)
 {
     RUN_ISOLATED(5, {
         const double xs[] = { 0, 1 }, ys[] = { 0, INFINITY };
@@ -1276,8 +1292,8 @@ TEST(Layer, DISABLED_get_lim_ignores_nan)
     blot_layer_delete(lay);
 }
 
-// BUG B18: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Layer, DISABLED_index_equal_to_count_rejected)
+// B18, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Layer, index_equal_to_count_rejected)
 {
     const gint32 xs[] = { 0, 1, 2, 3 }, ys[] = { 0, 1, 2, 3 };
     blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys, 1, "l", NULL);
@@ -1306,4 +1322,32 @@ TEST(Layer, braille_scatter_dots)
         { {0,0}, 0x2840 }, { {4,2}, 0x2808 }, { {2,1}, 0x2802 },
     };
     EXPECT_EQ(glyphs(can), expected);
+}
+
+/* B18 (#11): blot_layer_render() checked the plot and data types with '>'
+ * before indexing its tables; the value MAX itself is out of range */
+TEST(Layer, render_rejects_types_at_max)
+{
+    RUN_ISOLATED(10, {
+        const gint32 xs[] = { 0, 1, 2 }, ys[] = { 0, 1, 2 };
+        const blot_xy_limits lim = { 0, 2, 0, 2 };
+        const blot_dimensions dim = { 10, 10 };
+        blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+
+        GError *error = NULL;
+        lay->data_type = BLOT_DATA_TYPE_MAX;
+        EXPECT_TRUE(blot_layer_render(lay, &lim, &dim, BLOT_RENDER_NONE, &error) == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        g_clear_error(&error);
+
+        lay->data_type = BLOT_DATA_INT32;
+        lay->plot_type = BLOT_PLOT_TYPE_MAX;
+        EXPECT_TRUE(blot_layer_render(lay, &lim, &dim, BLOT_RENDER_NONE, &error) == NULL);
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        g_clear_error(&error);
+        blot_layer_delete(lay);
+    });
 }

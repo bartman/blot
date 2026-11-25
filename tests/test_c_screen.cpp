@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "blot_test.hpp"
 
 #include "blot_screen.h"
 #include "blot_layer.h"
@@ -521,6 +521,73 @@ TEST(Screen, render_multiple_layers)
     blot_canvas_delete(canvas2);
     blot_layer_delete(layer1);
     blot_layer_delete(layer2);
+    blot_axis_delete(x_axis);
+    blot_axis_delete(y_axis);
+    blot_screen_delete(screen);
+}
+
+/* #11 (note 34933): blot_screen_render() with margins larger than the
+ * screen underflowed the plot height and wrote past the buffer; it is an
+ * error now.  So is a left margin too narrow for the Y-axis labels. */
+TEST(Screen, render_margins_must_fit)
+{
+    const struct {
+        blot_margins mrg;
+        blot_render_flags flags;
+    } cases[] = {
+        { { 5, 0, 8, 8 }, BLOT_RENDER_NONE },                          /* 16 rows of 12 */
+        { { 0, 0, 13, 0 }, BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_NO_X_AXIS },
+        { { 15, 10, 0, 2 }, BLOT_RENDER_NONE },                        /* 25 columns of 20 */
+        { { 0, 21, 0, 0 }, BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_NO_X_AXIS },
+        { { 1, 0, 0, 2 }, BLOT_RENDER_NONE },                          /* Y-axis in 1 column */
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "left=" << c.mrg.left << " right=" << c.mrg.right
+                     << " top=" << c.mrg.top << " bottom=" << c.mrg.bottom);
+        RUN_ISOLATED(10, {
+            const blot_dimensions dim{ 20, 12 };
+            blot_render_flags flags = c.flags | BLOT_RENDER_NO_COLOR | BLOT_RENDER_NO_UNICODE;
+            blot_screen *screen = blot_screen_new(&dim, &c.mrg, flags, NULL);
+            ASSERT_TRUE(screen != NULL);
+            blot_xy_limits lim{ 0, 1, 0, 1 };
+            blot_axis *x_axis = blot_axis_new(0, false, 1, 10, 0, 1, NULL, NULL);
+            blot_axis *y_axis = blot_axis_new(1, false, 1, 10, 0, 1, NULL, NULL);
+            ASSERT_TRUE(x_axis && y_axis);
+
+            GError *error = NULL;
+            EXPECT_FALSE(blot_screen_render(screen, &lim, x_axis, y_axis, 0, NULL, NULL, &error));
+            ASSERT_TRUE(error != NULL);
+            EXPECT_EQ(error->code, EINVAL) << error->message;
+            g_clear_error(&error);
+
+            blot_axis_delete(x_axis);
+            blot_axis_delete(y_axis);
+            blot_screen_delete(screen);
+        });
+    }
+}
+
+/* the largest margins that fit: the plot is empty, the text still has
+ * exactly dim.rows lines */
+TEST(Screen, render_margins_fill_screen)
+{
+    const blot_dimensions dim{ 20, 12 };
+    const blot_margins mrg{ 10, 10, 6, 6 };
+    blot_render_flags flags = BLOT_RENDER_NO_COLOR | BLOT_RENDER_NO_UNICODE;
+    blot_screen *screen = blot_screen_new(&dim, &mrg, flags, NULL);
+    ASSERT_TRUE(screen != NULL);
+    blot_xy_limits lim{ 0, 1, 0, 1 };
+    blot_axis *x_axis = blot_axis_new(0, false, 1, 0, 0, 1, NULL, NULL);
+    blot_axis *y_axis = blot_axis_new(1, false, 1, 0, 0, 1, NULL, NULL);
+
+    GError *error = NULL;
+    EXPECT_TRUE(blot_screen_render(screen, &lim, x_axis, y_axis, 0, NULL, NULL, &error));
+    EXPECT_TRUE(error == NULL);
+    g_clear_error(&error);
+    gsize size = 0;
+    const wchar_t *txt = blot_screen_get_text(screen, &size, NULL);
+    EXPECT_EQ(std::count(txt, txt + size, L'\n'), 12);
+
     blot_axis_delete(x_axis);
     blot_axis_delete(y_axis);
     blot_screen_delete(screen);

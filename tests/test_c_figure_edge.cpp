@@ -189,8 +189,7 @@ TEST(Edge, DISABLED_single_point_bar_is_centred)
     EXPECT_EQ(m.begin()->first, 14u) << cells_str(m);
 }
 
-// BUG B4: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Edge, DISABLED_single_point_line_is_visible)
+TEST(Edge, single_point_line_is_visible)
 {
     const double xs[] = { 5 }, ys[] = { -250 };
     Rendered r = render_one(40, 14, BLOT_LINE, BLOT_DATA_DOUBLE, 1, xs, ys);
