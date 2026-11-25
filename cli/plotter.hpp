@@ -2,9 +2,83 @@
 
 #include "blot.hpp"
 #include "config.hpp"
+#include "plot_encode.hpp"
 
 #include "blot.hpp"
 #include "spdlog/spdlog.h"
+
+#include <cerrno>
+#include <climits>
+#include <clocale>
+#include <cstdio>
+#include <cstring>
+#include <cwchar>
+#include <cstdlib>
+#include <initializer_list>
+#include <stdexcept>
+#include <string>
+
+/* one warning about characters written as '?' is enough */
+inline bool plot_warned_once()
+{
+	static bool warned;
+	bool was = warned;
+	warned = true;
+	return was;
+}
+
+/* the plot is wide text, written in the encoding of the locale's
+ * LC_CTYPE.  The C and POSIX locales (no LANG, as in a docker container
+ * or CI) encode only ASCII, and a plot isn't ASCII even with --ascii (the
+ * legend's symbol), so use a UTF-8 locale there (#40).  Unlike Python's
+ * PEP 538 this also applies when LC_ALL=C is set explicitly */
+inline void plot_locale()
+{
+	static bool done;
+	if (done)
+		return;
+	done = true;
+
+	const char *loc = setlocale(LC_CTYPE, "");
+	if (loc && strcmp(loc, "C") && strcmp(loc, "POSIX"))
+		return;
+
+	/* C.UTF-8 is in glibc >= 2.35 and Debian; UTF-8 and en_US.UTF-8
+	 * elsewhere (macOS, older glibc) */
+	for (const char *utf8 : { "C.UTF-8", "C.utf8", "UTF-8", "en_US.UTF-8" }) {
+		if (setlocale(LC_CTYPE, utf8)) {
+			spdlog::debug("locale is {}, using {} for the plot",
+				loc ? loc : "unknown", utf8);
+			return;
+		}
+	}
+	setlocale(LC_CTYPE, "C");
+	if (!plot_warned_once())
+		spdlog::warn("no UTF-8 locale available; the plot's "
+			"non-ASCII characters are written as '?'");
+}
+
+/* write the rendered text to f in the locale's encoding, all of it.
+ * printf("%ls") gave up at the first character the locale can't encode
+ * and returned -1, unchecked: the plot was cut off mid-line, at a spot
+ * that depends on glibc's version and stdout's buffering (#40).  See
+ * plot_encode() for a character the locale can't encode.  Throws on a
+ * write error */
+inline void plot_write(FILE *f, const wchar_t *txt, size_t len)
+{
+	bool replaced;
+	std::string out = plot_encode(txt, len, &replaced);
+
+	if (replaced && !plot_warned_once())
+		spdlog::warn("the locale ({}) can't encode some of "
+			"the plot's characters; they are written as '?'",
+			setlocale(LC_CTYPE, nullptr));
+
+	if (fwrite(out.data(), 1, out.size(), f) != out.size()
+	    || fflush(f) != 0)
+		throw std::runtime_error(std::string("cannot write the plot: ")
+					 + strerror(errno));
+}
 
 template <typename X, typename Y>
 class Plotter final {
@@ -92,7 +166,7 @@ public:
 
 	void plot() {
 
-		setlocale(LC_CTYPE, "");
+		plot_locale();
 
 		bool timing = m_config.show_timing();
 
@@ -145,8 +219,7 @@ public:
 
 		spdlog::debug("rendered size = %zu", txt_size);
 
-		printf("%ls", txt);
-		fflush(stdout);
+		plot_write(stdout, txt, txt_size);
 
 		double t_print = timing ? blot_double_time() : 0;
 
