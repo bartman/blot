@@ -39,8 +39,12 @@ target_compile_definitions(test_isolated PRIVATE
 # the blot CLI without a terminal (#37): stdout a pipe, COLUMNS and LINES
 # unset; it must not abort (std::terminate).  repeat: a plot to a file or
 # a pipe is the same and complete every time, in any locale; write_error:
-# a failed write is exit code 1 (#40)
-foreach(CLI_CASE help render regex repeat write_error)
+# a failed write is exit code 1 (#40); color_*, no_color_env: --color,
+# --no-color and NO_COLOR; interval*, one_frame: --interval and the
+# frames drawn (#44, #47)
+foreach(CLI_CASE help render regex repeat write_error
+        color_never no_color_env color_auto color_always color_bad
+        interval interval_bad one_frame)
     add_test(NAME cli_notty_${CLI_CASE}
         COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/cli_test.sh $<TARGET_FILE:blot> ${CLI_CASE})
 endforeach()

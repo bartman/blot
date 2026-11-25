@@ -87,7 +87,10 @@ static int run(int argc, char *argv[])
 
 	Plotter<double,double> plotter(config);
 
-	double next_display = 0;
+	/* the first frame is one interval in: a file read to the end before
+	 * then is one frame with all of it, not a first one with only its
+	 * first value (#44, #47) */
+	double next_display = blot_double_time() + config.display_interval();
 
 	while(keep_going()) {
 
@@ -125,12 +128,10 @@ static int run(int argc, char *argv[])
 
 		/* display periodically */
 
-		if (double interval = config.display_interval()) {
-			double now = blot_double_time();
-			if (now > next_display) {
-				next_display = now + interval;
-				do_show_plot = true;
-			}
+		double now = blot_double_time();
+		if (now >= next_display) {
+			next_display = now + config.display_interval();
+			do_show_plot = true;
 		}
 
 		/* wait for the next time we have data */

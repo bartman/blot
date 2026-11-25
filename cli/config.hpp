@@ -86,15 +86,23 @@ public:
 class  Config final {
 public:
 	using OutputType = enum output_type { ASCII, UNICODE, BRAILLE };
+	/* --color=auto|always|never (#44) */
+	enum class ColorMode { AUTO, ALWAYS, NEVER };
 
 protected:
 	const char *m_self{};
 	OutputType  m_output_type;
 	const static blot_color m_first_color{9};
 	std::vector<Input> m_inputs;
-	bool m_display_interval{1};
+	/* seconds between frames while the input lasts (#44) */
+	double m_display_interval{1};
+	ColorMode m_color_mode{ColorMode::AUTO};
+	bool m_color{};
+	bool m_clear{};
 	bool m_using_input_interval{};
 	bool m_show_timing{};
+
+	void set_color_mode(const std::string &txt);
 
 public:
 	explicit Config(int argc, char *argv[]);
@@ -118,6 +126,14 @@ public:
 	bool using_input_interval() const { return m_using_input_interval; }
 	double display_interval() const { return m_display_interval; }
 	bool show_timing() const { return m_show_timing; }
+	/* colour escapes in the plot: --color, NO_COLOR and whether stdout
+	 * is a terminal decide (#44) */
+	bool color() const { return m_color; }
+	/* a screen clear before each frame: on a terminal, or with
+	 * --color=always (#44) */
+	bool clear() const { return m_clear; }
+
+	static double parse_seconds(const char *what, const std::string &txt);
 };
 
 
