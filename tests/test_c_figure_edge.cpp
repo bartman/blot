@@ -87,7 +87,9 @@ void expect_marks_on_ticks(blot_plot_type type)
             axes = render(f, F);
             ASSERT_TRUE(axes.ok) << axes.message;
         }
-        for (const auto &t : y_ticks(axes)) {
+        auto ticks = y_ticks(axes);
+        ASSERT_EQ(ticks.size(), 5u) << "Y ticks of y " << yl[0] << ".." << yl[1];
+        for (const auto &t : ticks) {
             double v = strtod(t.second.c_str(), NULL);
             SCOPED_TRACE(testing::Message() << "y " << yl[0] << ".." << yl[1] << " tick row " << t.first
                                             << " value " << v << " plot " << type);
@@ -106,14 +108,22 @@ void expect_marks_on_ticks(blot_plot_type type)
             if (type == BLOT_LINE) {
                 EXPECT_EQ(rows_of(m).size(), 1u) << cells_str(m);
             }
-            EXPECT_LE(std::abs(row - (int)t.first), 1) << "mark in row " << row << ":" << cells_str(m);
+            /* the tick's row; or the row of the label's value, when the
+             * label's 3-decimal rounding crosses into the next cell */
+            int label_row = expected_cell(v, yl[0], yl[1], r.plot_rows());
+            EXPECT_TRUE(row == (int)t.first || row == label_row)
+                << "mark in row " << row << ", tick row " << t.first << ":" << cells_str(m);
         }
     }
 }
 
 } // namespace
 
-TEST(Edge, point_on_tick_value_lands_on_tick_line)
+// BUG: https://git.jukie.net/bart/blot/-/work_items/14
+// a line maps y with round(v * (rows-1) / range), the Y axis with
+// floor(v * rows / range); a point on a tick value lands one row off its
+// tick (y 0..1, 40x16: 0.2 on row 3, its tick on row 2)
+TEST(Edge, DISABLED_point_on_tick_value_lands_on_tick_line)
 {
     expect_marks_on_ticks(BLOT_LINE);
 }

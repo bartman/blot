@@ -1113,10 +1113,11 @@ TEST(Layer, DISABLED_bar_below_limit_terminates)
 {
     RUN_ISOLATED(5, {
         const gint32 xs[] = { 1, 2 }, ys[] = { -5, 5 };
-        Cells got = layer_cells(BLOT_BAR, BLOT_DATA_INT32, 2, xs, ys, { 0, 3, 0, 10 });
-        /* the bar for -5 sets no cell: x 1 is columns 2..3 at 10/4 per unit */
-        for (const auto &c : got)
-            EXPECT_GE(c.first, 4u) << cells_str(got);
+        const blot_xy_limits lim = { 0, 3, 0, 10 };
+        /* the bar for -5 sets no cell: the cells are those of (2,5) alone */
+        Cells alone = layer_cells(BLOT_BAR, BLOT_DATA_INT32, 1, xs + 1, ys + 1, lim);
+        ASSERT_FALSE(alone.empty());
+        EXPECT_CELLS_EQ(layer_cells(BLOT_BAR, BLOT_DATA_INT32, 2, xs, ys, lim), alone);
     });
 }
 

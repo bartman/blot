@@ -32,9 +32,12 @@ void expect_y_labels_exact(const Rendered &r, double y_min, double y_max)
         /* right-aligned with room to spare: a label that fills the
          * margin may have been cut */
         EXPECT_LT(label.size(), r.mrg.left - 2) << "label '" << label << "' fills the margin";
-        double e = y_min + t.first * range / rows;
-        double tol = range / rows + std::max(0.0006, 1e-5 * std::fabs(e));
-        EXPECT_LE(std::fabs(v - e), tol) << "row " << t.first << " label '" << label << "' expected about " << e;
+        /* the tick's value lies in its row's cell [e, e + cell); eps
+         * covers the label's rounding, so a label one row off fails */
+        double e = y_min + t.first * range / rows, cell = range / rows;
+        double eps = std::max(0.0006, 1e-5 * std::fabs(e));
+        EXPECT_GE(v, e - eps) << "row " << t.first << " label '" << label << "' cell [" << e << "," << e + cell << ")";
+        EXPECT_LT(v, e + cell + eps) << "row " << t.first << " label '" << label << "' cell [" << e << "," << e + cell << ")";
     }
 }
 
