@@ -1495,14 +1495,9 @@ TEST(Layer, new_bad_plot_type)
     g_clear_error(&error);
     blot_layer_delete(lay);
 
-    /* a negative enum value is out of range too */
-    lay = layer_new_bad((blot_plot_type)-1, BLOT_DATA_INT32, 3, ys, &error);
-    EXPECT_TRUE(lay == NULL);
-    ASSERT_TRUE(error != NULL);
-    EXPECT_EQ(error->code, EINVAL);
-    EXPECT_EQ(layer_new_error_text(error), "plot_type 4294967295 is not valid: Invalid argument");
-    g_clear_error(&error);
-    blot_layer_delete(lay);
+    /* a value past BLOT_PLOT_TYPE_MAX, or a negative one, would be
+     * undefined behaviour in C++ (UBSan -fsanitize=enum), so it is not
+     * tested from here: the check is on the value as unsigned */
 }
 
 TEST(Layer, new_bad_data_type)
@@ -1518,8 +1513,8 @@ TEST(Layer, new_bad_data_type)
         { 0x50,  "data_type 0x50 is not valid: Invalid argument" },
         /* both nibbles all ones */
         { BLOT_DATA_TYPE_MAX, "data_type 0xff is not valid: Invalid argument" },
-        /* a bit outside both masks, X and Y valid */
-        { 0x111, "data_type 0x111 is not valid: Invalid argument" },
+        /* a bit outside both masks would be past the enum's range,
+         * undefined behaviour in C++, so it is not tested from here */
     };
 
     for (const auto &c : cases) {
