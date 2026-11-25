@@ -296,7 +296,11 @@ prep-container:deb13-clang:
   stage: unit-test
   script:
     - make test
-    # tests run, passed and disabled (known failures, see #2) per program
+  # tests run, passed and disabled (known failures, see #2) per program,
+  # and the programs ctest failed with no gtest failure (#30).  In
+  # after_script, so it shows when make test fails too; it doesn't change
+  # the job's status
+  after_script:
     - sh ci/test-summary.sh build
   artifacts:
     when: always
