@@ -200,7 +200,20 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 
 static inline double blot_layer_pos(double v, double min, double max, unsigned len)
 {
-	return (v - min) * len / (max - min);
+	double pos = (v - min) * len / (max - min);
+
+	/* (v - min) * len overflows to inf when the range is wider than
+	 * about DBL_MAX / len (#6).  Then scale both differences by 2^-32
+	 * first: len < 2^32, so the product can't overflow, and scaling a
+	 * value this large by a power of two is exact, so this rounds exactly
+	 * as the formula above would without the overflow.  Only then: for
+	 * every other value the cell is the one of the formula above, the
+	 * axis's.  A v so far outside the limits that v - min, or the
+	 * result, is still inf stays inf, and has no cell. */
+	if (unlikely (isinf(pos)) && isfinite(v - min))
+		pos = ldexp(v - min, -32) * len / ldexp(max - min, -32);
+
+	return pos;
 }
 
 static inline bool blot_layer_cell(double v, double min, double max, unsigned len, unsigned *cell)
@@ -240,6 +253,13 @@ static inline double blot_layer_coord(double v, double min, double max, unsigned
 	if (blot_layer_cell(v, min, max, len, &cell) && lround(c) != (long)cell)
 		c = nextafter(c < cell ? cell - 0.5 : cell + 0.5, cell);
 	return c;
+}
+
+/* The cell of v, as a data point at v is drawn: blot_layer_cell(), for the
+ * axis, whose ticks are in the cells of their values (#31). */
+bool blot_layer_value_cell(double v, double min, double max, unsigned len, unsigned *cell)
+{
+	return blot_layer_cell(v, min, max, len, cell);
 }
 
 /* scatter */
