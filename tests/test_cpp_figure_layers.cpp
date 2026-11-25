@@ -64,7 +64,7 @@ void scribble()
 
 Cells cells_of(Blot::Figure &fig)
 {
-	Rendered r = blot_test::render(&fig, F);
+	Rendered r = blot_test::render(fig.c_ptr(), F);
 	EXPECT_TRUE(r.ok) << r.message;
 	return blot_test::plot_cells(r);
 }
@@ -73,9 +73,9 @@ Cells cells_of(Blot::Figure &fig)
  * legend, then back to the figure's own size */
 Lines legend_of(Blot::Figure &fig)
 {
-	blot_dimensions dim = fig.dim;
+	blot_dimensions dim = fig.c_ptr()->dim;
 	fig.set_screen_size(60, 24);
-	Rendered r = blot_test::render(&fig, F | BLOT_RENDER_LEGEND_ABOVE);
+	Rendered r = blot_test::render(fig.c_ptr(), F | BLOT_RENDER_LEGEND_ABOVE);
 	fig.set_screen_size(dim.cols, dim.rows);
 	EXPECT_TRUE(r.ok) << r.message;
 	Lines out;
@@ -87,7 +87,7 @@ Lines legend_of(Blot::Figure &fig)
 
 std::wstring text_of(Blot::Figure &fig, blot_render_flags flags = F)
 {
-	Rendered r = blot_test::render(&fig, flags);
+	Rendered r = blot_test::render(fig.c_ptr(), flags);
 	EXPECT_TRUE(r.ok) << r.message;
 	return r.text;
 }
@@ -101,7 +101,7 @@ void scatter_xy_from_temporaries()
 	fig.scatter(as<T>(SC_X), as<T>(SC_Y), 1, std::string("pts").c_str());
 	scribble();
 	EXPECT_CELLS_EQ(cells_of(fig), SC_CELLS);
-	EXPECT_EQ(fig.layers[0]->count, 4u);
+	EXPECT_EQ(fig.c_ptr()->layers[0]->count, 4u);
 }
 
 template <typename T>
@@ -247,8 +247,8 @@ TEST(CppFigureLayers, rvalue_moved_in_lvalue_copied)
 	std::vector<int32_t> xs = as<int32_t>(SC_X), ys = as<int32_t>(SC_Y);
 	const int32_t *ys_data = ys.data();
 	fig.scatter(xs, std::move(ys), 1, "pts");
-	EXPECT_NE(fig.layers[0]->xs, xs.data());
-	EXPECT_EQ(fig.layers[0]->ys, ys_data);
+	EXPECT_NE(fig.c_ptr()->layers[0]->xs, xs.data());
+	EXPECT_EQ(fig.c_ptr()->layers[0]->ys, ys_data);
 	EXPECT_EQ(xs, as<int32_t>(SC_X));
 	EXPECT_CELLS_EQ(cells_of(fig), SC_CELLS);
 }
@@ -263,7 +263,7 @@ TEST(CppFigureLayers, failed_plot_adds_nothing)
 		fig.scatter(as<int32_t>(SC_X), as<int32_t>(SC_Y), 1, "pts");
 		EXPECT_THROW(fig.scatter(std::vector<int32_t>{ 1, 2 }, as<int32_t>(SC_Y), 2, "bad"), Blot::Exception);
 		EXPECT_THROW(fig.line(std::vector<double>(), 3, "empty"), Blot::Exception);
-		EXPECT_EQ(fig.layer_count, 1u);
+		EXPECT_EQ(fig.c_ptr()->layer_count, 1u);
 		EXPECT_CELLS_EQ(cells_of(fig), SC_CELLS);
 		EXPECT_EQ(legend_of(fig), Lines({ L"◘  pts" }));
 	});
@@ -277,8 +277,8 @@ TEST(CppFigureLayers, span_is_borrowed)
 	fix_a(fig);
 	std::vector<int32_t> xs = as<int32_t>(SC_X), ys = as<int32_t>(SC_Y);
 	fig.plot(BLOT_SCATTER, std::span<const int32_t>(xs), std::span<const int32_t>(ys), 1, "pts");
-	EXPECT_EQ(fig.layers[0]->xs, xs.data());
-	EXPECT_EQ(fig.layers[0]->ys, ys.data());
+	EXPECT_EQ(fig.c_ptr()->layers[0]->xs, xs.data());
+	EXPECT_EQ(fig.c_ptr()->layers[0]->ys, ys.data());
 	EXPECT_CELLS_EQ(cells_of(fig), SC_CELLS);
 	ys[1] = 0;
 	EXPECT_CELLS_EQ(cells_of(fig), Cells({ {0, 0}, {19, 0}, {10, 5}, {5, 2} }));
@@ -319,8 +319,8 @@ TEST(CppFigureLayers, null_label)
 	fix_a(fig);
 	fig.scatter(SC_X, SC_Y, 1, nullptr);
 	fig.scatter(SC_Y, 2, NULL);
-	EXPECT_STREQ(fig.layers[0]->label, "");
-	EXPECT_STREQ(fig.layers[1]->label, "");
+	EXPECT_STREQ(fig.c_ptr()->layers[0]->label, "");
+	EXPECT_STREQ(fig.c_ptr()->layers[1]->label, "");
 	EXPECT_EQ(legend_of(fig), Lines());
 }
 
@@ -334,7 +334,7 @@ TEST(CppFigureLayers, move_construct_keeps_data)
 		a.scatter(as<double>(SC_X), as<double>(SC_Y), 1, std::string("pts").c_str());
 		Blot::Figure b(std::move(a));
 		scribble();
-		EXPECT_EQ(a.layer_count, 0u);
+		EXPECT_EQ(a.c_ptr()->layer_count, 0u);
 		EXPECT_CELLS_EQ(cells_of(b), SC_CELLS);
 		EXPECT_EQ(legend_of(b), Lines({ L"◘  pts" }));
 	});
@@ -352,7 +352,7 @@ TEST(CppFigureLayers, move_assign_keeps_data)
 		b.line(as<float>(SC_Y), 2, std::string("old").c_str());
 		b = std::move(a);
 		scribble();
-		EXPECT_EQ(a.layer_count, 0u);
+		EXPECT_EQ(a.c_ptr()->layer_count, 0u);
 		EXPECT_CELLS_EQ(cells_of(b), SC_CELLS);
 		EXPECT_EQ(legend_of(b), Lines({ L"◘  pts" }));
 
