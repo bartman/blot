@@ -649,3 +649,63 @@ TEST(Screen, render_margins_fill_screen)
     blot_axis_delete(y_axis);
     blot_screen_delete(screen);
 }
+
+/* #10: a Y label wider than the margin is formatted again for the room
+ * there is (#13), but by the rule of the axis: a text that names a value
+ * within half a cell of the tick, or none.  On 1e-9..3e-9 with 5 columns,
+ * 1e-09 is exact for the first tick; the others have no such text (it was
+ * 0.000 for all of them) */
+TEST(Screen, narrow_margin_y_label_not_misleading)
+{
+    const blot_dimensions dim{ 30, 14 };
+    const blot_margins mrg{ 7, 0, 0, 2 }; /* left, right, top, bottom */
+    blot_render_flags flags = BLOT_RENDER_NO_COLOR | BLOT_RENDER_NO_UNICODE;
+    blot_screen *screen = blot_screen_new(&dim, &mrg, flags, NULL);
+    ASSERT_TRUE(screen != NULL);
+    blot_xy_limits lim{ 0, 1, 1e-9, 3e-9 };
+    blot_axis *x_axis = blot_axis_new(0, true, 1, 23, 0, 1, NULL, NULL);
+    blot_axis *y_axis = blot_axis_new(1, true, 1, 12, 1e-9, 3e-9, NULL, NULL);
+    ASSERT_TRUE(x_axis && y_axis);
+
+    GError *error = NULL;
+    ASSERT_TRUE(blot_screen_render(screen, &lim, x_axis, y_axis, 0, NULL, NULL, &error));
+    gsize size = 0;
+    const wchar_t *txt = blot_screen_get_text(screen, &size, NULL);
+    ASSERT_TRUE(txt != NULL);
+
+    std::vector<std::wstring> lines;
+    std::wstring all(txt, size), line;
+    for (wchar_t c : all) {
+        if (c == L'\n') {
+            lines.push_back(line);
+            line.clear();
+        } else {
+            line += c;
+        }
+    }
+    ASSERT_GE(lines.size(), 12u);
+
+    double half_cell = 0.5 * (3e-9 - 1e-9) / 12;
+    unsigned labelled = 0;
+    for (unsigned row = 0; row < 12; row++) {
+        const std::wstring &l = lines[row];
+        ASSERT_GE(l.size(), 7u);
+        const blot_axis_tick *t = blot_axis_get_tick_at(y_axis, 11 - row, NULL);
+        EXPECT_EQ(l[6], t ? L'*' : L'|') << "row " << row;
+        std::string label;
+        for (unsigned i = 0; i < 5; i++)
+            if (l[i] != L' ')
+                label += (char)l[i];
+        if (!t || label.empty())
+            continue;
+        labelled++;
+        double v = strtod(label.c_str(), NULL);
+        EXPECT_LE(std::fabs(v - t->value), half_cell) << "row " << row << " label '" << label << "'";
+    }
+    EXPECT_EQ(labelled, 1u);
+    EXPECT_EQ(lines[11].substr(0, 7), L"1e-09 *");
+
+    blot_axis_delete(x_axis);
+    blot_axis_delete(y_axis);
+    blot_screen_delete(screen);
+}

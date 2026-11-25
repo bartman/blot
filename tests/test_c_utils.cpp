@@ -307,13 +307,115 @@ TEST(Utils, format_number_non_finite)
         EXPECT_EQ(fmt(v, 3), "-1") << v;
 }
 
-// BUG B16: https://git.jukie.net/bart/blot/-/work_items/10
-TEST(Utils, DISABLED_format_number_tiny_not_zero)
+// B16, fixed in #10: https://git.jukie.net/bart/blot/-/work_items/10
+TEST(Utils, format_number_tiny_not_zero)
 {
     for (double v : { 1e-5, 0.0004, -0.0004 }) {
         std::string s = fmt(v, 16);
         EXPECT_NE(strtod(s.c_str(), NULL), 0.0) << v << " -> " << s;
         EXPECT_NE(s, "-0.000") << v;
+    }
+}
+
+/* #10: a fixed point text is no less precise than %.1g either (it was
+ * 0.000 for 0.0004), and zero is never negative */
+TEST(Utils, format_number_tiny_exact)
+{
+    const struct {
+        double v;
+        unsigned room;
+        const char *text; /* "-1": nothing fits */
+    } cases[] = {
+        { 0.0004, 16, "0.0004" },
+        { -0.0004, 16, "-0.0004" },
+        { 1e-5, 16, "1e-05" },
+        { 1.4e-9, 16, "1.4e-09" },
+        { -0.0, 16, "0.000" },
+        { -0.0, 2, "0" },
+        { 0.0016, 16, "0.002" },  /* as before: as precise as %.1g */
+        { 0.0004, 7, "0.0004" },
+        { 0.0004, 6, "-1" },      /* not 0.000 */
+        { 0.05, 4, "-1" },        /* not 0.1, 100% off; 0.05 needs 5 */
+    };
+    for (const auto &c : cases)
+        EXPECT_EQ(fmt(c.v, c.room), c.text) << "value " << c.v << " room " << c.room;
+}
+
+/* #10: blot_format_number_within(), the axis labels' formatter: a text
+ * within tol (half a cell) of the value where one fits */
+TEST(Utils, format_number_within_exact)
+{
+    const struct {
+        double v;
+        unsigned room;
+        double tol;
+        const char *text; /* "-1": nothing fits */
+    } cases[] = {
+        /* fixed point when it is within tol, as before */
+        { 0.00307, 16, 1.535e-4, "0.003" },
+        { 2.25, 16, 0.1, "2.250" },
+        { 2.25, 5, 0.1, "2.25" },
+        { -200100, 16, 5000, "-200100.000" },
+        /* else the fewest significant digits within tol */
+        { 0.00921, 16, 1.535e-4, "0.0092" },
+        { 0.0014, 16, 2e-5, "0.0014" },
+        { 0.0011994, 16, 4e-5, "0.0012" },
+        { 1.4e-9, 16, 8e-11, "1.4e-09" },
+        { -0.0004008, 16, 4e-5, "-0.0004" },
+        { 1000000.0002, 16, 1e-5, "1000000.0002" },
+        /* large values: the most precise that fits, as before */
+        { -8.016e299, 16, 8e298, "-8.016e+299" },
+        { 3.1e9, 10, 1e8, "3.1e+09" },
+        /* nothing within tol fits: the most precise that fits */
+        { 0.0014, 6, 2e-5, "0.001" },
+        { 1000000.0002, 9, 1e-5, "1000000" },
+        { 1.4e-9, 5, 8e-11, "-1" },
+        /* never a negative zero */
+        { -0.0, 16, 1e-9, "0.000" },
+        /* review L1: fixed point within tol, even when less precise than
+         * %.1g; a negative value is 0.000, not -0.000 */
+        { 1.0911e-7, 16, 0.02, "0.000" },
+        { 4.104e-5, 16, 0.02, "0.000" },
+        { -4e-5, 16, 0.02, "0.000" },
+        { -4e-5, 6, 0.02, "0.00" },   /* -0.00 fits, 0.000 not */
+        { -4e-5, 16, 1e-5, "-4e-05" },
+        /* no tolerance: the text of blot_format_number() */
+        { -4e-5, 16, INFINITY, "-4e-05" },
+        { -4e-5, 16, NAN, "-4e-05" },
+        { -4e-5, 16, -1, "-4e-05" },
+        { -4e-5, 16, -INFINITY, "-4e-05" },
+        { 0.05, 4, -1, "-1" },
+    };
+    for (const auto &c : cases) {
+        char buf[64];
+        int rc = blot_format_number_within(buf, c.room, c.v, c.tol);
+        std::string s = rc < 0 ? "-1" : buf;
+        if (rc >= 0) {
+            EXPECT_EQ((size_t)rc, strlen(buf)) << buf;
+        }
+        EXPECT_EQ(s, c.text) << "value " << c.v << " room " << c.room << " tol " << c.tol;
+    }
+}
+
+/* #10: blot_format_number_within() keeps to its room, like
+ * blot_format_number() */
+TEST(Utils, format_number_within_respects_room)
+{
+    for (double v : { 0.0, 1.4e-9, -0.0004008, 1000000.0002, 0.00921, -8.016e299, (double)NAN }) {
+        for (double tol : { 1e-12, 1e-5, 1.0, (double)INFINITY }) {
+            for (unsigned room = 0; room <= 20; room++) {
+                char buf[40];
+                memset(buf, 0x5a, sizeof(buf));
+                int rc = blot_format_number_within(buf, room, v, tol);
+                if (rc != -1) {
+                    EXPECT_GT(rc, 0) << "value " << v << " room " << room;
+                    EXPECT_LT(rc, (int)room) << "value " << v << " room " << room;
+                    EXPECT_EQ(strnlen(buf, sizeof(buf)), (size_t)rc) << "value " << v << " room " << room;
+                }
+                for (size_t i = room; i < sizeof(buf); i++)
+                    ASSERT_EQ(buf[i], 0x5a) << "value " << v << " room " << room << " wrote byte " << i;
+            }
+        }
     }
 }
 

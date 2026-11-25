@@ -56,7 +56,7 @@ public:
 	static constexpr const char *unknown_error = "blot: unknown error";
 
 	/* true when it carries a GError */
-	operator bool() const noexcept { return m_error != nullptr; }
+	explicit operator bool() const noexcept { return m_error != nullptr; }
 	int code() const noexcept { return m_error ? m_error->code : 0; }
 	std::string str() const { return what(); }
 
