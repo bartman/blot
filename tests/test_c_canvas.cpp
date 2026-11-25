@@ -115,7 +115,10 @@ TEST(Canvas, fill_rect)
  * Every test compares the exact set of cells, so stray cells are caught
  * as well as missing ones. */
 
+#include <cfloat>
 #include <climits>
+#include <iomanip>
+#include <random>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -453,4 +456,253 @@ TEST(Canvas, line_with_non_finite_end_terminates)
         EXPECT_CELLS_EQ(line_cells(8, 8, 1, 1, INFINITY, 5), Cells());
         EXPECT_CELLS_EQ(line_cells(8, 8, 1, -INFINITY, 5, 5), Cells());
     });
+}
+
+/* --- #5: lines that reach far outside the canvas ----------------------
+ *
+ * A line used to be walked cell by cell from end to end, also off the
+ * canvas: an end at 1e12 took hours, and an end beyond the range of a
+ * long made lround() return LONG_MIN, which flipped the line and walked
+ * ~2^63 cells.  Only the visible cells may be walked, and those must be
+ * the cells the full walk sets on the canvas. */
+
+namespace {
+
+/* The line walk of #4 (!6), before #5: it visits every cell from one end
+ * to the other and drops those off the canvas.  Only for ends where that
+ * is fast.  This is the reference the clipped walk must match.  The one
+ * change since #4 is the tie rule (#5): an interior tie goes to the upper
+ * cell, not towards the far end. */
+Cells unclipped_line_cells(unsigned w, unsigned h, double x0, double y0, double x1, double y1)
+{
+    Cells out;
+    if (!std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(x1) || !std::isfinite(y1))
+        return out;
+
+    long cx0 = lround(x0), cy0 = lround(y0);
+    long cx1 = lround(x1), cy1 = lround(y1);
+
+    if (cx0 > cx1 || (cx0 == cx1 && cy0 > cy1)) {
+        std::swap(cx0, cx1);
+        std::swap(cy0, cy1);
+        std::swap(x0, x1);
+        std::swap(y0, y1);
+    }
+
+    bool y_down = cy1 < cy0;
+    unsigned long dx = (unsigned long)cx1 - (unsigned long)cx0;
+    unsigned long dy = y_down ? (unsigned long)cy0 - (unsigned long)cy1
+                              : (unsigned long)cy1 - (unsigned long)cy0;
+
+    bool x_major = dx >= dy;
+    unsigned long n = x_major ? dx : dy;
+    unsigned long m = x_major ? dy : dx;
+
+    double a0 = x_major ? x0 : y0;
+    double a1 = x_major ? x1 : y1;
+    double b0 = x_major ? y0 : x0;
+    double b1 = x_major ? y1 : x1;
+    double ca0 = (double)(x_major ? cx0 : cy0);
+    double cb0 = (double)(x_major ? cy0 : cx0);
+    double a_dir = (!x_major && y_down) ? -1 : 1;
+    double b_dir = (x_major && y_down) ? -1 : 1;
+
+    unsigned long off = 0;
+
+    for (unsigned long i = 0; ; i++) {
+        if (i == n) {
+            off = m;
+        } else if (i > 0) {
+            double a = ca0 + a_dir * (double)i;
+            double b = b0 + (a - a0) * (b1 - b0) / (a1 - a0);
+            double d = (b - cb0) * b_dir;
+            unsigned long want;
+            if (!(d > 0))
+                want = 0;
+            else if (d >= (double)m)
+                want = m;
+            else
+                want = (unsigned long)lround(d);
+            /* #5: a tie goes to the upper cell, also walking down */
+            if (b_dir < 0 && d > 0 && d < (double)m && (double)want - d == 0.5)
+                want--;
+
+            unsigned long lo = off ? off - 1 : 0;
+            unsigned long hi = off < m ? off + 1 : m;
+            if (m - lo > n - i)
+                lo = m - (n - i);
+            if (want < lo)
+                want = lo;
+            if (want > hi)
+                want = hi;
+            off = want;
+        }
+
+        unsigned long ox = x_major ? i : off;
+        unsigned long oy = x_major ? off : i;
+
+        long x = (long)((unsigned long)cx0 + ox);
+        long y = y_down ? (long)((unsigned long)cy0 - oy)
+                        : (long)((unsigned long)cy0 + oy);
+
+        if (x >= 0 && y >= 0 && x < (long)w && y < (long)h)
+            out.insert({ (unsigned)x, (unsigned)y });
+
+        if (i == n)
+            break;
+    }
+    return out;
+}
+
+Cells diag_cells(unsigned c0, unsigned r0, unsigned len)
+{
+    Cells out;
+    for (unsigned i = 0; i < len; i++)
+        out.insert({ c0 + i, r0 + i });
+    return out;
+}
+
+} // namespace
+
+TEST(Canvas, line_end_at_1e12_terminates)
+{
+    RUN_ISOLATED(5, {
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 2, 2, 1e12), col_cells(2, 2, 9));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 2, 1e12, 2), row_cells(2, 2, 9));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 2, 1e12, 1e12), diag_cells(2, 2, 8));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 7, 2, -1e12), col_cells(2, 0, 7));
+        EXPECT_CELLS_EQ(line_cells(10, 10, -1e12, 3, 1e12, 3), row_cells(3, 0, 9));
+    });
+}
+
+TEST(Canvas, line_end_at_1e300_terminates)
+{
+    /* far beyond the range of a long: lround() can't take it */
+    RUN_ISOLATED(5, {
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 2, 2, 1e300), col_cells(2, 2, 9));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 2, 1e300, 2), row_cells(2, 2, 9));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 2, 1e300, 1e300), diag_cells(2, 2, 8));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 2, 1e19, 2), row_cells(2, 2, 9));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 2, DBL_MAX, 2), row_cells(2, 2, 9));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 20, 2, 1e300, 2), Cells());
+    });
+}
+
+TEST(Canvas, line_end_at_minus_1e300_terminates)
+{
+    RUN_ISOLATED(5, {
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2, 7, 2, -1e300), col_cells(2, 0, 7));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 7, 2, -1e300, 2), row_cells(2, 0, 7));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 7, 7, -1e300, -1e300), diag_cells(0, 0, 8));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 7, 2, -1e19, 2), row_cells(2, 0, 7));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 7, 2, -DBL_MAX, 2), row_cells(2, 0, 7));
+        /* both ends far out, on either side */
+        EXPECT_CELLS_EQ(line_cells(10, 10, -1e300, 3, 1e300, 3), row_cells(3, 0, 9));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 4, 1e300, 4, -1e300), col_cells(4, 0, 9));
+        EXPECT_CELLS_EQ(line_cells(10, 10, -1e300, -1e300, -1e300, 1e300), Cells());
+    });
+}
+
+TEST(Canvas, line_crossing_from_far_outside)
+{
+    RUN_ISOLATED(5, {
+        /* y = x + 5, ends a billion cells out */
+        EXPECT_CELLS_EQ(line_cells(10, 10, -1e9, -1e9 + 5, 1e9, 1e9 + 5), diag_cells(0, 5, 5));
+        EXPECT_CELLS_EQ(line_cells(10, 10, 1e9, 1e9 + 5, -1e9, -1e9 + 5), diag_cells(0, 5, 5));
+
+        /* y = 2 + x/4: the rows nearest the true segment, a half
+         * rounded towards the far end */
+        const unsigned rows[] = { 2, 2, 3, 3, 3, 3, 4, 4, 4, 4 };
+        Cells shallow;
+        for (unsigned x = 0; x < 10; x++)
+            shallow.insert({ x, rows[x] });
+        EXPECT_CELLS_EQ(line_cells(10, 10, -4e6, 2 - 1e6, 4e6, 2 + 1e6), shallow);
+
+        /* x = 2 + y/4, from a billion rows below to a billion above */
+        Cells steep;
+        for (unsigned y = 0; y < 10; y++)
+            steep.insert({ rows[y], y });
+        EXPECT_CELLS_EQ(line_cells(10, 10, 2 - 1e9, -4e9, 2 + 1e9, 4e9), steep);
+    });
+}
+
+TEST(Canvas, line_clipped_matches_unclipped)
+{
+    /* the cells on the canvas are those of the full walk, for random
+     * segments partly or wholly off the canvas, on ranges where the full
+     * walk is still fast; ends are often whole or half cells, to hit the
+     * rounding ties, or tenths, which add rounding noise, and often near a
+     * diagonal, where the no-gap rule matters most */
+    std::mt19937_64 rng(5);
+    auto uni = [&](double lo, double hi) {
+        return std::uniform_real_distribution<double>(lo, hi)(rng);
+    };
+    auto pick = [&](unsigned k) { return (unsigned)(rng() % k); };
+    auto snap = [&](double v) {
+        switch (pick(5)) {
+        case 0: return std::round(v);
+        case 1: return std::floor(v) + 0.5;
+        case 2: return std::round(v * 10) / 10;   /* inexact: rounding noise */
+        default: return v;
+        }
+    };
+
+    unsigned failures = 0;
+    for (unsigned t = 0; t < 200000 && failures < 10; t++) {
+        unsigned w = 1 + pick(40), h = 1 + pick(20);
+        static const double spans[] = { 2, 10, 100, 2000 };
+        double span = t % 1000 == 0 ? 1e5 : spans[pick(4)];
+        double x0 = snap(uni(-span, w + span)), y0 = snap(uni(-span, h + span));
+        double x1, y1;
+        if (pick(3) == 0) {
+            /* near a diagonal: |dx| and |dy| differ by up to two cells */
+            double len = uni(0, 2 * span);
+            x1 = snap(x0 + (pick(2) ? len : -len));
+            y1 = snap(y0 + (pick(2) ? 1 : -1) * (len + uni(-2, 2)));
+        } else {
+            x1 = snap(uni(-span, w + span));
+            y1 = snap(uni(-span, h + span));
+        }
+        Cells want = unclipped_line_cells(w, h, x0, y0, x1, y1);
+        Cells got = line_cells(w, h, x0, y0, x1, y1);
+        if (got != want) {
+            failures++;
+            ADD_FAILURE() << std::setprecision(17) << "canvas " << w << "x" << h
+                          << ", line (" << x0 << "," << y0 << ") -> (" << x1 << "," << y1 << ")\n"
+                          << cells_eq(got, want).message();
+        }
+    }
+}
+
+TEST(Canvas, line_diagonal_rounding_matches_full_walk)
+{
+    /* a true diagonal (53.4 by 53.4) between end cells 53 by 54 apart:
+     * the rounding of the tenths puts some steps just below a half, and
+     * from the first of those on the cells lag one row; the canvas must
+     * show the same cells as the full walk */
+    EXPECT_CELLS_EQ(line_cells(33, 12, -29, -48.5, 24.4, 4.9),
+                    unclipped_line_cells(33, 12, -29, -48.5, 24.4, 4.9));
+    EXPECT_CELLS_EQ(line_cells(33, 12, 24.4, 4.9, -29, -48.5),
+                    unclipped_line_cells(33, 12, -29, -48.5, 24.4, 4.9));
+}
+
+TEST(Canvas, line_interior_tie_goes_to_upper_cell)
+{
+    /* y = 3 - x/2 crosses y = 2.5 and y = 1.5 at the centres of columns 1
+     * and 3: those ties go to the upper row, as a value on a cell edge
+     * does on the axes (G18 in #14), whichever end the walk starts from */
+    Cells down = { { 0, 3 }, { 1, 3 }, { 2, 2 }, { 3, 2 }, { 4, 1 } };
+    EXPECT_CELLS_EQ(line_cells(6, 6, 0, 3, 4, 1), down);
+    EXPECT_CELLS_EQ(line_cells(6, 6, 4, 1, 0, 3), down);
+
+    /* y = 1 + x/2: upwards the upper row was already the far one */
+    Cells up = { { 0, 1 }, { 1, 2 }, { 2, 2 }, { 3, 3 }, { 4, 3 } };
+    EXPECT_CELLS_EQ(line_cells(6, 6, 0, 1, 4, 3), up);
+    EXPECT_CELLS_EQ(line_cells(6, 6, 4, 3, 0, 1), up);
+
+    /* steep: x = 3 - y/2, ties at the centres of rows 1 and 3 go to the
+     * larger column (the walk goes up in y, so x is the minor axis) */
+    Cells steep = { { 3, 0 }, { 3, 1 }, { 2, 2 }, { 2, 3 }, { 1, 4 } };
+    EXPECT_CELLS_EQ(line_cells(6, 6, 3, 0, 1, 4), steep);
+    EXPECT_CELLS_EQ(line_cells(6, 6, 1, 4, 3, 0), steep);
 }

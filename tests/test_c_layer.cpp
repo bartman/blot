@@ -1294,12 +1294,26 @@ TEST(Layer, bar_below_limit_terminates)
     });
 }
 
-// BUG B8: https://git.jukie.net/bart/blot/-/work_items/5
-TEST(Layer, DISABLED_line_far_outside_limits_terminates)
+/* B8 (#5): only the visible part of a line is walked; it took 4.5 s at
+ * 1e8 and hung at 1e12 */
+TEST(Layer, line_far_outside_limits_terminates)
 {
     RUN_ISOLATED(5, {
         const double xs[] = { 0, 1 }, ys[] = { 0, 1e12 };
         layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys, { 0, 1, 0, 1 });
+    });
+}
+
+/* #5: the line from (0,0) climbs out of the top in the first column, for
+ * any far end, also beyond the range of a long */
+TEST(Layer, line_far_outside_limits_cells)
+{
+    RUN_ISOLATED(5, {
+        for (double far : { 1e8, 1e12, 1e19, 1e300 }) {
+            const double xs[] = { 0, 1 }, ys[] = { 0, far };
+            EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys, { 0, 1, 0, 1 }),
+                            rect(0, 0, 0, 9)) << "far end " << far;
+        }
     });
 }
 
