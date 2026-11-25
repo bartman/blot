@@ -59,6 +59,11 @@ void blot_layer_delete(blot_layer *lay)
 
 /* data */
 
+/* The limits of each coordinate are those of its finite values: NaN and
+ * +-inf are not drawn, so they don't count (#6).  A coordinate with no
+ * finite value has NaN limits, which the figure reports as "no data".
+ * fmin()/fmax() return the other argument when one is NaN, so starting
+ * from NaN takes the first finite value. */
 bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim, GError **error)
 {
 	RETURN_EFAULT_IF(lay==NULL, NULL, error);
@@ -70,41 +75,23 @@ bool blot_layer_get_lim(const blot_layer *lay, blot_xy_limits *lim, GError **err
 		return true;
 	}
 
-	if (unlikely (!lay->xs)) {
+	lim->x_min = lim->x_max = NAN;
+	lim->y_min = lim->y_max = NAN;
 
-		lim->x_min = 0;
-		lim->x_max = lay->count > 0 ? lay->count - 1 : 0;
-
-		ok = blot_layer_get_y(lay, 0, &y, error);
-		RETURN_IF(!ok, lim);
-
-		lim->y_min = lim->y_max = y;
-
-		for (int di=1; di<lay->count; di++) {
-			ok = blot_layer_get_y(lay, di, &y, error);
-			RETURN_IF(!ok, lim);
-
-			lim->y_min = min_t(double, lim->y_min, y);
-			lim->y_max = max_t(double, lim->y_max, y);
-		}
-		return true;
-	}
-
-	ok = blot_layer_get_x_y(lay, 0, &x, &y, error);
-	RETURN_IF(!ok, lim);
-
-	lim->x_min = lim->x_max = x;
-	lim->y_min = lim->y_max = y;
-
-	for (int di=1; di<lay->count; di++) {
+	for (int di=0; di<lay->count; di++) {
 		ok = blot_layer_get_x_y(lay, di, &x, &y, error);
 		RETURN_IF(!ok, lim);
 
-		lim->x_min = min_t(double, lim->x_min, x);
-		lim->x_max = max_t(double, lim->x_max, x);
+		/* with xs NULL, x is the index: 0 .. count-1 */
+		if (likely (isfinite(x))) {
+			lim->x_min = fmin(lim->x_min, x);
+			lim->x_max = fmax(lim->x_max, x);
+		}
 
-		lim->y_min = min_t(double, lim->y_min, y);
-		lim->y_max = max_t(double, lim->y_max, y);
+		if (likely (isfinite(y))) {
+			lim->y_min = fmin(lim->y_min, y);
+			lim->y_max = fmax(lim->y_max, y);
+		}
 	}
 
 	return true;
@@ -213,7 +200,20 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 
 static inline double blot_layer_pos(double v, double min, double max, unsigned len)
 {
-	return (v - min) * len / (max - min);
+	double pos = (v - min) * len / (max - min);
+
+	/* (v - min) * len overflows to inf when the range is wider than
+	 * about DBL_MAX / len (#6).  Then scale both differences by 2^-32
+	 * first: len < 2^32, so the product can't overflow, and scaling a
+	 * value this large by a power of two is exact, so this rounds exactly
+	 * as the formula above would without the overflow.  Only then: for
+	 * every other value the cell is the one of the formula above, the
+	 * axis's.  A v so far outside the limits that v - min, or the
+	 * result, is still inf stays inf, and has no cell. */
+	if (unlikely (isinf(pos)) && isfinite(v - min))
+		pos = ldexp(v - min, -32) * len / ldexp(max - min, -32);
+
+	return pos;
 }
 
 static inline bool blot_layer_cell(double v, double min, double max, unsigned len, unsigned *cell)
@@ -253,6 +253,13 @@ static inline double blot_layer_coord(double v, double min, double max, unsigned
 	if (blot_layer_cell(v, min, max, len, &cell) && lround(c) != (long)cell)
 		c = nextafter(c < cell ? cell - 0.5 : cell + 0.5, cell);
 	return c;
+}
+
+/* The cell of v, as a data point at v is drawn: blot_layer_cell(), for the
+ * axis, whose ticks are in the cells of their values (#31). */
+bool blot_layer_value_cell(double v, double min, double max, unsigned len, unsigned *cell)
+{
+	return blot_layer_cell(v, min, max, len, cell);
 }
 
 /* scatter */
@@ -341,6 +348,14 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 
 		blot_layer_summary_update(&lay->summary, rx, ry);
 
+		// a NaN or infinite point is a gap (#6): no segment goes to it
+		// or from it, and the next finite point starts a new run, which
+		// is drawn as a single cell if nothing follows it
+		if (unlikely (!isfinite(rx) || !isfinite(ry))) {
+			have_prev = false;
+			continue;
+		}
+
 		// compute location: the axis mapping, as a cell-centred coordinate
 		double dx = blot_layer_coord(rx, lim->x_min, lim->x_max, can->dim.cols);
 		double dy = blot_layer_coord(ry, lim->y_min, lim->y_max, can->dim.rows);
@@ -388,8 +403,10 @@ static bool blot_layer_bar(blot_layer *lay, const blot_xy_limits *lim,
 
 		blot_layer_summary_update(&lay->summary, rx, ry);
 
-		// skip a bar whose x is outside the limits (also NaN)
-		if (!(rx >= lim->x_min && rx <= lim->x_max))
+		// skip a bar whose x is outside the limits (also NaN), and one
+		// whose height is NaN or infinite: +inf is not a bar cut at
+		// the top (#6)
+		if (!(rx >= lim->x_min && rx <= lim->x_max) || !isfinite(ry))
 			continue;
 
 		// columns: the left edge of the slot, and half a slot to the right;
