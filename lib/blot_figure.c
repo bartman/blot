@@ -69,10 +69,11 @@ bool blot_figure_set_screen_size(blot_figure *fig,
 				 unsigned cols, unsigned rows, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
-	RETURN_EINVAL_IF(cols<BLOT_MIN_COLS, false, error);
-	RETURN_EINVAL_IF(rows<BLOT_MIN_ROWS, false, error);
-	RETURN_EINVAL_IF(cols>BLOT_MAX_COLS, false, error);
-	RETURN_EINVAL_IF(rows>BLOT_MAX_ROWS, false, error);
+	/* the minimum renders with every flag (blot_figure.h, #17) */
+	RETURN_ERRORx(cols<BLOT_MIN_COLS || cols>BLOT_MAX_COLS, false, error, EINVAL,
+		      "cols=%u is outside %u..%u", cols, BLOT_MIN_COLS, BLOT_MAX_COLS);
+	RETURN_ERRORx(rows<BLOT_MIN_ROWS || rows>BLOT_MAX_ROWS, false, error, EINVAL,
+		      "rows=%u is outside %u..%u", rows, BLOT_MIN_ROWS, BLOT_MAX_ROWS);
 
 	fig->screen_dimensions_set = true;
 	fig->dim.cols = cols;
@@ -261,6 +262,27 @@ static unsigned blot_figure_int_width(double v)
 	return w;
 }
 
+/* the columns of the widest Y label with all the room it could want, on
+ * a Y-axis of len rows */
+static unsigned blot_figure_y_label_cols(unsigned len, const blot_xy_limits *lim)
+{
+	if (!len)
+		return 0;
+
+	blot_axis *axs = blot_axis_new(true, true, 0, len, lim->y_min, lim->y_max, NULL, NULL);
+	if (!axs)
+		return 0;
+
+	unsigned cols = 0;
+	for (unsigned i=0; i<len; i++) {
+		const blot_axis_tick *t = blot_axis_get_tick_at(axs, i, NULL);
+		if (t && t->label)
+			cols = max_t(unsigned, cols, strlen(t->label));
+	}
+	blot_axis_delete(axs);
+	return cols;
+}
+
 static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 						 blot_render_flags flags,
 						 const blot_xy_limits *lim,
@@ -315,12 +337,12 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 	unsigned below = (flags & BLOT_RENDER_LEGEND_BELOW) ? legend : 0;
 
 	/* a legend is cut, not the plot: each margin stays within half the
-	 * screen, and the plot keeps BLOT_MIN_ROWS rows when the screen has
+	 * screen, and the plot keeps BLOT_MIN_PLOT_ROWS rows when the screen has
 	 * them (two legends share the rows that are left, one at a time) */
 	above = min_t(unsigned, above, dim->rows / 2 - min_t(unsigned, mrg.top, dim->rows / 2));
 	below = min_t(unsigned, below, dim->rows / 2 - min_t(unsigned, mrg.bottom, dim->rows / 2));
 
-	unsigned used = mrg.top + mrg.bottom + BLOT_MIN_ROWS;
+	unsigned used = mrg.top + mrg.bottom + BLOT_MIN_PLOT_ROWS;
 	unsigned room = dim->rows > used ? dim->rows - used : 0;
 	while (above + below > room) {
 		if (below >= above)
@@ -331,6 +353,13 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 
 	mrg.top += above;
 	mrg.bottom += below;
+
+	/* a Y label may need more columns than the magnitude says, for the
+	 * digits that tell its tick from the next (1.4e-09, 0.0012: #10) */
+	if (!(flags & BLOT_RENDER_NO_Y_AXIS) && mrg.top + mrg.bottom < dim->rows) {
+		unsigned want = blot_figure_y_label_cols(dim->rows - mrg.top - mrg.bottom, lim) + 2;
+		mrg.left = max_t(unsigned, mrg.left, min_t(unsigned, want, dim->cols / 2));
+	}
 
 	return mrg;
 }
@@ -350,8 +379,9 @@ static blot_dimensions blot_figure_finalize_usable(const blot_figure *fig,
 	use.cols = dim->cols - mrg_cols;
 	use.rows = dim->rows - mrg_rows;
 
-	RETURN_EINVAL_IF(use.cols<BLOT_MIN_COLS, use, error);
-	RETURN_EINVAL_IF(use.rows<BLOT_MIN_ROWS, use, error);
+	/* the screen minimum (blot_figure.h) leaves this much with any flags */
+	RETURN_EINVAL_IF(use.cols<BLOT_MIN_PLOT_COLS, use, error);
+	RETURN_EINVAL_IF(use.rows<BLOT_MIN_PLOT_ROWS, use, error);
 
 	return use;
 }
@@ -433,11 +463,13 @@ static blot_screen * blot_figure_render_error(blot_figure *fig,
 	RETURN_IF(*error, NULL);
 
 	bool y_axs_visible = !(flags & BLOT_RENDER_NO_Y_AXIS);
-	y_axs = blot_axis_new(1, y_axs_visible,
+	/* the labels take the margin, less the blank and the axis */
+	y_axs = blot_axis_new_with_room(1, y_axs_visible,
 					fig->axis_color,
 					dim.rows - mrg.top - mrg.bottom,
 					lim.y_min, lim.y_max,
-					NULL, error);
+					NULL, mrg.left >= 2 ? mrg.left - 2 : 0,
+					error);
 	if (*error) __free_canvases_array(cans, fig->layer_count);
 	RETURN_IF(*error, NULL);
 

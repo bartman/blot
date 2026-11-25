@@ -500,4 +500,12 @@ template <typename Fn>
                     ::testing::ExitedWithCode(0), "");                          \
     } while (0)
 
+/* the results (failures) recorded so far in the current test: a sweep
+ * leaves a range at its first failing size, so that a failure doesn't
+ * flood the log (#10: a CI log is cut at 4 MB) */
+static inline int result_parts()
+{
+    return ::testing::UnitTest::GetInstance()->current_test_info()->result()->total_part_count();
+}
+
 } // namespace blot_test
