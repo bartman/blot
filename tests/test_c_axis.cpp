@@ -336,6 +336,25 @@ bool ticks_in_their_cells(const Axis &a, bool vertical, unsigned len, double min
     return blot_test::result_parts() == before;
 }
 
+/* #42: the value a number label names is on the axis and in its tick's
+ * cell (by the formula), where a point with that value is drawn, not in
+ * the next cell, which half a cell around a tick near a cell's edge
+ * reaches into; an empty label (the last resort) names none */
+testing::AssertionResult label_in_tick_cell(const Tick &t, double min, double max, unsigned len)
+{
+    if (t.label.empty())
+        return testing::AssertionSuccess();
+    double v = strtod(t.label.c_str(), NULL);
+    if (!(v >= min && v <= max))
+        return testing::AssertionFailure()
+               << "tick " << t.index << " " << t.value << " label '" << t.label << "' is off the axis";
+    unsigned cell = formula_cell(v, min, max, len);
+    if (cell != t.index)
+        return testing::AssertionFailure()
+               << "tick " << t.index << " " << t.value << " label '" << t.label << "' is in cell " << cell;
+    return testing::AssertionSuccess();
+}
+
 } // namespace
 
 TEST(Axis, tick_in_cell_of_its_value_reproducer)
@@ -386,6 +405,13 @@ TEST(Axis, tick_in_cell_of_its_value_sweep)
                 ASSERT_TRUE(a.axs) << a.error;
                 if (!ticks_in_their_cells(a, vertical, len, rg.first, rg.second))
                     goto next_range;
+                /* #42: and so is each label */
+                for (const auto &t : a.ticks())
+                    if (!label_in_tick_cell(t, rg.first, rg.second, len)) {
+                        ADD_FAILURE() << (vertical ? "V" : "H") << " len " << len << " [" << rg.first << ","
+                                      << rg.second << "] " << label_in_tick_cell(t, rg.first, rg.second, len).message();
+                        goto next_range;
+                    }
             }
         }
     next_range:;
@@ -619,6 +645,34 @@ TEST(Axis, tiny_range_labels_exact)
     }
 }
 
+/* #42: half a cell around a tick on the lower edge of its cell reaches
+ * into the cell below.  The tick at 50 of 150 over 0.001..0.002 is
+ * 0.0013333, on the edge of cell 50: 0.00133 (#10) and 0.001333 (#31) are
+ * at 49.5 and 49.95, in cell 49, where a point with that value is drawn.
+ * Its label is in cell 50, and still within half a cell (3.3e-6). */
+TEST(Axis, label_in_tick_cell_on_cell_edge)
+{
+    for (bool vertical : { false, true }) {
+        SCOPED_TRACE(vertical ? "V" : "H");
+        Axis a(vertical, 150, 0.001, 0.002);
+        ASSERT_TRUE(a.axs) << a.error;
+        const blot_axis_tick *t = blot_axis_get_tick_at(a.axs, 50, NULL);
+        ASSERT_TRUE(t != NULL) << "no tick at 50";
+        EXPECT_STRNE(t->label, "0.00133");
+        EXPECT_STRNE(t->label, "0.001333");
+        EXPECT_STREQ(t->label, "0.001334");
+        EXPECT_TRUE(label_in_tick_cell(Tick{ 50, t->value, t->label }, 0.001, 0.002, 150));
+
+        /* the screen's text for a narrower margin (blot_axis_number_label):
+         * in 7 characters, 0.00133 is in cell 49 and 0.00134 is 2 half
+         * cells off, so there is none; in 8, 0.001334 */
+        char text[9];
+        EXPECT_EQ(blot_axis_number_label(a.axs, text, 8, t->value), -1) << "'" << text << "'";
+        ASSERT_EQ(blot_axis_number_label(a.axs, text, 9, t->value), 8);
+        EXPECT_STREQ(text, "0.001334");
+    }
+}
+
 /* #10: every label of a vertical axis (with all of its 15 columns) names
  * a value within half a cell of its tick; none is a negative zero */
 TEST(Axis, y_labels_within_half_a_cell_sweep)
@@ -642,6 +696,7 @@ TEST(Axis, y_labels_within_half_a_cell_sweep)
                 EXPECT_TRUE(!t.label.empty() && *end == 0) << "tick " << t.index << " label '" << t.label << "'";
                 EXPECT_LE(std::fabs(v - t.value), 0.5 * cell * (1 + 1e-9))
                     << "tick " << t.index << " " << t.value << " label '" << t.label << "'";
+                EXPECT_TRUE(label_in_tick_cell(t, rg[0], rg[1], len));
                 EXPECT_FALSE(t.label[0] == '-' && v == 0) << "tick " << t.index << " label '" << t.label << "'";
                 EXPECT_LE(t.label.size(), 15u);
                 EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
@@ -692,6 +747,7 @@ TEST(Axis, y_labels_in_room_sweep)
                     double err = std::fabs(v - t->value), full_err = std::fabs(strtod(full, NULL) - t->value);
                     EXPECT_LE(err, std::max(half_cell, full_err * (1 + 1e-9)))
                         << "tick " << i << " " << t->value << " label '" << label << "' full '" << full << "'";
+                    EXPECT_TRUE(label_in_tick_cell(Tick{ i, t->value, label }, rg[0], rg[1], len));
                     EXPECT_FALSE(label[0] == '-' && v == 0) << "label '" << label << "'";
                     EXPECT_TRUE(seen.insert(label).second) << "duplicate label " << label;
                 }
@@ -791,6 +847,7 @@ TEST(Axis, x_labels_no_worse_than_needed_sweep)
                 double v = strtod(t.label.c_str(), NULL);
                 EXPECT_LE(std::fabs(v - t.value), 0.5 * cell * (1 + 1e-9))
                     << "tick " << t.index << " " << t.value << " label '" << t.label << "'";
+                EXPECT_TRUE(label_in_tick_cell(t, rg[0], rg[1], len));
                 EXPECT_FALSE(t.label[0] == '-' && v == 0) << "tick " << t.index << " label '" << t.label << "'";
                 EXPECT_LE(t.label.size(), 16u);
                 EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;

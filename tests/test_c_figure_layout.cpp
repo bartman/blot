@@ -74,7 +74,8 @@ void expect_y_labels_in_cell(const Rendered &r, double y_min, double y_max)
 
 /* #10, the rule of the X labels (#9) for the Y labels: every Y tick has a
  * label in the margin that names a value within half a cell of the tick's
- * row; no two are the same and none is a negative zero */
+ * row, and in that row (#42); no two are the same and none is a negative
+ * zero */
 void expect_y_labels_half_cell(const Rendered &r, double y_min, double y_max)
 {
     ASSERT_TRUE(r.ok) << r.message;
@@ -91,6 +92,10 @@ void expect_y_labels_half_cell(const Rendered &r, double y_min, double y_max)
         double lo = y_min + t.first * cell, eps = 0.5 * cell + 1e-9 * std::fabs(range);
         EXPECT_GE(v, lo - eps) << "row " << t.first << " label '" << label << "' cell [" << lo << "," << lo + cell << ")";
         EXPECT_LT(v, lo + cell + eps) << "row " << t.first << " label '" << label << "' cell [" << lo << "," << lo + cell << ")";
+        /* #42: and in the row's own cell, where a point with that value
+         * is drawn */
+        EXPECT_TRUE(v >= y_min && v <= y_max && expected_cell(v, y_min, y_max, r.plot_rows()) == t.first)
+            << "row " << t.first << " label '" << label << "' in row " << expected_cell(v, y_min, y_max, r.plot_rows());
         EXPECT_FALSE(label[0] == '-' && v == 0) << "row " << t.first << " label '" << label << "'";
         EXPECT_TRUE(seen.insert(label).second) << "duplicate label " << label;
     }
@@ -835,8 +840,8 @@ Lines x_rows(const Rendered &r)
 
 /* Every X tick has a label that starts under it and is a number that
  * names a value within half a cell of the tick's cell (the rule of the
- * axis, #9 review); the labels are all different; no line is wider than
- * the screen. */
+ * axis, #9 review), and in that cell (#42); the labels are all different;
+ * no line is wider than the screen. */
 void expect_x_labels_exact(const Rendered &r, double x_min, double x_max)
 {
     ASSERT_TRUE(r.ok) << r.message;
@@ -854,6 +859,11 @@ void expect_x_labels_exact(const Rendered &r, double x_min, double x_max)
         double lo = x_min + t.first * cell, eps = 0.5 * cell + 1e-9 * std::fabs(range);
         EXPECT_GE(v, lo - eps) << "column " << t.first << " label '" << label << "'";
         EXPECT_LT(v, lo + cell + eps) << "column " << t.first << " label '" << label << "'";
+        /* #42: and in the tick's own cell, where a point with that value
+         * is drawn */
+        EXPECT_TRUE(v >= x_min && v <= x_max && expected_cell(v, x_min, x_max, r.plot_cols()) == t.first)
+            << "column " << t.first << " label '" << label << "' in column "
+            << expected_cell(v, x_min, x_max, r.plot_cols());
         EXPECT_TRUE(seen.insert(label).second) << "duplicate label " << label;
     }
 }
