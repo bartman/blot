@@ -294,8 +294,9 @@ TEST(Golden, no_axes_three_plot_types)
 }
 
 /* G13..G20, G22 have sloped lines: their interior cells depend on how
- * blot_canvas_draw_line() rounds; regenerate them (and check by eye) if
- * that changes (B4, B5 in #4).  With auto limits they also pin where a line
+ * blot_canvas_draw_line() rounds (both ends rounded to the nearest cell,
+ * integer steps between, since #4); regenerate them and check them
+ * against the data if that changes.  With auto limits they also pin where a line
  * maps y (round(v * (rows-1) / range), Edge.DISABLED_point_on_tick_value_
  * lands_on_tick_line) */
 
@@ -354,7 +355,7 @@ TEST(Golden, auto_limits_offset_range)
 TEST(Golden, zero_crossing_both_axes)
 {
     /* zero alignment: a tick labelled exactly 0.000 on each axis.  The
-     * empty top row is B5 in #4 (the line misses its last cell). */
+     * line reaches the top row (it did not before #4). */
     const double xs[] = { -0.3, 0.7 }, ys[] = { -0.3, 0.7 };
     Fig f(60, 20);
     f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
@@ -408,7 +409,7 @@ TEST(Golden, all_zero_data)
 
 TEST(Golden, negative_large_y)
 {
-    /* margin 12; the empty top row is B5 in #4 */
+    /* margin 12; the line reaches the top row (it did not before #4) */
     const double xs[] = { 0, 1 }, ys[] = { -1000, 100 };
     Fig f(40, 14);
     f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
