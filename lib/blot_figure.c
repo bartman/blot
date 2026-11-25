@@ -217,6 +217,18 @@ static bool blot_figure_widen_limits(double *min, double *max, char axis, GError
 	return true;
 }
 
+/* An auto-ranged axis: "no data" (ENOENT) if no layer has data or none
+ * has a finite value on this axis (its limits are NaN), else widened. */
+static bool blot_figure_auto_limits(bool have_data, double *min, double *max, char axis, GError **error)
+{
+	if (unlikely (!have_data || isnan(*min) || isnan(*max))) {
+		blot_set_error_unix(error, ENOENT,
+				    "could not determine %c limits automatically, since there is no data", axis);
+		return false;
+	}
+	return blot_figure_widen_limits(min, max, axis, error);
+}
+
 static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 						  GError **error)
 {
@@ -251,27 +263,25 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 		}
 	}
 
-	/* no layer has data, or none has a finite value on an axis (NaN
-	 * and inf are not drawn, so they don't make limits) */
-	if (unlikely (!something_set || isnan(lim.x_min) || isnan(lim.y_min))) {
-		blot_set_error_unix(error, ENOENT,
-				    "could not determine limits automatically, since there is no data");
-		return lim;
-	}
-
-	bool ok = blot_figure_widen_limits(&lim.x_min, &lim.x_max, 'x', error)
-	       && blot_figure_widen_limits(&lim.y_min, &lim.y_max, 'y', error);
-	RETURN_IF(!ok, lim);
-
-	/* an axis with user limits keeps them; the other one is
-	 * auto-ranged over all of the data (#7) */
+	/* An axis with user limits keeps them; the other one is
+	 * auto-ranged over all of the data (#7).  Only an auto-ranged axis
+	 * needs data: it fails if no layer has data, or none has a finite
+	 * value on it (NaN and inf are not drawn, so they don't make
+	 * limits).  An axis with user limits doesn't, so its data can be all
+	 * NaN, or wider than DBL_MAX: then nothing of it is drawn (#6). */
 	if (fig->x_limits_set) {
 		lim.x_min = fig->lim.x_min;
 		lim.x_max = fig->lim.x_max;
+	} else {
+		bool ok = blot_figure_auto_limits(something_set, &lim.x_min, &lim.x_max, 'x', error);
+		RETURN_IF(!ok, lim);
 	}
 	if (fig->y_limits_set) {
 		lim.y_min = fig->lim.y_min;
 		lim.y_max = fig->lim.y_max;
+	} else {
+		bool ok = blot_figure_auto_limits(something_set, &lim.y_min, &lim.y_max, 'y', error);
+		RETURN_IF(!ok, lim);
 	}
 
 	return lim;
