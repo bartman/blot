@@ -34,10 +34,15 @@ bool blot_terminal_get_size(blot_dimensions *dims, GError **error)
 		return true;
 	}
 
-	dims->cols = blot_env_to_uint("COLUMNS", 0);
-	dims->rows = blot_env_to_uint("LINES", 0);
+	/* COLUMNS and LINES are used (and kept) only when both are in the
+	 * range blot_terminal_set_size() accepts; otherwise ask the tty */
+	unsigned cols = blot_env_to_uint("COLUMNS", 0);
+	unsigned rows = blot_env_to_uint("LINES", 0);
 
-	if (dims->cols && dims->rows) {
+	if (cols >= BLOT_MIN_COLS && cols <= BLOT_MAX_COLS
+	    && rows >= BLOT_MIN_ROWS && rows <= BLOT_MAX_ROWS) {
+		dims->cols = cols;
+		dims->rows = rows;
 		blot_fixed_dims = *dims;
 		return true;
 	}
