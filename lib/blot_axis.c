@@ -244,12 +244,26 @@ static int blot_axis_text_as(char *text, unsigned room, bool exp, int prec, doub
 	return rc;
 }
 
-/* The text after text in its style (dir 1), or before it (dir -1). */
+/* The text after text in its style (dir 1), or before it (dir -1).  With
+ * an exponent, the step is a unit of the last decimal, and a tenth of it
+ * from a power of ten towards zero: 9.9e-301, not 9.0e-301, before
+ * 1.0e-300. */
 static int blot_axis_text_next(char *text, unsigned room, bool exp, int prec, int dir)
 {
 	const char *e = strchr(text, 'e');
+	double v = strtod(text, NULL);
 	double step = pow(10, (exp && e ? atoi(e + 1) : 0) - prec);
-	return blot_axis_text_as(text, room, exp, prec, strtod(text, NULL) + dir * step);
+
+	if (exp && e && (v < 0) != (dir < 0)) {
+		/* is the mantissa 1.000... ? */
+		const char *m = text + (text[0] == '-');
+		bool power = m[0] == '1';
+		for (const char *c = m + 1; power && c < e; c++)
+			power = *c == '.' || *c == '0';
+		if (power)
+			step /= 10;
+	}
+	return blot_axis_text_as(text, room, exp, prec, v + dir * step);
 }
 
 /* The text of d_val in room, if it is a good label: one that fits, that
@@ -265,8 +279,8 @@ static int blot_axis_text_next(char *text, unsigned room, bool exp, int prec, in
  * of 150 over 0.001..0.002.  When the formatter's text is there, the text
  * is in its style (fixed point, or an exponent), with its precision or,
  * where none is good, the least more that has one: the closest to d_val
- * of the texts of d_val and of the values allowed at either end, or of
- * the neighbour of an end's text that is inside them (0.001334). */
+ * of the texts of d_val and of the values allowed at either end, and of
+ * their neighbours, that is good (0.001334). */
 static bool blot_axis_good_text(char *text, unsigned room, double d_val,
 				const struct blot_axis_label_rule *rule)
 {
@@ -308,22 +322,29 @@ static bool blot_axis_good_text(char *text, unsigned room, double d_val,
 		double best_err = INFINITY;
 		bool fits = false;
 
+		/* the text of each, and its neighbours: an end that is a
+		 * short decimal can be just outside the cell (0.0013 for the
+		 * lower edge of cell 3 of 10 over 0.001..0.002), and its
+		 * neighbour is then the closest text inside (0.00131) */
 		for (int i = 0; i < 3; i++) {
 			if (blot_axis_text_as(cand, MIN(room, sizeof(cand)), exp, p, ends[i]) < 0)
 				continue;
 			fits = true;
 
-			double v = strtod(cand, NULL);
-			int dir = i == 1 && v < lo ? 1 : i == 2 && v > hi ? -1 : 0;
-			if (dir && blot_axis_text_next(cand, MIN(room, sizeof(cand)), exp, p, dir) < 0)
-				continue;
-			if (!blot_axis_text_near(rule, cand, d_val))
-				continue;
+			char base[sizeof(cand)];
+			strcpy(base, cand);
+			for (int dir = -1; dir <= 1; dir++) {
+				strcpy(cand, base);
+				if (dir && blot_axis_text_next(cand, MIN(room, sizeof(cand)), exp, p, dir) < 0)
+					continue;
+				if (!blot_axis_text_near(rule, cand, d_val))
+					continue;
 
-			double err = fabs(strtod(cand, NULL) - d_val);
-			if (err < best_err) {
-				best_err = err;
-				strcpy(text, cand);
+				double err = fabs(strtod(cand, NULL) - d_val);
+				if (err < best_err) {
+					best_err = err;
+					strcpy(text, cand);
+				}
 			}
 		}
 		if (best_err < INFINITY)
@@ -570,15 +591,15 @@ blot_axis * blot_axis_new_with_room(bool is_vertical, bool is_visible,
 	lay.y_room = is_vertical ? min_t(unsigned, y_label_cols, BLOT_AXIS_Y_LABEL_COLS) + 1 : 0;
 
 	/* Number labels must say the value of their own tick to within half
-	 * a cell, and a value in its cell (#42), in their room: horizontal ones are written side by side, so
-	 * they must fit between the ticks; vertical ones each have a row of
-	 * the margin, y_label_cols wide (#10).  When the zero alignment left
-	 * the last label too little room for that, drop that one tick: the
-	 * others keep their place.  When other labels don't fit, use fewer
-	 * ticks.  One horizontal tick at the start of the axis always has
-	 * room (BLOT_MIN_COLS); on a tiny axis or margin a label that still
-	 * doesn't fit is left empty, never a misleading number, and the render
-	 * never fails on it. */
+	 * a cell, and a value in its cell (#42), in their room: horizontal
+	 * ones are written side by side, so they must fit between the ticks;
+	 * vertical ones each have a row of the margin, y_label_cols wide
+	 * (#10).  When the zero alignment left the last label too little
+	 * room for that, drop that one tick: the others keep their place.
+	 * When other labels don't fit, use fewer ticks.  One horizontal tick
+	 * at the start of the axis always has room (BLOT_MIN_COLS); on a tiny
+	 * axis or margin a label that still doesn't fit is left empty, never
+	 * a misleading number, and the render never fails on it. */
 
 	if (!use_labels_arg) {
 		for (;;) {
