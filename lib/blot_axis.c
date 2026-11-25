@@ -89,10 +89,10 @@ enum blot_axis_fit {
 };
 
 /* The text of d_val in room, if it is a good label: one that fits, and
- * that doesn't name a value more than half a cell (half_cell) away from
- * the tick when all the room it could want would have done better (0.02
- * for 0.018036 in 4 columns, 2e+09 for 2.4e9).  A text that is off even
- * with all the room, like 0.000 for 1e-9, is the formatter's business. */
+ * that names a value within half a cell (half_cell) of the tick (not 0.02
+ * for 0.018036 in 4 columns, nor 2e+09 for 2.4e9).  When even the text
+ * with all the room it could want is further off (0.000 for 1e-9: the
+ * formatter's precision, #10), the text may be no further off than that. */
 static bool blot_axis_good_text(char *text, unsigned room, double d_val, double half_cell)
 {
 	if (blot_format_number(text, room, d_val) < 0)
@@ -101,10 +101,12 @@ static bool blot_axis_good_text(char *text, unsigned room, double d_val, double 
 	if (!(fabs(strtod(text, NULL) - d_val) > half_cell))
 		return true;
 
+	/* the full text is off too: the shorter one may be no further off
+	 * (0.02 for 0.01842 is not, when the full text is 0.018) */
 	char full[BLOT_AXIS_LABEL_MAX + 1];
 	if (blot_format_number(full, sizeof(full), d_val) < 0)
 		return true;
-	return !(fabs(strtod(full, NULL) - d_val) <= half_cell);
+	return fabs(strtod(text, NULL) - d_val) <= fabs(strtod(full, NULL) - d_val) * (1 + 1e-9);
 }
 
 /* Every label must have a good text, and no two may be the same text only
@@ -235,9 +237,10 @@ static bool blot_axis_custom_distinct(const struct blot_axis_layout *lay, const 
  * would be closer than two columns (one character and a blank): then
  * only every step'th label gets one, starting with the first, so the ticks
  * are evenly spaced again.  Cut labels must not become ambiguous
- * (2024-01-15 and 2024-01-16 both 2024-01): the step is raised, up to
- * twice that, until they aren't; if that is not enough, the first step is
- * kept and every cut label is marked with a '~'. */
+ * (2024-01-15 and 2024-01-16 both 2024-01): the smallest step from there
+ * whose labels aren't is taken.  With a step of the label count only the
+ * first label has a tick, which can't be ambiguous; a '~' marks it when
+ * even that one is cut, longer than the axis. */
 static struct blot_axis_custom blot_axis_custom_layout(const struct blot_axis_layout *lay,
 						       const blot_strv *labels,
 						       unsigned screen_length)
@@ -247,15 +250,15 @@ static struct blot_axis_custom blot_axis_custom_layout(const struct blot_axis_la
 	while (cus.step < lay->count && floor(cus.step * lay->s_jump) < 2)
 		cus.step ++;
 
-	unsigned base = cus.step;
-	for (unsigned step=base; step<=2*base && step<=lay->count; step++) {
-		if (blot_axis_custom_distinct(lay, labels, step, screen_length)) {
-			cus.step = step;
-			return cus;
-		}
-	}
+	while (cus.step < lay->count &&
+	       !blot_axis_custom_distinct(lay, labels, cus.step, screen_length))
+		cus.step ++;
 
-	cus.mark_cuts = true;
+	if (cus.step >= lay->count && labels->strings[0]) {
+		unsigned room = blot_axis_custom_room(lay, 0, cus.step, screen_length);
+		cus.mark_cuts = blot_axis_cut_label(NULL, labels->strings[0], room, false)
+			< strlen(labels->strings[0]);
+	}
 	return cus;
 }
 
