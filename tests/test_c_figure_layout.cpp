@@ -475,7 +475,7 @@ TEST(Layout, terminal_size_fallback)
         for (const auto &d : bad) {
             EXPECT_FALSE(blot_terminal_set_size(d, &error)) << d.cols << "x" << d.rows;
             ASSERT_TRUE(error != NULL);
-            EXPECT_EQ(error->code, ERANGE);
+            EXPECT_EQ(error->code, EINVAL);
             g_clear_error(&error);
         }
     });
@@ -1107,7 +1107,7 @@ TEST(Layout, accepted_terminal_sizes_render)
                 GError *error = NULL;
                 if (!blot_terminal_set_size({ cols, rows }, &error)) {
                     ASSERT_TRUE(error != NULL);
-                    EXPECT_EQ(error->code, ERANGE);
+                    EXPECT_EQ(error->code, EINVAL);
                     g_clear_error(&error);
                     continue;
                 }
