@@ -3,6 +3,8 @@
 #include "blot_test.hpp"
 
 #include <cstdlib>
+#include <pty.h>
+#include <sys/ioctl.h>
 
 using namespace blot_test;
 
@@ -177,8 +179,7 @@ double max_label(const std::vector<std::pair<unsigned, std::string>> &ticks)
 }
 } // namespace
 
-// BUG B3: https://git.jukie.net/bart/blot/-/work_items/7
-TEST(Layout, DISABLED_only_y_limits_are_honoured)
+TEST(Layout, only_y_limits_are_honoured)
 {
     Fig f(40, 16);
     f.ylim(0, 100);
@@ -189,8 +190,7 @@ TEST(Layout, DISABLED_only_y_limits_are_honoured)
     EXPECT_EQ(labels_of(x_ticks(r)), std::vector<std::string>({ "0.000", "3.340", "6.680" }));
 }
 
-// BUG B3: https://git.jukie.net/bart/blot/-/work_items/7
-TEST(Layout, DISABLED_only_x_limits_are_honoured)
+TEST(Layout, only_x_limits_are_honoured)
 {
     Fig f(40, 16);
     f.xlim(0, 100);
@@ -198,6 +198,94 @@ TEST(Layout, DISABLED_only_x_limits_are_honoured)
     Rendered r = render(f, F);
     ASSERT_TRUE(r.ok) << r.message;
     EXPECT_GE(max_label(x_ticks(r)), 30);
+}
+
+/* #7: an axis with limits uses exactly them, and the other axis gets the
+ * auto range it would get with no limits at all (0.1% padding) */
+TEST(Layout, one_sided_limits_match_both_set)
+{
+    const double pad = 10 * 0.001; /* auto range of 0..10 */
+    {
+        Fig one(40, 16), both(40, 16);
+        one.ylim(0, 100);
+        both.lim(0 - pad, 10 + pad, 0, 100);
+        one.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        both.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        Rendered r1 = render(one, F), r2 = render(both, F);
+        ASSERT_TRUE(r1.ok) << r1.message;
+        ASSERT_TRUE(r2.ok) << r2.message;
+        EXPECT_LINES_EQ(r1.lines, r2.lines);
+    }
+    {
+        Fig one(40, 16), both(40, 16);
+        one.xlim(0, 100);
+        both.lim(0, 100, 0 - pad, 10 + pad);
+        one.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        both.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        Rendered r1 = render(one, F), r2 = render(both, F);
+        ASSERT_TRUE(r1.ok) << r1.message;
+        ASSERT_TRUE(r2.ok) << r2.message;
+        EXPECT_LINES_EQ(r1.lines, r2.lines);
+    }
+}
+
+/* #7: the free axis is auto-ranged over all of the data, including points
+ * outside the other axis' limits; only the labels are checked, so this
+ * doesn't depend on how points outside the limits are drawn */
+TEST(Layout, one_sided_limits_auto_range_all_data)
+{
+    Fig none(40, 16);
+    none.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+    Rendered rn = render(none, F);
+    ASSERT_TRUE(rn.ok) << rn.message;
+    {
+        Fig f(40, 16);
+        f.xlim(0, 4);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(labels_of(y_ticks(r)), labels_of(y_ticks(rn)));
+        EXPECT_EQ(labels_of(x_ticks(r)), std::vector<std::string>({ "0.000", "1.333", "2.667" }));
+    }
+    {
+        Fig f(40, 16);
+        f.ylim(0, 4);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(labels_of(x_ticks(r)), labels_of(x_ticks(rn)));
+    }
+}
+
+/* #7: X and Y data differ, so ranging the free axis from the other
+ * coordinate (or from the fixed limits) changes its labels */
+TEST(Layout, one_sided_limits_free_axis_uses_its_own_data)
+{
+    const gint32 xs[] = { 0, 5, 10 }, ys[] = { -200, 0, 300 };
+    Fig none(40, 16);
+    none.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys);
+    Rendered rn = render(none, F);
+    ASSERT_TRUE(rn.ok) << rn.message;
+    EXPECT_EQ(labels_of(x_ticks(rn)), std::vector<std::string>({ "0.000", "3.340", "6.680" }));
+    {
+        Fig f(40, 16);
+        f.ylim(0, 100);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(labels_of(x_ticks(r)), labels_of(x_ticks(rn)));
+        EXPECT_EQ(labels_of(y_ticks(r)),
+                  std::vector<std::string>({ "0.000", "20.000", "40.000", "60.000", "80.000" }));
+    }
+    {
+        Fig f(40, 16);
+        f.xlim(0, 100);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(labels_of(y_ticks(r)), labels_of(y_ticks(rn)));
+        EXPECT_EQ(labels_of(x_ticks(r)), std::vector<std::string>({ "0.000", "33.333", "66.667" }));
+    }
 }
 
 TEST(Layout, explicit_limits_exact_ticks)
@@ -367,8 +455,8 @@ TEST(Layout, terminal_size_unknown_is_an_error)
     });
 }
 
-// BUG B19: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Layout, DISABLED_terminal_environment_out_of_range)
+// B19, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Layout, terminal_environment_out_of_range)
 {
     /* the size is cached on first use: one child per case */
     const char *cases[][2] = { { "1", "1" }, { "5000", "24" } };
@@ -391,8 +479,8 @@ TEST(Layout, DISABLED_terminal_environment_out_of_range)
     }
 }
 
-// BUG B10: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Layout, DISABLED_render_accepts_null_error)
+// B10, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Layout, render_accepts_null_error)
 {
     RUN_ISOLATED(10, {
         Fig f;
@@ -400,6 +488,139 @@ TEST(Layout, DISABLED_render_accepts_null_error)
         blot_screen *scr = blot_figure_render(f, F, NULL);
         EXPECT_TRUE(scr != NULL);
         blot_screen_delete(scr);
+    });
+}
+
+/* B19 (#11): COLUMNS and LINES that aren't a number (or 0, or too large
+ * for an unsigned) are ignored, and the size comes from the tty, here
+ * /dev/null, which has none */
+TEST(Layout, terminal_environment_invalid_is_ignored)
+{
+    const char *cases[][2] = {
+        { "0", "24" }, { "80", "0" }, { "abc", "24" }, { "80x", "24" }, { "4294967306", "24" },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "COLUMNS=" << c[0] << " LINES=" << c[1]);
+        RUN_ISOLATED(10, {
+            setenv("COLUMNS", c[0], 1);
+            setenv("LINES", c[1], 1);
+            ASSERT_TRUE(freopen("/dev/null", "w", stdout) != NULL);
+            blot_dimensions dim = {};
+            GError *error = NULL;
+            EXPECT_FALSE(blot_terminal_get_size(&dim, &error));
+            ASSERT_TRUE(error != NULL);
+            EXPECT_EQ(error->code, ENOTTY) << error->message;
+            g_clear_error(&error);
+
+            Fig f;
+            f.lim(0, 9, 0, 9);
+            f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, DIAG_X, DIAG_Y);
+            Rendered r = render(f, F);
+            EXPECT_FALSE(r.ok);
+            EXPECT_EQ(r.code, ENOTTY) << r.message;
+        });
+    }
+}
+
+/* B19 (#11 review L2): COLUMNS and LINES outside the range
+ * blot_terminal_set_size() accepts are clamped into it before they are
+ * used and cached, as the tty size is; no tty is needed */
+TEST(Layout, terminal_environment_out_of_range_is_clamped)
+{
+    const struct {
+        const char *cols, *rows;
+        unsigned get_cols, get_rows;    /* blot_terminal_get_size() */
+        unsigned exp_cols, exp_rows;    /* the screen, less the border */
+    } cases[] = {
+        { "9", "24", 10, 24, 10, 22 },
+        { "1", "1", 10, 10, 10, 10 },
+        { "1001", "24", 1000, 24, 998, 22 },
+        { "80", "5000", 80, 1000, 78, 998 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "COLUMNS=" << c.cols << " LINES=" << c.rows);
+        RUN_ISOLATED(10, {
+            setenv("COLUMNS", c.cols, 1);
+            setenv("LINES", c.rows, 1);
+            ASSERT_TRUE(freopen("/dev/null", "w", stdout) != NULL);
+            blot_dimensions dim = {};
+            EXPECT_TRUE(blot_terminal_get_size(&dim, NULL));
+            EXPECT_EQ(dim.cols, c.get_cols);
+            EXPECT_EQ(dim.rows, c.get_rows);
+
+            Fig f;
+            f.lim(0, 9, 0, 9);
+            f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, DIAG_X, DIAG_Y);
+            Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS);
+            ASSERT_TRUE(r.ok) << r.message;
+            EXPECT_EQ(r.dim.cols, c.exp_cols);
+            EXPECT_EQ(r.dim.rows, c.exp_rows);
+            EXPECT_EQ(r.lines.size(), c.exp_rows);
+        });
+    }
+}
+
+/* the terminal's own size, less the 2-cell border, within the minimum and
+ * the maximum: COLUMNS/LINES at the edges of the range, and a tty that is
+ * smaller or larger than blot can draw (B19, #11: 1x1 underflowed).  No
+ * axes: the plot itself needs BLOT_MIN_COLS x BLOT_MIN_ROWS */
+TEST(Layout, terminal_size_is_kept_in_range)
+{
+    const struct {
+        const char *cols, *rows;
+        unsigned short tty_cols, tty_rows;
+        unsigned exp_cols, exp_rows;
+    } cases[] = {
+        { "1000", "1000", 0, 0, 998, 998 },
+        { "10", "10", 0, 0, 10, 10 },
+        { NULL, NULL, 1, 1, 10, 10 },
+        { NULL, NULL, 0, 0, 10, 10 },
+        { NULL, NULL, 5000, 3000, 1000, 1000 },
+        { NULL, NULL, 82, 26, 80, 24 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "COLUMNS=" << (c.cols ? c.cols : "-") << " LINES="
+                     << (c.rows ? c.rows : "-") << " tty=" << c.tty_cols << "x" << c.tty_rows);
+        RUN_ISOLATED(10, {
+            if (c.cols) {
+                setenv("COLUMNS", c.cols, 1);
+                setenv("LINES", c.rows, 1);
+                ASSERT_TRUE(freopen("/dev/null", "w", stdout) != NULL);
+            } else {
+                unsetenv("COLUMNS");
+                unsetenv("LINES");
+                int master = -1, slave = -1;
+                struct winsize ws = {};
+                ws.ws_col = c.tty_cols;
+                ws.ws_row = c.tty_rows;
+                ASSERT_EQ(openpty(&master, &slave, NULL, NULL, &ws), 0);
+                ASSERT_EQ(dup2(slave, STDOUT_FILENO), STDOUT_FILENO);
+            }
+            Fig f;
+            f.lim(0, 9, 0, 9);
+            f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, DIAG_X, DIAG_Y);
+            Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS);
+            ASSERT_TRUE(r.ok) << r.message;
+            EXPECT_EQ(r.dim.cols, c.exp_cols);
+            EXPECT_EQ(r.dim.rows, c.exp_rows);
+            EXPECT_EQ(r.lines.size(), c.exp_rows);
+        });
+    }
+}
+
+/* #11 review L1: an error the caller has already set is kept, not freed
+ * and replaced (glib warns about it, as g_propagate_error() does) */
+TEST(Layout, render_keeps_callers_error)
+{
+    RUN_ISOLATED(10, {
+        Fig f(28, 12);      /* no layers: the render fails */
+        GError *pre = g_error_new_literal(g_quark_from_static_string("test"), 42, "pre-set");
+        GError *error = pre;
+        EXPECT_TRUE(blot_figure_render(f, F, &error) == NULL);
+        ASSERT_TRUE(error == pre);
+        EXPECT_EQ(error->code, 42);
+        EXPECT_STREQ(error->message, "pre-set");
+        g_clear_error(&error);
     });
 }
 
@@ -480,8 +701,7 @@ TEST(Layout, DISABLED_narrow_screen_large_x_values)
     EXPECT_TRUE(r.ok) << r.message;
 }
 
-// BUG B5: https://git.jukie.net/bart/blot/-/work_items/4
-TEST(Layout, DISABLED_line_reaches_top_right_at_every_size)
+TEST(Layout, line_reaches_top_right_at_every_size)
 {
     unsigned bad = 0, total = 0;
     std::ostringstream which;
