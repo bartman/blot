@@ -8,8 +8,21 @@
 #include "blot_compiler.h"
 #include "blot_types.h"
 
-#define BLOT_MIN_COLS 10
-#define BLOT_MIN_ROWS 10
+/* The smallest plot area: the canvas each layer is drawn on, without the
+ * axes and the legend.  The render never draws a smaller one (#17). */
+#define BLOT_MIN_PLOT_COLS 10
+#define BLOT_MIN_PLOT_ROWS 10
+
+/* The smallest screen: blot_figure_set_screen_size() and
+ * blot_terminal_set_size() reject a smaller one, and a terminal size from
+ * COLUMNS/LINES or the tty is raised to it.  It renders with every flag:
+ * - columns: the Y-axis margin takes at most half the screen (its labels
+ *   are formatted again for the room there is), the plot the other half;
+ * - rows: the X-axis takes 2 rows (the line and its labels) under the
+ *   plot.  A legend gets only the rows the plot can spare, so at the
+ *   minimum with the X-axis there is no room for one (#17). */
+#define BLOT_MIN_COLS (2 * BLOT_MIN_PLOT_COLS)
+#define BLOT_MIN_ROWS (BLOT_MIN_PLOT_ROWS + 2)
 #define BLOT_MAX_COLS 1000
 #define BLOT_MAX_ROWS 1000
 
@@ -45,6 +58,8 @@ BLOT_API void blot_figure_delete(blot_figure *fig);
 
 BLOT_API bool blot_figure_set_axis_color(blot_figure *fig, blot_color, GError **);
 
+/* cols x rows from BLOT_MIN_COLS x BLOT_MIN_ROWS to BLOT_MAX_COLS x
+ * BLOT_MAX_ROWS; EINVAL otherwise */
 BLOT_API bool blot_figure_set_screen_size(blot_figure *fig,
 					unsigned cols, unsigned rows, GError **);
 

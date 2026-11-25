@@ -69,10 +69,11 @@ bool blot_figure_set_screen_size(blot_figure *fig,
 				 unsigned cols, unsigned rows, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
-	RETURN_EINVAL_IF(cols<BLOT_MIN_COLS, false, error);
-	RETURN_EINVAL_IF(rows<BLOT_MIN_ROWS, false, error);
-	RETURN_EINVAL_IF(cols>BLOT_MAX_COLS, false, error);
-	RETURN_EINVAL_IF(rows>BLOT_MAX_ROWS, false, error);
+	/* the minimum renders with every flag (blot_figure.h, #17) */
+	RETURN_ERRORx(cols<BLOT_MIN_COLS || cols>BLOT_MAX_COLS, false, error, EINVAL,
+		      "cols=%u is outside %u..%u", cols, BLOT_MIN_COLS, BLOT_MAX_COLS);
+	RETURN_ERRORx(rows<BLOT_MIN_ROWS || rows>BLOT_MAX_ROWS, false, error, EINVAL,
+		      "rows=%u is outside %u..%u", rows, BLOT_MIN_ROWS, BLOT_MAX_ROWS);
 
 	fig->screen_dimensions_set = true;
 	fig->dim.cols = cols;
@@ -336,12 +337,12 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 	unsigned below = (flags & BLOT_RENDER_LEGEND_BELOW) ? legend : 0;
 
 	/* a legend is cut, not the plot: each margin stays within half the
-	 * screen, and the plot keeps BLOT_MIN_ROWS rows when the screen has
+	 * screen, and the plot keeps BLOT_MIN_PLOT_ROWS rows when the screen has
 	 * them (two legends share the rows that are left, one at a time) */
 	above = min_t(unsigned, above, dim->rows / 2 - min_t(unsigned, mrg.top, dim->rows / 2));
 	below = min_t(unsigned, below, dim->rows / 2 - min_t(unsigned, mrg.bottom, dim->rows / 2));
 
-	unsigned used = mrg.top + mrg.bottom + BLOT_MIN_ROWS;
+	unsigned used = mrg.top + mrg.bottom + BLOT_MIN_PLOT_ROWS;
 	unsigned room = dim->rows > used ? dim->rows - used : 0;
 	while (above + below > room) {
 		if (below >= above)
@@ -378,8 +379,9 @@ static blot_dimensions blot_figure_finalize_usable(const blot_figure *fig,
 	use.cols = dim->cols - mrg_cols;
 	use.rows = dim->rows - mrg_rows;
 
-	RETURN_EINVAL_IF(use.cols<BLOT_MIN_COLS, use, error);
-	RETURN_EINVAL_IF(use.rows<BLOT_MIN_ROWS, use, error);
+	/* the screen minimum (blot_figure.h) leaves this much with any flags */
+	RETURN_EINVAL_IF(use.cols<BLOT_MIN_PLOT_COLS, use, error);
+	RETURN_EINVAL_IF(use.rows<BLOT_MIN_PLOT_ROWS, use, error);
 
 	return use;
 }
