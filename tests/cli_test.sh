@@ -74,8 +74,9 @@ repeat)
 	# complete and the same every time, in any locale (#40).  In the C
 	# locale (no LANG, as in a docker container) printf("%ls") gave up at
 	# the first non-ASCII character and the plot was cut off mid-line.
-	# --ascii has one (the legend's symbol, #46); the default Unicode
-	# mode is non-ASCII throughout, so it keeps the test meaningful
+	# --ascii is all ASCII since #46, so --unicode, which is non-ASCII
+	# throughout, is what keeps the test meaningful; --ascii is checked to
+	# stay ASCII in every locale
 	n=${CLI_REPEAT:-100}
 	cols=80 lines=24
 	seq 1 20 | awk '{ print $1, $1*$1 }' > "$tmp/xy"
@@ -129,6 +130,11 @@ repeat)
 						# the legend, the last line of the frame, is whole
 						tail -n 2 "$ref" | grep -q -F "$tmp/xy" \
 							|| fail "$mode: no legend line"
+						# --ascii is ASCII (#46)
+						if [ $mode = --ascii ]; then
+							LC_ALL=C grep -q '[^ -~[:cntrl:]]' "$ref" \
+								&& fail "$mode: non-ASCII characters in the plot"
+						fi
 						# the Unicode plot is written in UTF-8, not ASCII
 						if [ $mode = --unicode ]; then
 							LC_ALL=C grep -q '[^ -~[:cntrl:]]' "$ref" \
