@@ -859,6 +859,45 @@ void expect_x_labels_exact(const Rendered &r, double x_min, double x_max)
 }
 } // namespace
 
+/* #10 review L1: an autoscaled axis whose minimum is a tiny positive
+ * value (1.09e-7, 4.1e-5) labels its first tick 0.000, as before: within
+ * half a cell, fixed point is taken even when it is less precise than
+ * %.1g (not 1.1e-07, 4.1e-05) */
+TEST(Layout, near_zero_minimum_labels_exact)
+{
+    for (double lo : { 0.00099911, 0.00104 }) {
+        SCOPED_TRACE(testing::Message() << "y " << lo << "..1");
+        const double xs[] = { 0, 1 }, ys[] = { lo, 1 };
+        Fig f(40, 14);
+        f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(r.mrg.left, 8u);
+        EXPECT_EQ(labels_of(y_ticks(r)), std::vector<std::string>({ "0.000", "0.200", "0.400", "0.601", "0.801" }));
+        EXPECT_EQ(labels_of(x_ticks(r)), std::vector<std::string>({ "0.000", "0.334", "0.668" }));
+    }
+}
+
+/* #10 review L2: the last resort of the Y-axis, in a figure.  On the
+ * smallest screen (20 columns, #17) the margin is 10 and a label has 8
+ * columns; 1700001234 has no text in 8 that is within half a cell (1.7e+09
+ * is 1234 off, half a cell is 82), so one tick, at the bottom, with no
+ * label rather than a misleading one (master: 1.7e+09 on every tick) */
+TEST(Layout, y_axis_lone_tick_without_label)
+{
+    LineAcross la(20, 24, 0, 1, 1700001234, 1700004834);
+    Rendered r = render(la.f, F);
+    ASSERT_TRUE(r.ok) << r.message;
+    EXPECT_EQ(r.mrg.left, 10u);
+    auto ticks = y_ticks(r);
+    ASSERT_EQ(ticks.size(), 1u);
+    EXPECT_EQ(ticks[0].first, 0u);
+    EXPECT_EQ(ticks[0].second, "");
+    Lines l = strip_sgr(r.lines);
+    for (unsigned row = 0; row < r.plot_rows(); row++)
+        EXPECT_EQ(l[r.mrg.top + row].substr(0, 10), row + 1 == r.plot_rows() ? L"         *" : L"         |") << row;
+}
+
 /* #10: tiny ranges, exact: the labels have the digits the tick spacing
  * needs (they were all 0.000, or 0.001 for 0.0012 and 0.0014), the left
  * margin is as wide as they need, and zero is not negative */

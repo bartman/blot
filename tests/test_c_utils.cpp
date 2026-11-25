@@ -372,6 +372,19 @@ TEST(Utils, format_number_within_exact)
         { 1.4e-9, 5, 8e-11, "-1" },
         /* never a negative zero */
         { -0.0, 16, 1e-9, "0.000" },
+        /* review L1: fixed point within tol, even when less precise than
+         * %.1g; a negative value is 0.000, not -0.000 */
+        { 1.0911e-7, 16, 0.02, "0.000" },
+        { 4.104e-5, 16, 0.02, "0.000" },
+        { -4e-5, 16, 0.02, "0.000" },
+        { -4e-5, 6, 0.02, "0.00" },   /* -0.00 fits, 0.000 not */
+        { -4e-5, 16, 1e-5, "-4e-05" },
+        /* no tolerance: the text of blot_format_number() */
+        { -4e-5, 16, INFINITY, "-4e-05" },
+        { -4e-5, 16, NAN, "-4e-05" },
+        { -4e-5, 16, -1, "-4e-05" },
+        { -4e-5, 16, -INFINITY, "-4e-05" },
+        { 0.05, 4, -1, "-1" },
     };
     for (const auto &c : cases) {
         char buf[64];

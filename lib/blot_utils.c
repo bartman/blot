@@ -69,8 +69,13 @@ int blot_format_number(char *p, unsigned room, double d_val)
 /* blot_format_number(), but a text should also be within tol of d_val:
  * an axis label within half a cell of its tick (#10).
  *
- * A fixed point text that is further off isn't used (0.001 for 0.0014
- * when a cell is 2e-5).  When fixed point fits but isn't precise enough,
+ * A fixed point text is used when it is within tol, even when it is less
+ * precise than %.1g: 0.000 for 1e-7 at the bottom of a 0..10 axis, as
+ * before; a negative value that rounds to zero is 0.000, not -0.000.  A
+ * fixed point text that is further off isn't used (0.001 for 0.0014 when
+ * a cell is 2e-5).  With no tolerance (tol is inf, NaN or negative: as
+ * blot_format_number()) fixed point must also be as precise as %.1g
+ * (0.0004, not 0.000).  When fixed point fits but isn't precise enough,
  * the precision comes from tol: the fewest significant digits, %.1g to
  * %.17g, within tol (0.0014, 1.4e-09).  When no fixed point fits (large
  * values), the most precise text of blot_format_number() if it is within
@@ -84,10 +89,10 @@ int blot_format_number_within(char *p, unsigned room, double d_val, double tol)
 		"%.0f", "%.6g", "%.5g", "%.4g", "%.3g", "%.2g", "%.1g" };
 	int rc;
 
-	/* never a negative zero; no tolerance is none at all */
+	/* never a negative zero; a NaN or negative tolerance is none */
 	if (d_val == 0)
 		d_val = 0;
-	if (isnan(tol))
+	if (!(tol >= 0))
 		tol = INFINITY;
 
 	/* nan and inf only have one text */
@@ -106,8 +111,12 @@ int blot_format_number_within(char *p, unsigned room, double d_val, double tol)
 		rc = snprintf(p, room, fixed[i], d_val);
 		if (rc>0 && (unsigned)rc < room) {
 			double err = blot_format_err(p, d_val);
-			if (err <= one_err && err <= tol)
+			if (isinf(tol) ? err <= one_err : err <= tol) {
+				/* -0.000 for -0.0004 is 0.000 */
+				if (p[0] == '-' && strtod(p, NULL) == 0)
+					rc = snprintf(p, room, fixed[i], 0.0);
 				return rc;
+			}
 			fixed_fits = true;
 		}
 	}
