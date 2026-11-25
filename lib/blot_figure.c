@@ -33,18 +33,18 @@ static void blot_figure_free_x_labels(blot_figure *fig)
 	fig->xlabels.strings = NULL;
 }
 
+/* frees what the figure owns and leaves it with none, so a second cleanup,
+ * a blot_figure_delete() or a blot_figure_init() after it frees nothing
+ * twice (#28); the configuration (size, limits, axis colour) stays */
 void blot_figure_cleanup(blot_figure *fig)
 {
 	blot_figure_free_x_labels(fig);
 
-	if (fig->layers) {
-		for (int li=0; li<fig->layer_count; li++) {
-			blot_layer *lay = fig->layers[li];
-			blot_layer_delete(lay);
-		}
-
-		g_free(fig->layers);
-	}
+	for (gsize li=0; li<fig->layer_count; li++)
+		blot_layer_delete(fig->layers[li]);
+	g_free(fig->layers);
+	fig->layers = NULL;
+	fig->layer_count = 0;
 }
 
 blot_figure * blot_figure_new(GError **error)
