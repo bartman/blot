@@ -1087,8 +1087,9 @@ void expect_renders_with_all_flags(blot_figure *f, unsigned cols, unsigned rows)
             ASSERT_EQ(axis.size(), cols) << "|" << to_utf8(axis) << "|";
             for (unsigned x = r.mrg.left; x < cols - r.mrg.right; x++)
                 EXPECT_TRUE(axis[x] == L'-' || axis[x] == L'*') << "column " << x << " |" << to_utf8(axis) << "|";
-            if (!(flags & BLOT_RENDER_NO_Y_AXIS))
+            if (!(flags & BLOT_RENDER_NO_Y_AXIS)) {
                 EXPECT_EQ(axis[r.mrg.left - 1], L'+') << "|" << to_utf8(axis) << "|";
+            }
             EXPECT_FALSE(x_ticks(r).empty()) << "no X tick";
         }
 
