@@ -21,9 +21,10 @@ ARG PACKAGES
 # the image
 ARG DEBIAN_FRONTEND=noninteractive
 
-# apt downloads go through the lab's apt proxy (squid-deb-proxy; it was
-# .gitlab/ci/prepare-apt-proxy.sh, run by every job before the images)
-RUN if [ -d /etc/apt/apt.conf.d ] && [ -w /etc/apt/apt.conf.d ]; then echo 'Acquire::http::Proxy "http://ci.jukie.net:8000/";' > /etc/apt/apt.conf.d/apt-proxy.conf; fi
+# apt downloads go through the lab's squid proxy (squid.localnet), as in
+# thimulator's ci/image.Dockerfile and the runners' own apt setting; it
+# replaces .gitlab/ci/prepare-apt-proxy.sh's old ci.jukie.net:8000
+RUN if [ -d /etc/apt/apt.conf.d ] && [ -w /etc/apt/apt.conf.d ]; then echo 'Acquire::http::Proxy "http://10.10.11.236:3128/";' > /etc/apt/apt.conf.d/zz-squid-proxy.conf; fi
 
 # CI containers are thrown away: dpkg needn't fsync, and needn't install
 # docs, man pages (no man-db trigger work), translations or info pages
