@@ -69,10 +69,11 @@ bool blot_figure_set_screen_size(blot_figure *fig,
 				 unsigned cols, unsigned rows, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
-	RETURN_EINVAL_IF(cols<BLOT_MIN_COLS, false, error);
-	RETURN_EINVAL_IF(rows<BLOT_MIN_ROWS, false, error);
-	RETURN_EINVAL_IF(cols>BLOT_MAX_COLS, false, error);
-	RETURN_EINVAL_IF(rows>BLOT_MAX_ROWS, false, error);
+	/* the minimum renders with every flag (blot_figure.h, #17) */
+	RETURN_ERRORx(cols<BLOT_MIN_COLS || cols>BLOT_MAX_COLS, false, error, EINVAL,
+		      "cols=%u is outside %u..%u", cols, BLOT_MIN_COLS, BLOT_MAX_COLS);
+	RETURN_ERRORx(rows<BLOT_MIN_ROWS || rows>BLOT_MAX_ROWS, false, error, EINVAL,
+		      "rows=%u is outside %u..%u", rows, BLOT_MIN_ROWS, BLOT_MAX_ROWS);
 
 	fig->screen_dimensions_set = true;
 	fig->dim.cols = cols;
