@@ -39,9 +39,10 @@ examples=${EXAMPLES:-$build/examples}
 case $blot in /*) ;; */*) blot=$PWD/$blot ;; *) blot=$(command -v "$blot") ;; esac
 
 # fixed sizes and locale: the output must not depend on where it runs.
-# The CLI prints with %ls, so it needs a UTF-8 locale for its legend
-# marker: the C locale loses the output from there on (#40; drop this,
-# and add an LC_ALL=C pass, when it is fixed)
+# The CLI goldens also run a second time with LC_ALL=C (no locale, as in
+# docker and CI) and must match the same .out files byte for byte: blot
+# writes UTF-8 there too, and no longer loses the plot at the first
+# non-ASCII character (#40)
 COLUMNS=40
 LINES=16
 LC_ALL=C.UTF-8
@@ -98,7 +99,8 @@ check_run() {
 # $1: the case, the rest: blot's arguments; stdin is the caller's.
 # Compares the last frame, without colour, to $here/$1.out.
 golden() {
-	name=cli-$1; shift
+	case=$1; shift
+	name=cli-$case${golden_suffix:-}
 	echo "--- $name: blot $*"
 	(cd "$here" && timeout -k 5 30 "$blot" "$@") > "$tmp/out" 2>&1
 	rc=$?
@@ -111,12 +113,13 @@ golden() {
 	sed "s/$ESC\[2J$ESC\[H/@@FRAME@@\n/g" "$tmp/out" \
 		| awk '/^@@FRAME@@$/ { n = 0; delete f; next } { f[n++] = $0 } END { for (i = 0; i < n; i++) print f[i] }' \
 		| sed "s/$ESC\[[0-9;]*m//g" > "$tmp/last"
-	if [ -n "${SMOKE_UPDATE:-}" ]; then
-		cp "$tmp/last" "$here/${name#cli-}.out"
-		echo "updated $here/${name#cli-}.out"
+	if [ -n "${SMOKE_UPDATE:-}" ] && [ -z "${golden_suffix:-}" ]; then
+		cp "$tmp/last" "$here/$case.out"
+		echo "updated $here/$case.out"
 	fi
-	if ! diff -u "$here/${name#cli-}.out" "$tmp/last" > "$tmp/diff"; then
-		fail "the last frame differs from ${name#cli-}.out (- expected, + got):"
+	if ! cmp -s "$here/$case.out" "$tmp/last"; then
+		diff -u "$here/$case.out" "$tmp/last" > "$tmp/diff"
+		fail "the last frame differs from $case.out (- expected, + got):"
 		cat "$tmp/diff"
 		return
 	fi
@@ -148,6 +151,7 @@ fi
 # (10 with two legend lines).  The ticks split the axis in 3; a label is
 # the value at its tick, with 0 on a tick when the range spans it.
 
+cli_goldens() {
 # line, from a file: 11 values 0..10 at x = 1..11 (the line numbers);
 # x 0.99..11.01, y -0.01..10.01, 29x11, so (1 + k, k) is in column
 # floor((k + 0.01) * 29 / 10.02) and row floor((k + 0.01) * 11 / 10.02):
@@ -181,6 +185,17 @@ golden bar-file --ascii bar --read bars.txt < /dev/null
 # rows 0 1 2 3 4 5 5 6 7 8 9 (6 is floor(6.01 * 10 / 10.02) = 5); the X
 # labels 0.000, 3.674, 7.348
 golden two-layers --ascii line --read ramp.txt scatter --read /dev/stdin -p 1,2 < "$here/corners.txt"
+}
+
+# in the fixed UTF-8 locale, then in the C locale against the same .out
+# files (#40)
+golden_suffix=
+cli_goldens
+golden_suffix=-C
+LC_ALL=C
+cli_goldens
+golden_suffix=
+LC_ALL=C.UTF-8
 
 # --help and --version through a pipe (#37): exit 0, and the text
 name=cli-help
