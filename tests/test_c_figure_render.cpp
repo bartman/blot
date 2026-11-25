@@ -200,3 +200,40 @@ TEST(Figure, render_layer_render_failure)
 
     blot_figure_delete(fig);
 }
+
+// all-zero data pads the y range to [-0.1,0.1]: the y-axis margin was
+// sized from ceil(log10(0.1)) = -1, cast to unsigned, which wrapped the
+// margin to 6 columns, too few for "-0.100", and the y-axis label assert
+// in blot_screen_plot_cans() aborted
+TEST(Figure, render_small_y_range)
+{
+    GError *error = NULL;
+
+    blot_figure *fig = blot_figure_new(&error);
+    ASSERT_TRUE(fig != NULL);
+    ASSERT_TRUE(blot_figure_set_screen_size(fig, 80, 20, &error));
+
+    const int xs[] = {1, 2, 3};
+    const int ys[] = {0, 0, 0};
+    ASSERT_TRUE(blot_figure_scatter(fig, BLOT_DATA_INT32, 3, xs, ys, 1, "zeros", &error));
+
+    blot_screen *screen = blot_figure_render(fig, (blot_render_flags)(BLOT_RENDER_BRAILLE | BLOT_RENDER_LEGEND_ABOVE), &error);
+    ASSERT_TRUE(screen != NULL);
+    ASSERT_TRUE(error == NULL);
+    blot_screen_delete(screen);
+
+    // and values under 1 that aren't zero, and exact powers of ten
+    const double dxs[] = {1, 2, 3, 4};
+    const double dys[] = {0.05, -0.05, 100, -1000};
+    blot_figure_delete(fig);
+    fig = blot_figure_new(&error);
+    ASSERT_TRUE(fig != NULL);
+    ASSERT_TRUE(blot_figure_set_screen_size(fig, 80, 20, &error));
+    ASSERT_TRUE(blot_figure_scatter(fig, BLOT_DATA_DOUBLE, 4, dxs, dys, 1, "mixed", &error));
+    screen = blot_figure_render(fig, BLOT_RENDER_BRAILLE, &error);
+    ASSERT_TRUE(screen != NULL);
+    ASSERT_TRUE(error == NULL);
+    blot_screen_delete(screen);
+
+    blot_figure_delete(fig);
+}

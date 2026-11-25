@@ -176,8 +176,10 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 
 		const char *ytick_label = ytick ? ytick->label : "";
 		char axis_char = ytick ? '*' : '|';
-		len = swprintf(p, end-p, L"%*s %c",
-			       dsp_lft-2, ytick_label, axis_char);
+		/* the precision cuts a label wider than the margin (capped
+		 * at half the screen) instead of tripping the assert below */
+		len = swprintf(p, end-p, L"%*.*s %c",
+			       dsp_lft-2, dsp_lft-2, ytick_label, axis_char);
 
 		RETURN_ERROR(len<0, false, error, "swprintf");
 		g_assert_cmpuint(len, ==, dsp_lft);

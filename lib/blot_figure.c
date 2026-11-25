@@ -235,6 +235,19 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 	return lim;
 }
 
+/* columns for the integer part of v, with its sign: 1 for |v| < 1 ("0") */
+static unsigned blot_figure_int_width(double v)
+{
+	double a = fabs(v);
+	unsigned w = 1;
+
+	if (isfinite(a) && a >= 1.0)
+		w = (unsigned)floor(log10(a)) + 1;
+	if (v < 0)
+		w ++;
+	return w;
+}
+
 static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 						 blot_render_flags flags,
 						 const blot_xy_limits *lim,
@@ -252,23 +265,14 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 		/* we will draw an Y-axis */
 		mrg.left += 3;
 
-		/* how big are the numbers? */
-		double amin = fabs(lim->y_min);
-		double wmin = 1.0;
-		if (amin > 0) {
-			wmin = ceil(log10(amin));
-			if (lim->y_min < 0) wmin ++;
-		}
-
-		double amax = fabs(lim->y_max);
-		double wmax = 1.0;
-		if (amax > 0) {
-			wmax = ceil(log10(amax));
-			if (lim->y_max < 0) wmax ++;
-		}
+		/* how big are the numbers?  The width of the integer part
+		 * and the sign: ceil(log10()) undercounts powers of ten and
+		 * goes negative under 1, which wrapped the unsigned margin */
+		unsigned wmin = blot_figure_int_width(lim->y_min);
+		unsigned wmax = blot_figure_int_width(lim->y_max);
 
 		/* worst case we need this many columns for text */
-		mrg.left += max_t(unsigned, (unsigned)wmin, (unsigned)wmax);
+		mrg.left += max_t(unsigned, wmin, wmax);
 
 		/* add 3 digits of precision */
 		mrg.left += 4;
