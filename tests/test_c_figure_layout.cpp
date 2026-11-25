@@ -174,8 +174,7 @@ double max_label(const std::vector<std::pair<unsigned, std::string>> &ticks)
 }
 } // namespace
 
-// BUG B3: https://git.jukie.net/bart/blot/-/work_items/7
-TEST(Layout, DISABLED_only_y_limits_are_honoured)
+TEST(Layout, only_y_limits_are_honoured)
 {
     Fig f(40, 16);
     f.ylim(0, 100);
@@ -186,8 +185,7 @@ TEST(Layout, DISABLED_only_y_limits_are_honoured)
     EXPECT_EQ(labels_of(x_ticks(r)), std::vector<std::string>({ "0.000", "3.340", "6.680" }));
 }
 
-// BUG B3: https://git.jukie.net/bart/blot/-/work_items/7
-TEST(Layout, DISABLED_only_x_limits_are_honoured)
+TEST(Layout, only_x_limits_are_honoured)
 {
     Fig f(40, 16);
     f.xlim(0, 100);
@@ -195,6 +193,63 @@ TEST(Layout, DISABLED_only_x_limits_are_honoured)
     Rendered r = render(f, F);
     ASSERT_TRUE(r.ok) << r.message;
     EXPECT_GE(max_label(x_ticks(r)), 30);
+}
+
+/* #7: an axis with limits uses exactly them, and the other axis gets the
+ * auto range it would get with no limits at all (0.1% padding) */
+TEST(Layout, one_sided_limits_match_both_set)
+{
+    const double pad = 10 * 0.001; /* auto range of 0..10 */
+    {
+        Fig one(40, 16), both(40, 16);
+        one.ylim(0, 100);
+        both.lim(0 - pad, 10 + pad, 0, 100);
+        one.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        both.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        Rendered r1 = render(one, F), r2 = render(both, F);
+        ASSERT_TRUE(r1.ok) << r1.message;
+        ASSERT_TRUE(r2.ok) << r2.message;
+        EXPECT_LINES_EQ(r1.lines, r2.lines);
+    }
+    {
+        Fig one(40, 16), both(40, 16);
+        one.xlim(0, 100);
+        both.lim(0, 100, 0 - pad, 10 + pad);
+        one.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        both.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        Rendered r1 = render(one, F), r2 = render(both, F);
+        ASSERT_TRUE(r1.ok) << r1.message;
+        ASSERT_TRUE(r2.ok) << r2.message;
+        EXPECT_LINES_EQ(r1.lines, r2.lines);
+    }
+}
+
+/* #7: the free axis is auto-ranged over all of the data, including points
+ * outside the other axis' limits; only the labels are checked, so this
+ * doesn't depend on how points outside the limits are drawn */
+TEST(Layout, one_sided_limits_auto_range_all_data)
+{
+    Fig none(40, 16);
+    none.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+    Rendered rn = render(none, F);
+    ASSERT_TRUE(rn.ok) << rn.message;
+    {
+        Fig f(40, 16);
+        f.xlim(0, 4);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(labels_of(y_ticks(r)), labels_of(y_ticks(rn)));
+        EXPECT_EQ(labels_of(x_ticks(r)), std::vector<std::string>({ "0.000", "1.333", "2.667" }));
+    }
+    {
+        Fig f(40, 16);
+        f.ylim(0, 4);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, S3_X, S3_Y);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(labels_of(x_ticks(r)), labels_of(x_ticks(rn)));
+    }
 }
 
 TEST(Layout, explicit_limits_exact_ticks)
