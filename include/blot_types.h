@@ -85,7 +85,13 @@ typedef enum blot_render_flags {
  * or not.  M counts the other points, and the suffix is left out when M
  * is 0.  With N = 0, avg, min and max are "-".  Numbers are formatted by
  * blot_format_number(); one that can't be is "?".  A legend never shows
- * nan or inf.  The line is cut at the screen width. */
+ * nan or inf.
+ *
+ * A legend line too wide for the screen is cut between items, never
+ * inside one: the symbol and the label, then as many whole key=value
+ * items as fit, in order, with count and its suffix as one item.  A
+ * shown value is always the whole value.  A label too wide for the
+ * screen is cut, ends in '~', and the line has no items. */
 DEFINE_ENUM_OPERATORS_FOR(blot_render_flags)
 
 typedef struct blot_xy_limits {
