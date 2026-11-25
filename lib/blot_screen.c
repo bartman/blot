@@ -342,8 +342,19 @@ static bool blot_screen_plot_cans(blot_screen *scr,
 
 		const char *ytick_label = ytick ? ytick->label : "";
 		char axis_char = ytick ? '*' : '|';
-		/* the precision cuts a label wider than the margin (capped
-		 * at half the screen) instead of tripping the assert below */
+		/* a label wider than the margin (capped at half the screen)
+		 * is formatted again for the room there is: cutting it would
+		 * print a wrong number.  If no text fits, fill with '#'. */
+		char short_label[32];
+		if (ytick && strlen(ytick_label) > dsp_lft-2) {
+			unsigned room = MIN(dsp_lft-1, sizeof(short_label));
+			if (blot_format_number(short_label, room, ytick->value) < 0) {
+				memset(short_label, '#', room-1);
+				short_label[room-1] = 0;
+			}
+			ytick_label = short_label;
+		}
+		/* the precision keeps the line at dsp_lft characters */
 		len = swprintf(p, end-p, L"%*.*s %c",
 			       dsp_lft-2, dsp_lft-2, ytick_label, axis_char);
 

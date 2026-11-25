@@ -31,15 +31,43 @@ void expect_y_labels_exact(const Rendered &r, double y_min, double y_max)
         char *end = NULL;
         double v = strtod(label.c_str(), &end);
         EXPECT_TRUE(end && *end == 0 && !label.empty()) << "label '" << label << "'";
-        /* right-aligned with room to spare: a label that fills the
-         * margin may have been cut */
-        EXPECT_LT(label.size(), r.mrg.left - 2) << "label '" << label << "' fills the margin";
+        /* right-aligned and within the margin.  It may fill it: the
+         * screen formats a long label again for the margin instead of
+         * cutting it (#13), and a cut would fail the value checks below */
+        EXPECT_LE(label.size(), r.mrg.left - 2) << "label '" << label << "' wider than the margin";
         /* the tick's value lies in its row's cell [e, e + cell); eps
          * covers the label's rounding, so a label one row off fails */
         double e = y_min + t.first * range / rows, cell = range / rows;
         double eps = std::max(0.0006, 1e-5 * std::fabs(e));
         EXPECT_GE(v, e - eps) << "row " << t.first << " label '" << label << "' cell [" << e << "," << e + cell << ")";
         EXPECT_LT(v, e + cell + eps) << "row " << t.first << " label '" << label << "' cell [" << e << "," << e + cell << ")";
+    }
+}
+
+/* every Y tick row: the label is a complete number (no '#' marker), and
+ * its value is in the row's cell [e, e + cell), give or take half a unit
+ * of the label's last digit: on a narrow margin the label keeps fewer
+ * digits (#13), but it is never cut to a wrong number */
+void expect_y_labels_in_cell(const Rendered &r, double y_min, double y_max)
+{
+    ASSERT_TRUE(r.ok) << r.message;
+    double range = y_max - y_min, cell = range / r.plot_rows();
+    auto ticks = y_ticks(r);
+    EXPECT_FALSE(ticks.empty());
+    for (const auto &t : ticks) {
+        const std::string &label = t.second;
+        char *end = NULL;
+        double v = strtod(label.c_str(), &end);
+        ASSERT_TRUE(end && *end == 0 && !label.empty()) << "row " << t.first << " label '" << label << "'";
+        /* half a unit of the last printed digit */
+        size_t epos = label.find('e'), dot = label.find('.');
+        int exp10 = epos == std::string::npos ? 0 : atoi(label.c_str() + epos + 1);
+        size_t mant_end = epos == std::string::npos ? label.size() : epos;
+        int decimals = dot == std::string::npos ? 0 : (int)(mant_end - dot - 1);
+        double half = 0.5 * pow(10, exp10 - decimals) * (1 + 1e-9);
+        double e = y_min + t.first * cell;
+        EXPECT_GE(v, e - half) << "row " << t.first << " label '" << label << "' cell [" << e << "," << e + cell << ")";
+        EXPECT_LT(v, e + cell + half) << "row " << t.first << " label '" << label << "' cell [" << e << "," << e + cell << ")";
     }
 }
 
@@ -129,8 +157,35 @@ TEST(Layout, y_labels_never_truncated)
     }
 }
 
-// BUG B15: https://git.jukie.net/bart/blot/-/work_items/10
-TEST(Layout, DISABLED_y_labels_on_narrow_screen)
+/* #13 review M1: a 14-digit label used to be cut by the screen to a
+ * number 10x off (11994000000000 -> 1199400000000) */
+TEST(Layout, y_labels_large_values_narrow_screen)
+{
+    const double xs[] = { 0, 1 }, ys[] = { 1e13, 2e13 };
+    Fig f(30, 14);
+    f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
+    Rendered r = render(f, F);
+    /* auto limits: the data padded by 0.1% of the range */
+    expect_y_labels_in_cell(r, 1e13 - 1e10, 2e13 + 1e10);
+}
+
+TEST(Layout, y_labels_large_values_column_sweep)
+{
+    const std::pair<double, double> limits[] = {
+        { 0, 12345678901.0 }, { 1e13, 2e13 }, { -2e13, -1e13 }, { 1e14, 3e14 },
+        { -3e14, -1e14 }, { -1e15, 1e15 }, { 0, 9e15 },
+    };
+    for (unsigned cols = 20; cols <= 40; cols++)
+        for (const auto &l : limits) {
+            SCOPED_TRACE(testing::Message() << cols << "x14 y " << l.first << ".." << l.second);
+            LineAcross la(cols, 14, 0, 1, l.first, l.second);
+            Rendered r = render(la.f, F);
+            expect_y_labels_in_cell(r, l.first, l.second);
+        }
+}
+
+/* B15 (#10), fixed by #13: the screen used to cut these labels */
+TEST(Layout, y_labels_on_narrow_screen)
 {
     const double xs[] = { 0, 1 }, ys[] = { 0, 12345678901.0 };
     Fig f(20, 14);
