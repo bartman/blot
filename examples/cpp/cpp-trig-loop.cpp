@@ -9,7 +9,9 @@
 static std::vector<gint32> data_xs(DATA_COUNT);
 static std::vector<double> sin_ys(DATA_COUNT);
 static std::vector<gint32> cos_ys(DATA_COUNT);
-static std::vector<gint64> tan_ys(DATA_COUNT);
+/* double, not an integer type: tan() near pi/2 goes far past any integer
+ * range (#43); blot skips the points outside the y limits */
+static std::vector<double> tan_ys(DATA_COUNT);
 
 #define DATA_X_MAX 100000
 #define DATA_Y_MAX 100000
