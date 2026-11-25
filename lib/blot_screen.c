@@ -205,20 +205,16 @@ static bool blot_legend_item(struct blot_legend_line *ll, const wchar_t *ws,
 }
 
 /* the next character of a label: UTF-8 in every locale (#18), read by
- * blot_text_next().  A control character (a newline, an escape...) or a
+ * blot_text_read().  A control character (a newline, an escape...) or a
  * byte that isn't valid UTF-8 becomes '?', so the label stays on its one
- * line and can't send escape sequences.  A tab is kept: it goes to its tab
+ * line and can't send escape sequences; zero-width marks past
+ * BLOT_TEXT_MAX_MARKS are dropped.  A tab is kept: it goes to its tab
  * stop, as before.  False at the end of the label */
-static bool blot_legend_label_next(const char **label, size_t *left,
-				   wchar_t *wcp)
+static bool blot_legend_label_next(struct blot_text_reader *r, wchar_t *wcp)
 {
-	size_t n = blot_text_next(*label, *left, true, wcp);
+	unsigned w;
 
-	if (!n)
-		return false;
-	*label += n;
-	*left -= n;
-	return true;
+	return blot_text_read(r, wcp, &w);
 }
 
 /* the label: all of it if it fits, else as much as fits with a '~' after
@@ -226,8 +222,7 @@ static bool blot_legend_label_next(const char **label, size_t *left,
 static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
 			      GError **error)
 {
-	const char *s;
-	size_t left;
+	struct blot_text_reader r;
 	wchar_t wc;
 	unsigned col = ll->col, cols = ll->cols;
 
@@ -235,9 +230,8 @@ static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
 		return true;
 
 	/* does it all fit? */
-	s = label;
-	left = strlen(label);
-	while (col <= cols && blot_legend_label_next(&s, &left, &wc))
+	blot_text_reader_init(&r, label, true);
+	while (col <= cols && blot_legend_label_next(&r, &wc))
 		col = blot_legend_next_col(col, wc);
 	bool cut = col > cols;
 
@@ -250,9 +244,8 @@ static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
 		ll->cols = cols - 1;
 	}
 
-	s = label;
-	left = strlen(label);
-	while (!ll->full && blot_legend_label_next(&s, &left, &wc))
+	blot_text_reader_init(&r, label, true);
+	while (!ll->full && blot_legend_label_next(&r, &wc))
 		if (!blot_legend_putc(ll, wc, error))
 			return false;
 
@@ -365,18 +358,20 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 /* an X label in room columns: as much of it as fits, then blanks to fill
  * them.  Its width is counted as the axis cut it (#18), so a wide
  * character takes two columns in every locale; the text is read as
- * UTF-8, not converted by the locale (#18: the C locale can't). */
+ * UTF-8, not converted by the locale (#18: the C locale can't).  Zero-width
+ * marks past BLOT_TEXT_MAX_MARKS are dropped, so a label is at most
+ * BLOT_TEXT_MAX_MARKS + (BLOT_TEXT_MAX_MARKS + 1) * room characters, well
+ * within the screen buffer's 16 per column. */
 static bool blot_screen_x_label(wchar_t **pp, wchar_t *end, const char *label,
 				unsigned room, GError **error)
 {
+	struct blot_text_reader r;
 	wchar_t *p = *pp;
-	size_t left = strlen(label);
-	unsigned col = 0;
+	unsigned col = 0, w;
 	wchar_t wc;
-	size_t n;
 
-	while ((n = blot_text_next(label, left, false, &wc))) {
-		unsigned w = (unsigned)blot_text_wcwidth(wc);
+	blot_text_reader_init(&r, label, false);
+	while (blot_text_read(&r, &wc, &w)) {
 		if (col + w > room)
 			break;
 		/* this one and the blanks, and one more for the '\n' */
@@ -384,8 +379,6 @@ static bool blot_screen_x_label(wchar_t **pp, wchar_t *end, const char *label,
 			      ENOSPC, "screen buffer too small for the X labels");
 		*(p++) = wc;
 		col += w;
-		label += n;
-		left -= n;
 	}
 	RETURN_ERRORx((size_t)(end - p) <= room - col, false, error,
 		      ENOSPC, "screen buffer too small for the X labels");

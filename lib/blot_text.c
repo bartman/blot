@@ -42,6 +42,9 @@ int blot_text_builtin_wcwidth(wchar_t wc)
 		return -1;
 	if (c < 0x7f)
 		return 1;
+	/* first: a wide range runs on across these */
+	if (blot_text_in(blot_text_unknown, G_N_ELEMENTS(blot_text_unknown), c))
+		return -1;
 	if (blot_text_in(blot_text_zero, G_N_ELEMENTS(blot_text_zero), c))
 		return 0;
 	if (blot_text_in(blot_text_wide, G_N_ELEMENTS(blot_text_wide), c))
@@ -93,22 +96,62 @@ size_t blot_text_next(const char *s, size_t left, bool keep_tab, wchar_t *wc)
 	return n;
 }
 
-size_t blot_text_prefix(const char *s, unsigned cols, unsigned *width)
+void blot_text_reader_init(struct blot_text_reader *r, const char *s, bool keep_tab)
 {
-	size_t left = strlen(s), bytes = 0;
-	unsigned col = 0;
-	wchar_t wc;
+	r->s = s;
+	r->left = strlen(s);
+	r->keep_tab = keep_tab;
+	r->marks = 0;
+}
+
+bool blot_text_read(struct blot_text_reader *r, wchar_t *wc, unsigned *width)
+{
 	size_t n;
 
-	while ((n = blot_text_next(s + bytes, left - bytes, false, &wc))) {
-		/* a '?' is 1 column, so w >= 0 */
-		unsigned w = (unsigned)blot_text_wcwidth(wc);
+	while ((n = blot_text_next(r->s, r->left, r->keep_tab, wc))) {
+		r->s += n;
+		r->left -= n;
+
+		if (*wc == L'\t') {
+			r->marks = 0;
+			*width = 0;
+			return true;
+		}
+		/* a '?' or a printable character: >= 0 */
+		int w = blot_text_wcwidth(*wc);
+		if (w > 0) {
+			r->marks = 0;
+		} else if (r->marks < BLOT_TEXT_MAX_MARKS) {
+			r->marks ++;
+		} else {
+			continue;	/* one mark too many: dropped */
+		}
+		*width = (unsigned)w;
+		return true;
+	}
+	return false;
+}
+
+size_t blot_text_prefix(const char *s, unsigned cols, unsigned *width)
+{
+	struct blot_text_reader r;
+	const char *end = s;
+	unsigned col = 0, w;
+	wchar_t wc;
+
+	blot_text_reader_init(&r, s, false);
+	for (;;) {
+		if (!blot_text_read(&r, &wc, &w)) {
+			/* all of it, the dropped marks at its end too */
+			end = r.s;
+			break;
+		}
 		if (col + w > cols)
 			break;
 		col += w;
-		bytes += n;
+		end = r.s;
 	}
 	if (width)
 		*width = col;
-	return bytes;
+	return (size_t)(end - s);
 }
