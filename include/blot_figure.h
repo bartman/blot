@@ -56,7 +56,9 @@ BLOT_API bool blot_figure_set_y_limits(blot_figure *fig,
 /* The figure keeps a copy of the array and of the strings (NULL entries
  * stay NULL); the caller may free or reuse its own after the call.  A new
  * set replaces (and frees) the old copy, label_count=0 with x_labels=NULL
- * clears it, and blot_figure_cleanup() frees it.  The strings are not
+ * clears it, and blot_figure_cleanup() frees it.  An invalid call (a count
+ * without an array, or an array without a count) fails with EINVAL and
+ * leaves the current labels unchanged.  The strings are not
  * modified: x_labels is not const only to keep the C API unchanged. */
 BLOT_API bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 					  char **x_labels, GError **);

@@ -124,7 +124,7 @@ bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
 	RETURN_ERRORx((!!label_count) ^ (!!x_labels), false, error, EINVAL,
-		      "label_count=%u but x_labels=%p", label_count, x_labels);
+		      "label_count=%zu but x_labels=%p", label_count, (void *)x_labels);
 
 	/* copy first: x_labels may be the figure's own labels */
 	char **strings = NULL;

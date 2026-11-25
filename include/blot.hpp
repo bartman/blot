@@ -232,7 +232,9 @@ public:
 	}
 
 	/* add layers: the figure keeps pointers to the data and the label,
-	 * not copies (see blot_figure_plot()); they must outlive render() */
+	 * not copies (see blot_figure_plot()); they must outlive render().
+	 * A temporary vector or string passed here dangles as soon as the
+	 * statement ends (#24). */
 
 	template <typename T, typename U>
 	void plot(blot_plot_type plot_type, const std::span<T> &data_xs, const std::span<U> &data_ys, blot_color data_color, const char *data_label) {
