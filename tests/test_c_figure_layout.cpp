@@ -71,6 +71,30 @@ void expect_y_labels_in_cell(const Rendered &r, double y_min, double y_max)
     }
 }
 
+/* #10, the rule of the X labels (#9) for the Y labels: every Y tick has a
+ * label in the margin that names a value within half a cell of the tick's
+ * row; no two are the same and none is a negative zero */
+void expect_y_labels_half_cell(const Rendered &r, double y_min, double y_max)
+{
+    ASSERT_TRUE(r.ok) << r.message;
+    double range = y_max - y_min, cell = range / r.plot_rows();
+    auto ticks = y_ticks(r);
+    EXPECT_FALSE(ticks.empty());
+    std::set<std::string> seen;
+    for (const auto &t : ticks) {
+        const std::string &label = t.second;
+        char *end = NULL;
+        double v = strtod(label.c_str(), &end);
+        EXPECT_TRUE(!label.empty() && end && *end == 0) << "row " << t.first << " label '" << label << "'";
+        EXPECT_LE(label.size(), r.mrg.left - 2) << "label '" << label << "' wider than the margin";
+        double lo = y_min + t.first * cell, eps = 0.5 * cell + 1e-9 * std::fabs(range);
+        EXPECT_GE(v, lo - eps) << "row " << t.first << " label '" << label << "' cell [" << lo << "," << lo + cell << ")";
+        EXPECT_LT(v, lo + cell + eps) << "row " << t.first << " label '" << label << "' cell [" << lo << "," << lo + cell << ")";
+        EXPECT_FALSE(label[0] == '-' && v == 0) << "row " << t.first << " label '" << label << "'";
+        EXPECT_TRUE(seen.insert(label).second) << "duplicate label " << label;
+    }
+}
+
 /* a figure with a line across the limits */
 struct LineAcross {
     double xs[2], ys[2];
@@ -87,7 +111,7 @@ const double F1_LIMITS[][3] = {
     /* y_min, y_max, mrg.left */
     { 0, 9, 8 },        { 0, 10, 9 },      { -1, 1, 9 },      { -10, 10, 10 },
     { 0, 99.9, 9 },     { 0, 100, 10 },    { 0, 1000, 11 },   { -1000, 0, 12 },
-    { 0.001, 0.002, 8 }, { -0.5, 0.5, 9 }, { 0, 1e6, 14 },    { -1e6, 1e6, 15 },
+    { 0.001, 0.002, 9 }, { -0.5, 0.5, 9 }, { 0, 1e6, 14 },    { -1e6, 1e6, 15 },
 };
 
 /* sizes of the F11/F20 sweep */
@@ -182,6 +206,29 @@ TEST(Layout, y_labels_large_values_column_sweep)
             Rendered r = render(la.f, F);
             expect_y_labels_in_cell(r, l.first, l.second);
         }
+}
+
+/* #10: the Y labels of a sweep of sizes and data, by the rule of the X
+ * labels (#9): within half a cell of their row.  The narrow screens cap
+ * the margin at half the columns, where the screen used to format a label
+ * again for the room with no such bound (#13), and the tiny ranges gave
+ * 0.000 for every tick. */
+TEST(Layout, y_labels_within_half_a_cell_sweep)
+{
+    const double RANGES[][2] = {
+        { 0, 12345678901.0 }, { 1e13, 2e13 }, { -3e14, -1e14 }, { -1e15, 1e15 }, { 0, 9e15 },
+        { -0.01003, 0.02003 }, { -0.0019955, 0.0194945 }, { 0.001, 0.002 }, { -0.0005, 0.0005 },
+        { 1e-9, 3e-9 }, { -3e-9, -1e-9 }, { 1e6, 1e6 + 0.001 }, { -7, 3 }, { -1e100, 1e100 },
+    };
+    const unsigned ROWS[] = { 12, 14, 17, 25, 50 };
+    for (const auto &rg : RANGES)
+        for (unsigned rows : ROWS)
+            for (unsigned cols = 20; cols <= 60; cols++) {
+                SCOPED_TRACE(testing::Message() << cols << "x" << rows << " y " << rg[0] << ".." << rg[1]);
+                LineAcross la(cols, rows, 0, 1, rg[0], rg[1]);
+                Rendered r = render(la.f, F);
+                expect_y_labels_half_cell(r, rg[0], rg[1]);
+            }
 }
 
 /* B15 (#10), fixed by #13: the screen used to cut these labels */
@@ -793,6 +840,38 @@ void expect_x_labels_exact(const Rendered &r, double x_min, double x_max)
 }
 } // namespace
 
+/* #10: tiny ranges, exact: the labels have the digits the tick spacing
+ * needs (they were all 0.000, or 0.001 for 0.0012 and 0.0014), the left
+ * margin is as wide as they need, and zero is not negative */
+TEST(Layout, tiny_range_labels_exact)
+{
+    const struct {
+        double lo, hi;
+        unsigned left;
+        std::vector<std::string> y;
+        const wchar_t *axis, *labels;
+    } cases[] = {
+        { 1e-9, 3e-9, 9, { "1e-09", "1.4e-09", "1.8e-09", "2.2e-09", "2.6e-09" },
+          L"        +*---------*---------*---------*---------*----------",
+          L"         1e-09     1.4e-09   1.8e-09   2.2e-09   2.6e-09" },
+        { 0.001, 0.002, 8, { "0.001", "0.0012", "0.0014", "0.0016", "0.0018" },
+          L"       +*---------*---------*----------*---------*----------",
+          L"        0.001     0.0012    0.0014     0.0016    0.0018" },
+        { -0.0005, 0.0005, 9, { "-0.0004", "-0.0002", "0.000", "0.0002", "0.0004" },
+          L"        +-----*---------*---------*---------*---------*-----",
+          L"              -0.0004   -0.0002   0.000     0.0002    0.0004" },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << c.lo << ".." << c.hi);
+        LineAcross la(60, 14, c.lo, c.hi, c.lo, c.hi);
+        Rendered r = render(la.f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(r.mrg.left, c.left);
+        EXPECT_EQ(labels_of(y_ticks(r)), c.y);
+        EXPECT_LINES_EQ(x_rows(r), Lines({ c.axis, c.labels }));
+    }
+}
+
 /* #9: the boundary widths of B14, exact.  The plot is 8 columns in.  Up to
  * 19 plot columns there is one tick, at x_min; from 20 the three ticks of
  * the formula need 6-character labels, -2e+05 for both -200100 and -166700,
@@ -904,18 +983,15 @@ TEST(Layout, x_custom_labels_exact)
 
 /* #9: a sweep of widths and data; every X label row fits the screen, each
  * tick's label is the value of its cell, and no two are the same.  The
- * ranges that abort without the fix are in the isolated test below.  Not
- * [0.001,0.002]: 0.001 for both 0.0010 and 0.0014 is the formatter's
- * precision with all the room it wants (#13, #10), not the layout's; for
- * the same reason not [-0.01003,0.02003]: from 69 columns half a cell is
- * under 0.0002 and %.3f, the formatter's first choice, is coarser.  The
- * bound for those (no further off than the full text) needs each tick's
- * value: Axis.x_labels_no_worse_than_needed_sweep has both ranges. */
+ * ranges that abort without the fix are in the isolated test below.  #10:
+ * also the ranges where %.3f is coarser than half a cell ([0.001,0.002]
+ * gave 0.001 for both 0.0010 and 0.0014) and tiny ones. */
 TEST(Layout, x_labels_fit_and_match_their_cells)
 {
     const double RANGES[][2] = {
         { -200000, -100000 }, { -1, 2 }, { -7, 3 }, { 0, 1 }, { -1e100, 1e100 },
-        { -0.5, 1e6 }, { 1e9, 5.2e9 },
+        { -0.5, 1e6 }, { 1e9, 5.2e9 }, { 0.001, 0.002 }, { -0.01003, 0.02003 },
+        { 1e-9, 3e-9 }, { -0.0005, 0.0005 }, { 1e6, 1e6 + 0.001 },
     };
     for (const auto &rg : RANGES) {
         for (unsigned cols = 18; cols <= 130; cols++) {

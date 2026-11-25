@@ -334,11 +334,13 @@ TEST(Edge, tiny_values_geometry)
     for (const auto &c : m)
         last_col |= c.first == r.plot_cols() - 1;
     EXPECT_TRUE(last_col) << cells_str(m);
-    EXPECT_EQ(r.mrg.left, 8u);
+    /* #10: 9, not 8: the Y labels need 7 columns (2.6e-09), the
+     * magnitude alone gives 6 */
+    EXPECT_EQ(r.mrg.left, 9u);
 }
 
-// BUG B16: https://git.jukie.net/bart/blot/-/work_items/10
-TEST(Edge, DISABLED_tiny_values_labels_distinct)
+// B16, fixed in #10: https://git.jukie.net/bart/blot/-/work_items/10
+TEST(Edge, tiny_values_labels_distinct)
 {
     Rendered r = render_one(60, 14, BLOT_LINE, BLOT_DATA_DOUBLE, 3, TINY, TINY);
     ASSERT_TRUE(r.ok) << r.message;

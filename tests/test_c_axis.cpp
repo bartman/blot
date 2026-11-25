@@ -295,6 +295,12 @@ TEST(Axis, tick_count_formula)
                 auto ticks = a.ticks();
                 SCOPED_TRACE(testing::Message() << (vertical ? "V" : "H") << " len " << len
                                                 << " [" << rg[0] << "," << rg[1] << "]");
+                if (!vertical && len < 24 && rg[0] == 0.001 && ticks.size() == 2) {
+                    /* #10: 0.00133 needs 6 columns of 5, and 0.001 for it
+                     * is 13 half-cells off: two ticks, 0.001 and 0.0015 */
+                    EXPECT_EQ(n, 3u);
+                    continue;
+                }
                 if (ticks.size() + 1 == n && !vertical && rg[0] < 0 && 0 < rg[1]) {
                     /* #9: the zero alignment pushed the last tick so close
                      * to the edge that no good text of its value fits;
@@ -363,14 +369,73 @@ TEST(Axis, x_labels_are_distinct)
     EXPECT_EQ(a.labels(), zip({ 0, 10 }, { "-200100.0", "-150000.0" }));
 }
 
-// BUG B16: https://git.jukie.net/bart/blot/-/work_items/10
-TEST(Axis, DISABLED_labels_are_distinct)
+// B16, fixed in #10: https://git.jukie.net/bart/blot/-/work_items/10
+TEST(Axis, labels_are_distinct)
 {
     Axis a(true, 12, 1e-9, 3e-9);
     ASSERT_TRUE(a.axs) << a.error;
     std::set<std::string> seen;
     for (const auto &t : a.ticks())
         EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
+}
+
+/* #10: tiny ranges, exact.  The labels have the digits the tick spacing
+ * needs (they were all 0.000, or 0.001 for 0.0012 and 0.0014), and zero
+ * is not negative */
+TEST(Axis, tiny_range_labels_exact)
+{
+    {
+        Axis a(true, 12, 1e-9, 3e-9);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 0, 2, 4, 7, 9 }, { "1e-09", "1.4e-09", "1.8e-09", "2.2e-09", "2.6e-09" }));
+    }
+    {
+        Axis a(false, 50, 0.001, 0.002);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 0, 10, 20, 30, 40 }, { "0.001", "0.0012", "0.0014", "0.0016", "0.0018" }));
+    }
+    {
+        /* three ticks have 6 columns each: 0.00133 doesn't fit, and
+         * 0.001 is 13 half-cells off; two ticks */
+        Axis a(false, 20, 0.001, 0.002);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 0, 10 }, { "0.001", "0.0015" }));
+    }
+    {
+        Axis a(true, 12, -0.0005, 0.0005);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 1, 3, 6, 8, 10 }, { "-0.0004", "-0.0002", "0.000", "0.0002", "0.0004" }));
+    }
+}
+
+/* #10: every label of a vertical axis (with all of its 15 columns) names
+ * a value within half a cell of its tick; none is a negative zero */
+TEST(Axis, y_labels_within_half_a_cell_sweep)
+{
+    const double RANGES[][2] = {
+        { 1e-9, 3e-9 }, { -3e-9, -1e-9 }, { 0.001, 0.002 }, { -0.0005, 0.0005 }, { -0.01003, 0.02003 },
+        { -0.0019955, 0.0194945 }, { 0, 1 }, { -7.01, 3.01 }, { 1e9, 5.2e9 }, { -200100, -99900 },
+        { 1e6, 1e6 + 0.001 }, { -1e100, 1e100 }, { 1e-300, 3e-300 },
+    };
+    for (const auto &rg : RANGES) {
+        for (unsigned len = 3; len <= 200; len++) {
+            SCOPED_TRACE(testing::Message() << "V len " << len << " [" << rg[0] << "," << rg[1] << "]");
+            Axis a(true, len, rg[0], rg[1]);
+            ASSERT_TRUE(a.axs) << a.error;
+            double cell = (rg[1] - rg[0]) / len;
+            std::set<std::string> seen;
+            for (const auto &t : a.ticks()) {
+                char *end = NULL;
+                double v = strtod(t.label.c_str(), &end);
+                EXPECT_TRUE(!t.label.empty() && *end == 0) << "tick " << t.index << " label '" << t.label << "'";
+                EXPECT_LE(std::fabs(v - t.value), 0.5 * cell * (1 + 1e-9))
+                    << "tick " << t.index << " " << t.value << " label '" << t.label << "'";
+                EXPECT_FALSE(t.label[0] == '-' && v == 0) << "tick " << t.index << " label '" << t.label << "'";
+                EXPECT_LE(t.label.size(), 15u);
+                EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
+            }
+        }
+    }
 }
 
 TEST(Axis, custom_labels_evenly_spaced)
@@ -424,23 +489,28 @@ TEST(Axis, x_labels_within_half_a_cell)
 /* #9 re-review M1b: when even the full text is more than half a cell
  * off (%.3f is the formatter's first choice), a shorter text may be no
  * further off: 0.01842 at 66 has 4 columns, 0.02 is 5 half-cells off and
- * the full 0.018 less than 3, so the tick is dropped */
+ * the full 0.018 less than 3, so the tick is dropped.  #10: the full text
+ * has the digits half a cell (0.0001535) needs: 0.0092 for 0.00921, not
+ * 0.009, 1.4 half-cells off (0.0123 for 0.01228, 0.0153 for 0.01535) */
 TEST(Axis, x_label_no_worse_than_full_text)
 {
     Axis a(false, 70, -0.0019955, 0.0194945);
     ASSERT_TRUE(a.axs) << a.error;
-    EXPECT_EQ(a.labels(), zip({ 6, 16, 26, 36, 46, 56 }, { "0.000", "0.003", "0.006", "0.009", "0.012", "0.015" }));
+    EXPECT_EQ(a.labels(), zip({ 6, 16, 26, 36, 46, 56 }, { "0.000", "0.003", "0.006", "0.0092", "0.0123", "0.0153" }));
 }
 
 /* #9: every X number label names a value within half a cell of its tick,
  * or, when even the formatter's text with all the room is further off,
  * no further than that; and it is in reach of the tick's own cell.  Also
- * the ranges where %.3f is coarser than a cell. */
+ * the ranges where %.3f is coarser than a cell.  #10: with the digits the
+ * tick spacing needs, the full text is within half a cell in all of
+ * these, so each label is too; none is a negative zero */
 TEST(Axis, x_labels_no_worse_than_needed_sweep)
 {
     const double RANGES[][2] = {
         { -0.01003, 0.02003 }, { -0.0019955, 0.0194945 }, { 0.001, 0.002 }, { -7.01, 3.01 },
         { -1.003, 2.003 }, { 1e9, 5.2e9 }, { -200100, -99900 }, { -1e100, 1e100 },
+        { 1e-9, 3e-9 }, { -0.0005, 0.0005 }, { 1e6, 1e6 + 0.001 },
     };
     for (const auto &rg : RANGES) {
         for (unsigned len = 10; len <= 200; len++) {
@@ -448,14 +518,14 @@ TEST(Axis, x_labels_no_worse_than_needed_sweep)
             Axis a(false, len, rg[0], rg[1]);
             ASSERT_TRUE(a.axs) << a.error;
             double cell = (rg[1] - rg[0]) / len;
+            std::set<std::string> seen;
             for (const auto &t : a.ticks()) {
-                char full[17];
-                ASSERT_GE(blot_format_number(full, sizeof(full), t.value), 0);
-                double err = std::fabs(strtod(t.label.c_str(), NULL) - t.value);
-                double full_err = std::fabs(strtod(full, NULL) - t.value);
-                EXPECT_LE(err, std::max(0.5 * cell, full_err * (1 + 1e-9)))
-                    << "tick " << t.index << " " << t.value << " label '" << t.label << "' full '" << full << "'";
+                double v = strtod(t.label.c_str(), NULL);
+                EXPECT_LE(std::fabs(v - t.value), 0.5 * cell * (1 + 1e-9))
+                    << "tick " << t.index << " " << t.value << " label '" << t.label << "'";
+                EXPECT_FALSE(t.label[0] == '-' && v == 0) << "tick " << t.index << " label '" << t.label << "'";
                 EXPECT_LE(t.label.size(), 16u);
+                EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
             }
         }
     }

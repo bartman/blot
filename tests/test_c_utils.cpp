@@ -307,14 +307,38 @@ TEST(Utils, format_number_non_finite)
         EXPECT_EQ(fmt(v, 3), "-1") << v;
 }
 
-// BUG B16: https://git.jukie.net/bart/blot/-/work_items/10
-TEST(Utils, DISABLED_format_number_tiny_not_zero)
+// B16, fixed in #10: https://git.jukie.net/bart/blot/-/work_items/10
+TEST(Utils, format_number_tiny_not_zero)
 {
     for (double v : { 1e-5, 0.0004, -0.0004 }) {
         std::string s = fmt(v, 16);
         EXPECT_NE(strtod(s.c_str(), NULL), 0.0) << v << " -> " << s;
         EXPECT_NE(s, "-0.000") << v;
     }
+}
+
+/* #10: a fixed point text is no less precise than %.1g either (it was
+ * 0.000 for 0.0004), and zero is never negative */
+TEST(Utils, format_number_tiny_exact)
+{
+    const struct {
+        double v;
+        unsigned room;
+        const char *text; /* "-1": nothing fits */
+    } cases[] = {
+        { 0.0004, 16, "0.0004" },
+        { -0.0004, 16, "-0.0004" },
+        { 1e-5, 16, "1e-05" },
+        { 1.4e-9, 16, "1.4e-09" },
+        { -0.0, 16, "0.000" },
+        { -0.0, 2, "0" },
+        { 0.0016, 16, "0.002" },  /* as before: as precise as %.1g */
+        { 0.0004, 7, "0.0004" },
+        { 0.0004, 6, "-1" },      /* not 0.000 */
+        { 0.05, 4, "-1" },        /* not 0.1, 100% off; 0.05 needs 5 */
+    };
+    for (const auto &c : cases)
+        EXPECT_EQ(fmt(c.v, c.room), c.text) << "value " << c.v << " room " << c.room;
 }
 
 TEST(Utils, env_to_uint_valid)
