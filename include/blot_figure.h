@@ -8,8 +8,21 @@
 #include "blot_compiler.h"
 #include "blot_types.h"
 
-#define BLOT_MIN_COLS 10
-#define BLOT_MIN_ROWS 10
+/* The smallest plot area: the canvas each layer is drawn on, without the
+ * axes and the legend.  The render never draws a smaller one (#17). */
+#define BLOT_MIN_PLOT_COLS 10
+#define BLOT_MIN_PLOT_ROWS 10
+
+/* The smallest screen: blot_figure_set_screen_size() and
+ * blot_terminal_set_size() reject a smaller one, and a terminal size from
+ * COLUMNS/LINES or the tty is raised to it.  It renders with every flag:
+ * - columns: the Y-axis margin takes at most half the screen (its labels
+ *   are formatted again for the room there is), the plot the other half;
+ * - rows: the X-axis takes 2 rows (the line and its labels) under the
+ *   plot.  A legend gets only the rows the plot can spare, so at the
+ *   minimum with the X-axis there is no room for one (#17). */
+#define BLOT_MIN_COLS (2 * BLOT_MIN_PLOT_COLS)
+#define BLOT_MIN_ROWS (BLOT_MIN_PLOT_ROWS + 2)
 #define BLOT_MAX_COLS 1000
 #define BLOT_MAX_ROWS 1000
 
@@ -24,7 +37,7 @@ typedef struct blot_figure {
 	bool y_limits_set;
 	blot_xy_limits lim;
 
-	blot_strv xlabels;
+	blot_strv xlabels;	/* owned: see blot_figure_set_x_axis_labels() */
 
 	/* layers */
 	gsize layer_count;
@@ -38,6 +51,8 @@ BLOT_EXTERN_C_START
 
 BLOT_API bool blot_figure_init(blot_figure *fig, GError **);
 BLOT_API blot_figure * blot_figure_new(GError **);
+/* frees the layers and the X labels and leaves the figure without them;
+ * may be called again, or followed by blot_figure_init() */
 BLOT_API void blot_figure_cleanup(blot_figure *fig);
 BLOT_API void blot_figure_delete(blot_figure *fig);
 
@@ -45,6 +60,8 @@ BLOT_API void blot_figure_delete(blot_figure *fig);
 
 BLOT_API bool blot_figure_set_axis_color(blot_figure *fig, blot_color, GError **);
 
+/* cols x rows from BLOT_MIN_COLS x BLOT_MIN_ROWS to BLOT_MAX_COLS x
+ * BLOT_MAX_ROWS; EINVAL otherwise */
 BLOT_API bool blot_figure_set_screen_size(blot_figure *fig,
 					unsigned cols, unsigned rows, GError **);
 
@@ -53,6 +70,13 @@ BLOT_API bool blot_figure_set_x_limits(blot_figure *fig,
 BLOT_API bool blot_figure_set_y_limits(blot_figure *fig,
 				     double y_min, double y_max, GError **);
 
+/* The figure keeps a copy of the array and of the strings (NULL entries
+ * stay NULL); the caller may free or reuse its own after the call.  A new
+ * set replaces (and frees) the old copy, label_count=0 with x_labels=NULL
+ * clears it, and blot_figure_cleanup() frees it.  An invalid call (a count
+ * without an array, or an array without a count) fails with EINVAL and
+ * leaves the current labels unchanged.  The strings are not
+ * modified: x_labels is not const only to keep the C API unchanged. */
 BLOT_API bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 					  char **x_labels, GError **);
 
@@ -64,6 +88,9 @@ BLOT_API struct blot_screen * blot_figure_render(blot_figure *fig,
 
 /* add layers */
 
+/* The layer keeps the data_xs and data_ys pointers and the data_label
+ * pointer, not copies: the data and the label must stay valid, and
+ * unchanged, until the last blot_figure_render() of this figure. */
 BLOT_API bool blot_figure_plot(blot_figure *fig,
 		      blot_plot_type plot_type, blot_data_type data_type,
 		      size_t data_count, const void *data_xs, const void *data_ys,

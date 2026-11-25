@@ -24,6 +24,15 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
+# RUN_ISOLATED bodies that fail on purpose (#26): built, not a test of its
+# own; test_isolated runs it and checks what the parent shows
+add_executable(isolated_failing isolated_failing.cpp)
+target_link_libraries(isolated_failing GTest::gtest_main pthread blot_so)
+add_dependencies(test_isolated isolated_failing)
+target_compile_definitions(test_isolated PRIVATE
+    BLOT_ISOLATED_HELPER="$<TARGET_FILE:isolated_failing>"
+    BLOT_ISOLATED_SOURCE="${CMAKE_CURRENT_SOURCE_DIR}/isolated_failing.cpp")
+
 # the blot CLI without a terminal (#37): stdout a pipe, COLUMNS and LINES
 # unset; it must not abort (std::terminate)
 foreach(CLI_CASE help render regex)

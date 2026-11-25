@@ -14,14 +14,17 @@
 # program aborts); ASan always stops at its first error.  Only the enabled
 # tests run, as in unit-test-*; the DISABLED_ ones are known failures.
 #
-# RUN_ISOLATED (tests/blot_test.hpp) runs a body in a death-test child
-# that ends with _exit(): a sanitizer report in the child fails that
-# test (the child doesn't exit 0) and gtest shows the child's stderr;
-# LeakSanitizer runs only at the parent's exit, so the child's _exit()
-# skips it (the parent still checks its own leaks).
+# LeakSanitizer is on in the ASan build (detect_leaks=1) and checks at
+# each test program's exit.  RUN_ISOLATED (tests/blot_test.hpp) runs a
+# body in a death-test child that ends with _exit(), which skips that
+# check, so the child runs it itself before _exit()
+# (__lsan_do_recoverable_leak_check).  A sanitizer report or a leak in
+# the child fails that test (the child doesn't exit 0), and gtest shows
+# the child's stderr.
 #
 # Both builds always run; the script fails when either one does, after a
-# summary of the sanitizer reports of each.
+# summary of the sanitizer reports of each.  The sanitize-deb13 job gates
+# on that exit status (#19).
 set -u
 prefix=${1:-build-san}
 src=$(cd "$(dirname "$0")/.." && pwd)
