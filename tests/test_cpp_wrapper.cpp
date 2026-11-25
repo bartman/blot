@@ -33,6 +33,12 @@ static_assert(std::is_nothrow_move_constructible_v<Blot::Exception>);
 static_assert(std::is_nothrow_move_assignable_v<Blot::Exception>);
 /* what() is noexcept, as std::exception::what() is */
 static_assert(noexcept(std::declval<const Blot::Exception &>().what()));
+/* operator bool is explicit: an Exception doesn't turn into a bool or an
+ * int behind your back (int n = e; e + 1; e == 1), but if (e) and !e
+ * still work (#36) */
+static_assert(!std::is_convertible_v<Blot::Exception, bool>);
+static_assert(!std::is_convertible_v<Blot::Exception, int>);
+static_assert(std::is_constructible_v<bool, Blot::Exception>);
 
 namespace {
 
@@ -390,6 +396,25 @@ TEST(CppException, accessors_of_error)
 	EXPECT_EQ(e.code(), ERANGE);
 	EXPECT_EQ(e.str(), "error 34");
 	EXPECT_STREQ(e.what(), "error 34");
+}
+
+TEST(CppException, contextual_bool)
+{
+	/* if (e) and !e use the explicit operator bool */
+	Blot::Exception empty(nullptr);
+	Blot::Exception error = make_exception(EINVAL);
+	bool empty_taken = false, error_taken = false;
+	if (empty)
+		empty_taken = true;
+	if (error)
+		error_taken = true;
+	EXPECT_FALSE(empty_taken);
+	EXPECT_TRUE(error_taken);
+	EXPECT_TRUE(!empty);
+	EXPECT_FALSE(!error);
+	EXPECT_TRUE(error && !empty);
+	EXPECT_EQ(static_cast<bool>(error), true);
+	EXPECT_EQ(static_cast<bool>(empty), false);
 }
 
 TEST(CppException, throw_error_without_error)
