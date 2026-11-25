@@ -776,3 +776,168 @@ TEST(Layout, line_reaches_top_right_at_every_size)
     }
     EXPECT_EQ(bad, 0u) << "top-right plot cell empty at " << bad << " of " << total << " sizes:" << which.str();
 }
+
+/* #17: the setter accepted sizes (down to 10x10) that the render then
+ * failed with EINVAL once an axis was drawn: the plot needs its minimum
+ * plus the axes.  Every size near the minimum, set on the figure or on the
+ * terminal, is either rejected or renders with every combination of the
+ * axis and legend flags. */
+namespace {
+
+/* the smallest plot area (#17) */
+const unsigned MIN_PLOT = 10;
+
+const gint32 MS_X[] = { 0, 9 }, MS_Y0[] = { 0, 9 }, MS_Y1[] = { 9, 0 };
+
+/* two labelled layers; wide: Y labels that want more than half the screen */
+void min_size_plot(Fig &f, bool wide)
+{
+    if (wide)
+        f.lim(0, 9, -1e6, 1e6);
+    else
+        f.lim(0, 9, 0, 9);
+    f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, MS_X, MS_Y0, 1, "up");
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 2, MS_X, MS_Y1, 2, "down");
+}
+
+/* every combination of NO_X_AXIS, NO_Y_AXIS and the legend flags renders
+ * exactly rows lines no wider than cols, keeps the plot at its minimum or
+ * more, and the legend gets the rows the plot can spare, up to its 2 lines
+ * per legend */
+void expect_renders_with_all_flags(blot_figure *f, unsigned cols, unsigned rows)
+{
+    const blot_render_flags bits[] = { BLOT_RENDER_NO_X_AXIS, BLOT_RENDER_NO_Y_AXIS,
+                                       BLOT_RENDER_LEGEND_ABOVE, BLOT_RENDER_LEGEND_BELOW,
+                                       BLOT_RENDER_LEGEND_DETAILS };
+    const unsigned n = sizeof(bits) / sizeof(bits[0]);
+    for (unsigned m = 0; m < (1u << n); m++) {
+        unsigned flags = F;
+        for (unsigned b = 0; b < n; b++)
+            if (m & (1u << b))
+                flags |= bits[b];
+        SCOPED_TRACE(testing::Message() << cols << "x" << rows << " flags 0x" << std::hex << flags);
+        Rendered r = render(f, (blot_render_flags)flags);
+        ASSERT_TRUE(r.ok) << "accepted, but the render failed: " << r.message;
+        ASSERT_EQ(r.lines.size(), rows);
+        Lines lines = strip_sgr(r.lines);
+        for (size_t i = 0; i < lines.size(); i++)
+            ASSERT_LE(lines[i].size(), cols) << "line " << i << " |" << to_utf8(lines[i]) << "|";
+        EXPECT_GE(r.plot_rows(), MIN_PLOT);
+        EXPECT_GE(r.plot_cols(), MIN_PLOT);
+
+        unsigned x_rows = (flags & BLOT_RENDER_NO_X_AXIS) ? 0 : 2;
+        unsigned legends = !!(flags & BLOT_RENDER_LEGEND_ABOVE) + !!(flags & BLOT_RENDER_LEGEND_BELOW);
+        unsigned spare = rows - x_rows - MIN_PLOT;
+        unsigned marks = 0;
+        for (const auto &l : lines)
+            if (l.find((wchar_t)0x25D8) != std::wstring::npos)    /* ◘ */
+                marks++;
+        EXPECT_EQ(marks, std::min(2 * legends, spare));
+        if (::testing::Test::HasFailure())
+            return;
+    }
+}
+
+} // namespace
+
+// #17: https://git.jukie.net/bart/blot/-/work_items/17
+TEST(Layout, min_size_reproducer)
+{
+    Fig f;
+    min_size_plot(f, false);
+    GError *error = NULL;
+    if (!blot_figure_set_screen_size(f, 28, 10, &error)) {
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, EINVAL);
+        g_clear_error(&error);
+        return;
+    }
+    Rendered r = render(f, F);
+    ASSERT_TRUE(r.ok) << "28x10 accepted, but the render failed: " << r.message;
+    EXPECT_EQ(r.lines.size(), 10u);
+}
+
+// #17: https://git.jukie.net/bart/blot/-/work_items/17
+TEST(Layout, accepted_screen_sizes_render)
+{
+    for (bool wide : { false, true }) {
+        for (unsigned cols = 1; cols <= BLOT_MIN_COLS + 4; cols++) {
+            for (unsigned rows = 1; rows <= BLOT_MIN_ROWS + 4; rows++) {
+                SCOPED_TRACE(testing::Message() << (wide ? "wide" : "narrow") << " Y labels");
+                Fig f;
+                min_size_plot(f, wide);
+                GError *error = NULL;
+                if (!blot_figure_set_screen_size(f, cols, rows, &error)) {
+                    ASSERT_TRUE(error != NULL);
+                    EXPECT_EQ(error->code, EINVAL);
+                    g_clear_error(&error);
+                    continue;
+                }
+                expect_renders_with_all_flags(f, cols, rows);
+                if (HasFailure())
+                    return;
+            }
+        }
+    }
+}
+
+// #17: https://git.jukie.net/bart/blot/-/work_items/17
+TEST(Layout, accepted_terminal_sizes_render)
+{
+    /* the terminal size is process-wide: one child for the sweep */
+    RUN_ISOLATED(60, {
+        for (unsigned cols = 1; cols <= BLOT_MIN_COLS + 4; cols++) {
+            for (unsigned rows = 1; rows <= BLOT_MIN_ROWS + 4; rows++) {
+                GError *error = NULL;
+                if (!blot_terminal_set_size({ cols, rows }, &error)) {
+                    ASSERT_TRUE(error != NULL);
+                    EXPECT_EQ(error->code, ERANGE);
+                    g_clear_error(&error);
+                    continue;
+                }
+                /* the screen is the terminal less its border, within the
+                 * minimum */
+                unsigned sc = std::max(cols - 2, (unsigned)BLOT_MIN_COLS);
+                unsigned sr = std::max(rows - 2, (unsigned)BLOT_MIN_ROWS);
+                for (bool wide : { false, true }) {
+                    Fig f;  /* no set_screen_size */
+                    min_size_plot(f, wide);
+                    expect_renders_with_all_flags(f, sc, sr);
+                    if (HasFailure())
+                        return;
+                }
+            }
+        }
+    });
+}
+
+// #17: https://git.jukie.net/bart/blot/-/work_items/17
+TEST(Layout, clamped_terminal_sizes_render)
+{
+    /* COLUMNS/LINES and a tty below the minimum are clamped to it; the
+     * size is cached on first use: one child per case */
+    for (bool tty : { false, true }) {
+        SCOPED_TRACE(tty ? "tty 1x1" : "COLUMNS=1 LINES=1");
+        RUN_ISOLATED(30, {
+            if (!tty) {
+                setenv("COLUMNS", "1", 1);
+                setenv("LINES", "1", 1);
+                ASSERT_TRUE(freopen("/dev/null", "w", stdout) != NULL);
+            } else {
+                unsetenv("COLUMNS");
+                unsetenv("LINES");
+                int master = -1, slave = -1;
+                struct winsize ws = {};
+                ws.ws_col = 1;
+                ws.ws_row = 1;
+                ASSERT_EQ(openpty(&master, &slave, NULL, NULL, &ws), 0);
+                ASSERT_EQ(dup2(slave, STDOUT_FILENO), STDOUT_FILENO);
+            }
+            for (bool wide : { false, true }) {
+                Fig f;
+                min_size_plot(f, wide);
+                expect_renders_with_all_flags(f, BLOT_MIN_COLS, BLOT_MIN_ROWS);
+            }
+        });
+    }
+}
