@@ -807,6 +807,8 @@ TEST(Layer, render_error_conditions)
  * limits 0..9 on both axes, a 10x10 canvas, flags NO_UNICODE. */
 
 #include "blot_test.hpp"
+#include <cfloat>
+#include <random>
 
 using namespace blot_test;
 
@@ -1215,8 +1217,8 @@ TEST(Layer, summary_disabled_and_reset)
     blot_layer_delete(lay);
 }
 
-// BUG B6: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Layer, DISABLED_get_lim_ignores_nan)
+/* B6 (#6): a NaN no longer makes get_lim forget the values before it */
+TEST(Layer, get_lim_ignores_nan)
 {
     const double xs[] = { 0, 1, 2, 3 }, ys[] = { 100, NAN, 1, 2 };
     blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_DOUBLE, 4, xs, ys, 1, "l", NULL);
@@ -1226,6 +1228,217 @@ TEST(Layer, DISABLED_get_lim_ignores_nan)
     EXPECT_DOUBLE_EQ(lim.y_min, 1);
     EXPECT_DOUBLE_EQ(lim.y_max, 100);
     blot_layer_delete(lay);
+}
+
+/* #6: each coordinate's limits are those of its finite values; NaN and
+ * +-inf are skipped wherever they are.  A coordinate with no finite value
+ * at all has NaN limits ("no data"). */
+TEST(Layer, get_lim_ignores_non_finite)
+{
+    struct Case {
+        std::vector<double> xs, ys;
+        blot_xy_limits want;
+    };
+    const double N = NAN, I = INFINITY;
+    const Case cases[] = {
+        { { 0, 1, 2, 3 }, { N, 5, 1, 2 }, { 0, 3, 1, 5 } },
+        { { 0, 1, 2, 3 }, { 1, 2, 3, N }, { 0, 3, 1, 3 } },
+        { { 0, 1, 2, 3 }, { 1, 2, I, 3 }, { 0, 3, 1, 3 } },
+        { { 0, 1, 2, 3 }, { 1, -I, 2, 3 }, { 0, 3, 1, 3 } },
+        { { N, 1, I, 3 }, { 7, 8, 9, 6 }, { 1, 3, 6, 9 } },
+        { { -I, 4, 2, N }, { I, -I, 9, N }, { 2, 4, 9, 9 } },
+    };
+    for (const Case &c : cases) {
+        SCOPED_TRACE(testing::Message() << "y[0] " << c.ys[0] << " x[0] " << c.xs[0]);
+        blot_layer *lay = blot_layer_new(BLOT_LINE, BLOT_DATA_DOUBLE, c.xs.size(), c.xs.data(), c.ys.data(),
+                                         1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+        blot_xy_limits lim = {};
+        EXPECT_TRUE(blot_layer_get_lim(lay, &lim, NULL));
+        EXPECT_EQ(lim.x_min, c.want.x_min);
+        EXPECT_EQ(lim.x_max, c.want.x_max);
+        EXPECT_EQ(lim.y_min, c.want.y_min);
+        EXPECT_EQ(lim.y_max, c.want.y_max);
+        blot_layer_delete(lay);
+    }
+
+    /* no finite y: the y limits are NaN, the x limits still those of x */
+    const double xs[] = { 0, 1, 2 }, ys[] = { N, I, -I };
+    blot_layer *lay = blot_layer_new(BLOT_LINE, BLOT_DATA_DOUBLE, 3, xs, ys, 1, "l", NULL);
+    ASSERT_TRUE(lay != NULL);
+    blot_xy_limits lim = {};
+    EXPECT_TRUE(blot_layer_get_lim(lay, &lim, NULL));
+    EXPECT_EQ(lim.x_min, 0);
+    EXPECT_EQ(lim.x_max, 2);
+    EXPECT_TRUE(std::isnan(lim.y_min)) << lim.y_min;
+    EXPECT_TRUE(std::isnan(lim.y_max)) << lim.y_max;
+    blot_layer_delete(lay);
+
+    /* xs NULL: x is the index 0..count-1, even where y is not finite */
+    const double yn[] = { N, 4, 2, N };
+    lay = blot_layer_new(BLOT_LINE, BLOT_DATA_DOUBLE, 4, NULL, yn, 1, "l", NULL);
+    ASSERT_TRUE(lay != NULL);
+    lim = {};
+    EXPECT_TRUE(blot_layer_get_lim(lay, &lim, NULL));
+    EXPECT_EQ(lim.x_min, 0);
+    EXPECT_EQ(lim.x_max, 3);
+    EXPECT_EQ(lim.y_min, 2);
+    EXPECT_EQ(lim.y_max, 4);
+    blot_layer_delete(lay);
+
+    /* FLOAT data takes the same path */
+    const float xf[] = { 0, 1, 2 }, yf[] = { 3, NAN, -INFINITY };
+    lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_FLOAT, 3, xf, yf, 1, "l", NULL);
+    ASSERT_TRUE(lay != NULL);
+    lim = {};
+    EXPECT_TRUE(blot_layer_get_lim(lay, &lim, NULL));
+    EXPECT_EQ(lim.y_min, 3);
+    EXPECT_EQ(lim.y_max, 3);
+    blot_layer_delete(lay);
+}
+
+/* #6: a NaN or infinite point is a gap in a line: no segment goes to it or
+ * from it, and a finite point with a gap on both sides (or at an end of the
+ * series next to a gap) is drawn as its own single cell */
+TEST(Layer, line_non_finite_is_a_gap)
+{
+    const double N = NAN, I = INFINITY;
+    RUN_ISOLATED(5, {
+        /* { NaN, 5, NaN }: the 5 alone */
+        const double xs[] = { 0, 1, 2 }, ys[] = { N, 5, N };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 3, xs, ys), Cells({ { 1, 5 } }));
+        /* the same with xs NULL */
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 3, NULL, ys), Cells({ { 1, 5 } }));
+    });
+    RUN_ISOLATED(5, {
+        /* a gap is not bridged: (0,1) and (2,3) alone, nothing at x 1 */
+        const double xs[] = { 0, 1, 2 }, ys[] = { 1, N, 3 };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 3, xs, ys), Cells({ { 0, 1 }, { 2, 3 } }));
+    });
+    RUN_ISOLATED(5, {
+        /* inf and -inf are gaps too, in y or in x */
+        const double xs[] = { 0, 1, 2, 3, 4, 5, 6 }, ys[] = { 0, 1, I, 3, -I, 5, 6 };
+        Cells want = { { 0, 0 }, { 1, 1 }, { 3, 3 }, { 5, 5 }, { 6, 6 } };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 7, xs, ys), want);
+        const double xg[] = { 0, 1, N, 3, I, 5, 6 }, yg[] = { 0, 1, 2, 3, 4, 5, 6 };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 7, xg, yg), want);
+    });
+    RUN_ISOLATED(5, {
+        /* runs on either side of a gap are drawn as lines */
+        const double xs[] = { 0, 2, 4, 5, 7, 9 }, ys[] = { 0, 2, N, 5, 7, 9 };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 6, xs, ys),
+                        diagonal(3) + Cells({ { 5, 5 }, { 6, 6 }, { 7, 7 }, { 8, 8 }, { 9, 9 } }));
+    });
+    RUN_ISOLATED(5, {
+        /* a leading or trailing gap, and nothing finite at all */
+        const double xs[] = { 0, 1, 2, 3 }, yl[] = { N, 1, 2, N }, yn[] = { N, I, -I, N };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 4, xs, yl), Cells({ { 1, 1 }, { 2, 2 } }));
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 4, xs, yn), Cells());
+    });
+    RUN_ISOLATED(5, {
+        /* B7: the line through (1, inf) with limits 0..1 draws (0,0) alone */
+        const double xs[] = { 0, 1 }, ys[] = { 0, I };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys, { 0, 1, 0, 1 }), Cells({ { 0, 0 } }));
+    });
+}
+
+/* #6: a bar with a NaN or infinite height (or x) is not drawn; +inf is
+ * not a bar cut at the top */
+TEST(Layer, bar_non_finite_not_drawn)
+{
+    const double N = NAN, I = INFINITY;
+    const double xs[] = { 1, 2, 3, 4, N, I }, ys[] = { I, -I, N, 5, 3, 3 };
+    Cells alone = layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs + 3, ys + 3);
+    ASSERT_FALSE(alone.empty());
+    EXPECT_CELLS_EQ(layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 6, xs, ys), alone);
+}
+
+/* #6: with a range wider than about DBL_MAX / len, (v - min) * len was inf
+ * and the point was dropped; such ranges now map like any other */
+TEST(Layer, huge_range_mapping)
+{
+    const double D = DBL_MAX;
+    for (blot_plot_type type : { BLOT_SCATTER, BLOT_BAR }) {
+        SCOPED_TRACE(testing::Message() << "plot " << type);
+        const double xs[] = { 0, 5, 9 };
+        const double up[] = { 0, D / 2, D };
+        const double down[] = { -D, -D / 2, 0 };
+        const double mid[] = { -D / 2, 0, D / 2 };
+        const double e308[] = { 0, 5e307, 1e308 };
+        struct { const double *ys; blot_xy_limits lim; } cases[] = {
+            { up, { 0, 9, 0, D } },
+            { down, { 0, 9, -D, 0 } },
+            { mid, { 0, 9, -D / 2, D / 2 } },
+            { e308, { 0, 9, 0, 1e308 } },
+        };
+        for (const auto &c : cases) {
+            SCOPED_TRACE(testing::Message() << "y " << c.lim.y_min << ".." << c.lim.y_max);
+            Cells got = layer_cells(type, BLOT_DATA_DOUBLE, 3, xs, c.ys, c.lim);
+            if (type == BLOT_SCATTER) {
+                EXPECT_CELLS_EQ(got, Cells({ { 0, 0 }, { 5, 5 }, { 9, 9 } }));
+            } else {
+                /* the bars reach rows 0, 5 and 9 */
+                EXPECT_TRUE(got.count({ 0, 0 }) && !got.count({ 0, 1 })) << cells_str(got);
+                EXPECT_TRUE(got.count({ 5, 5 }) && !got.count({ 5, 6 })) << cells_str(got);
+                EXPECT_TRUE(got.count({ 9, 9 })) << cells_str(got);
+            }
+        }
+    }
+    /* the X axis too, at 1000 columns */
+    const double xh[] = { 0, D / 2, D }, yh[] = { 0, 5, 9 };
+    Cells got = layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 3, xh, yh, { 0, D, 0, 9 }, { 1000, 10 });
+    EXPECT_CELLS_EQ(got, Cells({ { 0, 0 }, { 500, 5 }, { 999, 9 } }));
+}
+
+/* #6: the overflow-safe mapping changes no cell for ordinary ranges: a
+ * sweep of values, including every cell boundary and its neighbours,
+ * lands where the plain formula floor((v - min) * len / (max - min)) puts
+ * it (expected_cell; the axis uses the same formula) */
+TEST(Layer, cell_mapping_unchanged_for_normal_ranges)
+{
+    const double ranges[][2] = { { 0, 1 }, { 0, 9 }, { -250, -200 }, { -1e15, 1e15 }, { 1e-9, 3e-9 },
+                                 { 0.1, 0.7 }, { -3.3, -2.9 }, { 0, 1e300 }, { -1e305, 1e305 },
+                                 { -0.001, 1.001 }, { 6.3, 7.42 }, { 1, 1 + 1e-12 } };
+    const unsigned lens[] = { 10, 12, 14, 37, 100, 1000 };
+    std::mt19937_64 rng(6);
+    for (const auto &r : ranges) {
+        for (unsigned len : lens) {
+            SCOPED_TRACE(testing::Message() << r[0] << ".." << r[1] << " len " << len);
+            std::vector<double> vs;
+            for (unsigned k = 0; k <= len; k++) {
+                double b = r[0] + (r[1] - r[0]) * k / len;
+                vs.push_back(b);
+                vs.push_back(std::nextafter(b, -INFINITY));
+                vs.push_back(std::nextafter(b, INFINITY));
+            }
+            std::uniform_real_distribution<double> u(r[0], r[1]);
+            for (int i = 0; i < 2000; i++)
+                vs.push_back(u(rng));
+            vs.push_back(r[0]);
+            vs.push_back(r[1]);
+
+            /* one point per value, on its own column, so no two collide */
+            for (size_t i = 0; i < vs.size(); i += 900) {
+                size_t n = std::min<size_t>(900, vs.size() - i);
+                std::vector<double> xs(n), ys(vs.begin() + i, vs.begin() + i + n);
+                for (size_t j = 0; j < n; j++)
+                    xs[j] = j;
+                Cells want;
+                for (size_t j = 0; j < n; j++) {
+                    /* drawn when the plain position is 0..len, which takes
+                     * a value an ulp past a limit that rounds onto it */
+                    double pos = (ys[j] - r[0]) * len / (r[1] - r[0]);
+                    if (pos >= 0 && pos <= len)
+                        want.insert({ (unsigned)j, expected_cell(ys[j], r[0], r[1], len) });
+                }
+                Cells got = layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, n, xs.data(), ys.data(),
+                                        { -0.5, 900 - 0.5, r[0], r[1] }, { 900, len });
+                EXPECT_CELLS_EQ(got, want);
+                if (HasFailure())
+                    return;
+            }
+        }
+    }
 }
 
 // BUG B18: https://git.jukie.net/bart/blot/-/work_items/11

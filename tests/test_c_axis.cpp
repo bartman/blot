@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <cfloat>
+#include <cmath>
+
 #include "blot_axis.h"
 #include "blot_error.h"
 
@@ -389,10 +392,12 @@ TEST(Axis, large_axis_label_storage)
     }
 }
 
-// BUG B6, B7: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Axis, DISABLED_non_finite_limits_rejected)
+/* B6, B7 (#6): NaN or inf limits, or limits further apart than the
+ * largest double (max - min is inf), would give NaN or inf tick values */
+TEST(Axis, non_finite_limits_rejected)
 {
-    const double lim[][2] = { { NAN, 1 }, { 0, NAN }, { 0, INFINITY }, { -INFINITY, 0 } };
+    const double lim[][2] = { { NAN, 1 }, { 0, NAN }, { 0, INFINITY }, { -INFINITY, 0 },
+                              { NAN, NAN }, { -INFINITY, INFINITY }, { -DBL_MAX, DBL_MAX } };
     for (const auto &l : lim) {
         SCOPED_TRACE(testing::Message() << "[" << l[0] << "," << l[1] << "]");
         GError *error = NULL;
@@ -401,6 +406,28 @@ TEST(Axis, DISABLED_non_finite_limits_rejected)
         EXPECT_TRUE(error != NULL);
         g_clear_error(&error);
         blot_axis_delete(axs);
+    }
+}
+
+/* #6: the widest ranges the axis takes have finite tick values and no
+ * "nan" or "inf" label */
+TEST(Axis, widest_ranges_have_finite_labels)
+{
+    const double lim[][2] = { { 0, DBL_MAX }, { -DBL_MAX, 0 }, { -DBL_MAX / 2, DBL_MAX / 2 },
+                              { DBL_MAX / 2, DBL_MAX }, { -1e308, 7e307 } };
+    for (bool vertical : { true, false }) {
+        for (const auto &l : lim) {
+            SCOPED_TRACE(testing::Message() << vertical << " [" << l[0] << "," << l[1] << "]");
+            Axis a(vertical, 60, l[0], l[1]);
+            ASSERT_TRUE(a.axs) << a.error;
+            std::vector<Tick> ticks = a.ticks();
+            EXPECT_FALSE(ticks.empty());
+            for (const Tick &t : ticks) {
+                EXPECT_TRUE(std::isfinite(t.value)) << t.value;
+                EXPECT_EQ(t.label.find("nan"), std::string::npos) << t.label;
+                EXPECT_EQ(t.label.find("inf"), std::string::npos) << t.label;
+            }
+        }
     }
 }
 
