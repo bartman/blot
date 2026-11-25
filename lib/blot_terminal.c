@@ -34,15 +34,16 @@ bool blot_terminal_get_size(blot_dimensions *dims, GError **error)
 		return true;
 	}
 
-	/* COLUMNS and LINES are used (and kept) only when both are in the
-	 * range blot_terminal_set_size() accepts; otherwise ask the tty */
+	/* COLUMNS and LINES are used (and kept) when both are set to a
+	 * number: one outside the range blot_terminal_set_size() accepts is
+	 * clamped into it, as the tty size is.  Unset, 0, garbage or a value
+	 * too large for an unsigned: ask the tty */
 	unsigned cols = blot_env_to_uint("COLUMNS", 0);
 	unsigned rows = blot_env_to_uint("LINES", 0);
 
-	if (cols >= BLOT_MIN_COLS && cols <= BLOT_MAX_COLS
-	    && rows >= BLOT_MIN_ROWS && rows <= BLOT_MAX_ROWS) {
-		dims->cols = cols;
-		dims->rows = rows;
+	if (cols && rows) {
+		dims->cols = min_t(unsigned, max_t(unsigned, cols, BLOT_MIN_COLS), BLOT_MAX_COLS);
+		dims->rows = min_t(unsigned, max_t(unsigned, rows, BLOT_MIN_ROWS), BLOT_MAX_ROWS);
 		blot_fixed_dims = *dims;
 		return true;
 	}

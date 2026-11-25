@@ -405,14 +405,13 @@ TEST(Layout, render_accepts_null_error)
     });
 }
 
-/* B19 (#11): COLUMNS and LINES are used only when both are in the range
- * blot_terminal_set_size() accepts; otherwise the size comes from the tty,
- * here /dev/null, which has none */
+/* B19 (#11): COLUMNS and LINES that aren't a number (or 0, or too large
+ * for an unsigned) are ignored, and the size comes from the tty, here
+ * /dev/null, which has none */
 TEST(Layout, terminal_environment_invalid_is_ignored)
 {
     const char *cases[][2] = {
-        { "9", "24" }, { "80", "9" }, { "1001", "24" }, { "80", "1001" },
-        { "abc", "24" }, { "80x", "24" }, { "4294967306", "24" },
+        { "0", "24" }, { "80", "0" }, { "abc", "24" }, { "80x", "24" }, { "4294967306", "24" },
     };
     for (const auto &c : cases) {
         SCOPED_TRACE(testing::Message() << "COLUMNS=" << c[0] << " LINES=" << c[1]);
@@ -433,6 +432,44 @@ TEST(Layout, terminal_environment_invalid_is_ignored)
             Rendered r = render(f, F);
             EXPECT_FALSE(r.ok);
             EXPECT_EQ(r.code, ENOTTY) << r.message;
+        });
+    }
+}
+
+/* B19 (#11 review L2): COLUMNS and LINES outside the range
+ * blot_terminal_set_size() accepts are clamped into it before they are
+ * used and cached, as the tty size is; no tty is needed */
+TEST(Layout, terminal_environment_out_of_range_is_clamped)
+{
+    const struct {
+        const char *cols, *rows;
+        unsigned get_cols, get_rows;    /* blot_terminal_get_size() */
+        unsigned exp_cols, exp_rows;    /* the screen, less the border */
+    } cases[] = {
+        { "9", "24", 10, 24, 10, 22 },
+        { "1", "1", 10, 10, 10, 10 },
+        { "1001", "24", 1000, 24, 998, 22 },
+        { "80", "5000", 80, 1000, 78, 998 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "COLUMNS=" << c.cols << " LINES=" << c.rows);
+        RUN_ISOLATED(10, {
+            setenv("COLUMNS", c.cols, 1);
+            setenv("LINES", c.rows, 1);
+            ASSERT_TRUE(freopen("/dev/null", "w", stdout) != NULL);
+            blot_dimensions dim = {};
+            EXPECT_TRUE(blot_terminal_get_size(&dim, NULL));
+            EXPECT_EQ(dim.cols, c.get_cols);
+            EXPECT_EQ(dim.rows, c.get_rows);
+
+            Fig f;
+            f.lim(0, 9, 0, 9);
+            f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, DIAG_X, DIAG_Y);
+            Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS);
+            ASSERT_TRUE(r.ok) << r.message;
+            EXPECT_EQ(r.dim.cols, c.exp_cols);
+            EXPECT_EQ(r.dim.rows, c.exp_rows);
+            EXPECT_EQ(r.lines.size(), c.exp_rows);
         });
     }
 }
@@ -483,6 +520,22 @@ TEST(Layout, terminal_size_is_kept_in_range)
             EXPECT_EQ(r.lines.size(), c.exp_rows);
         });
     }
+}
+
+/* #11 review L1: an error the caller has already set is kept, not freed
+ * and replaced (glib warns about it, as g_propagate_error() does) */
+TEST(Layout, render_keeps_callers_error)
+{
+    RUN_ISOLATED(10, {
+        Fig f(28, 12);      /* no layers: the render fails */
+        GError *pre = g_error_new_literal(g_quark_from_static_string("test"), 42, "pre-set");
+        GError *error = pre;
+        EXPECT_TRUE(blot_figure_render(f, F, &error) == NULL);
+        ASSERT_TRUE(error == pre);
+        EXPECT_EQ(error->code, 42);
+        EXPECT_STREQ(error->message, "pre-set");
+        g_clear_error(&error);
+    });
 }
 
 TEST(Layout, render_error_codes)

@@ -460,13 +460,9 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 	GError *local = NULL;
 
 	blot_screen *scr = blot_figure_render_error(fig, flags, &local);
-	if (local) {
-		if (error) {
-			g_clear_error(error);
-			*error = local;
-		} else {
-			g_error_free(local);
-		}
-	}
+	/* frees local when error is NULL; never replaces an error the
+	 * caller already has */
+	if (local)
+		g_propagate_error(error, local);
 	return scr;
 }
