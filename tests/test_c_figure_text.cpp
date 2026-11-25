@@ -517,18 +517,19 @@ TEST(Text, legend_control_characters_replaced)
     }
 }
 
-/* not in the design's list (#11): bytes that aren't text in the locale
- * (the tests run in the C locale) failed the render with EILSEQ; each one
- * becomes '?' */
+/* not in the design's list (#11): bytes that aren't text failed the render
+ * with EILSEQ; each one becomes '?'.  #18: labels are UTF-8 in every locale
+ * (the tests run in the C locale), so "café" is kept and only a byte that
+ * isn't UTF-8 (Latin-1 é) is a '?' */
 TEST(Text, legend_label_not_valid_text)
 {
     Fig f(40, 13);
     f.lim(0, 9, 0, 9);
-    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "caf\xc3\xa9s");
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "caf\xc3\xa9s caf\xe9s");
     Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE);
     expect_lines_fit(r, 40, 13);
     ASSERT_FALSE(r.lines.empty());
-    EXPECT_EQ(r.lines.front(), L"◘  caf??s") << to_utf8(r.lines.front());
+    EXPECT_EQ(r.lines.front(), L"◘  caf\u00e9s caf?s") << to_utf8(r.lines.front());
 }
 
 /* #11 (note 34955): a legend taller than the screen can give it failed the
@@ -708,6 +709,206 @@ TEST(Text, legend_utf8_invalid_byte_is_one_question_mark)
         std::wstring l = utf8_legend_line("caf\xc3\xa9 \xff ok", 40);
         EXPECT_EQ(l, L"◘  caf\u00e9 ? ok") << to_utf8(l);
     });
+}
+
+/* #18: labels are UTF-8 and their width is the same in every locale.  In
+ * the C locale wcwidth() is -1 for anything past ASCII, so a wide
+ * character was counted as one column; the C locale's mbrtowc() can't
+ * read UTF-8 either, so a legend label became '?'s and a custom X label
+ * failed the render (swprintf).  Each test runs the same checks in the C
+ * locale and in C.UTF-8, each in an isolated child, on the minimum
+ * screen.  Every line is measured by display_width_utf8(), which doesn't
+ * use blot: glibc's own C.UTF-8 widths. */
+namespace {
+
+const char *const WIDE_LOCALES[] = { "C", "C.UTF-8" };
+
+/* the columns a line takes on a UTF-8 terminal, whatever the process's
+ * locale: glibc's wcwidth() in C.UTF-8 (through uselocale(), so the
+ * locale of the test stays), escapes and tabs as in display_width().  A
+ * character glibc can't measure counts 2, the most it could take */
+unsigned display_width_utf8(const std::wstring &line)
+{
+    locale_t utf8 = newlocale(LC_CTYPE_MASK, "C.UTF-8", (locale_t)0);
+    EXPECT_TRUE(utf8 != (locale_t)0) << "the C.UTF-8 locale is missing";
+    if (utf8 == (locale_t)0)
+        return ~0u;
+    locale_t old = uselocale(utf8);
+    unsigned col = 0;
+    for (wchar_t wc : strip_sgr(line)) {
+        if (wc == L'\t') {
+            col = (col / 8 + 1) * 8;
+        } else {
+            int w = wcwidth(wc);
+            col += w >= 0 ? (unsigned)w : 2;
+        }
+    }
+    uselocale(old);
+    freelocale(utf8);
+    return col;
+}
+
+void expect_lines_fit_utf8(const Rendered &r, unsigned cols, unsigned rows)
+{
+    ASSERT_TRUE(r.ok) << r.message;
+    EXPECT_EQ(r.lines.size(), rows);
+    for (size_t i = 0; i < r.lines.size(); i++)
+        EXPECT_LE(display_width_utf8(r.lines[i]), cols) << "line " << i << " |" << to_utf8(r.lines[i]) << "|";
+}
+
+#define SET_LOCALE(loc) ASSERT_TRUE(setlocale(LC_ALL, (loc)) != NULL) << "the " << (loc) << " locale is missing"
+
+/* the legend line of one labelled layer on the minimum screen, without
+ * axes (the caller is an isolated child) */
+std::wstring min_legend_line(const char *label)
+{
+    Fig f(BLOT_MIN_COLS, BLOT_MIN_ROWS);
+    f.lim(0, 9, 0, 9);
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, label);
+    Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
+    expect_lines_fit_utf8(r, BLOT_MIN_COLS, BLOT_MIN_ROWS);
+    if (r.lines.empty())
+        return L"";
+    return r.lines.front();
+}
+
+/* the X axis and its label row of a bar plot with custom X labels on a
+ * screen of the minimum width, and the legend below if it has one (the
+ * caller is an isolated child) */
+Lines min_x_rows(std::vector<const char *> labels, const char *legend = NULL)
+{
+    const gint32 ys[] = { 3, 1, 4, 1 };
+    /* one more row for the legend: the plot keeps its minimum rows */
+    unsigned rows = BLOT_MIN_ROWS + (legend ? 1 : 0);
+    Fig f(BLOT_MIN_COLS, rows);
+    EXPECT_TRUE(blot_figure_set_x_axis_labels(f, labels.size(), (char **)labels.data(), NULL));
+    f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, NULL, ys, 1, legend);
+    Rendered r = render(f, F | (legend ? BLOT_RENDER_LEGEND_BELOW : BLOT_RENDER_NONE));
+    expect_lines_fit_utf8(r, BLOT_MIN_COLS, rows);
+    if (!r.ok)
+        return {};
+    unsigned ax = r.mrg.top + r.plot_rows();
+    return Lines(r.lines.begin() + ax, r.lines.end());
+}
+
+} // namespace
+
+TEST(Text, legend_wide_characters_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            /* "◘  " is 3 columns and leaves 17; a cut label ends in '~'
+             * (#29), so 16 for the label: 8 wide characters */
+            /* CJK: 日本語テキスト日本語 */
+            EXPECT_EQ(min_legend_line("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                      "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"),
+                      L"◘  日本語テキスト日~");
+            /* Hangul: 한국어 x 4 */
+            EXPECT_EQ(min_legend_line("\xed\x95\x9c\xea\xb5\xad\xec\x96\xb4\xed\x95\x9c\xea\xb5\xad\xec\x96\xb4"
+                                      "\xed\x95\x9c\xea\xb5\xad\xec\x96\xb4\xed\x95\x9c\xea\xb5\xad\xec\x96\xb4"),
+                      L"◘  한국어한국어한국~");
+            /* fullwidth forms: ＡＢＣＤＥＦＧＨＩＪ */
+            EXPECT_EQ(min_legend_line("\xef\xbc\xa1\xef\xbc\xa2\xef\xbc\xa3\xef\xbc\xa4\xef\xbc\xa5"
+                                      "\xef\xbc\xa6\xef\xbc\xa7\xef\xbc\xa8\xef\xbc\xa9\xef\xbc\xaa"),
+                      L"◘  ＡＢＣＤＥＦＧＨ~");
+            /* emoji: 😀🚀🎉👍🔥 twice */
+            EXPECT_EQ(min_legend_line("\xf0\x9f\x98\x80\xf0\x9f\x9a\x80\xf0\x9f\x8e\x89\xf0\x9f\x91\x8d\xf0\x9f\x94\xa5"
+                                      "\xf0\x9f\x98\x80\xf0\x9f\x9a\x80\xf0\x9f\x8e\x89\xf0\x9f\x91\x8d\xf0\x9f\x94\xa5"),
+                      L"◘  \U0001f600\U0001f680\U0001f389\U0001f44d\U0001f525\U0001f600\U0001f680\U0001f389~");
+            /* a wide character can't take the last column before the
+             * '~': a日本語テキスト日本語 is cut after ト, at 18 */
+            std::wstring l = min_legend_line("a\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                             "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e");
+            EXPECT_EQ(l, L"◘  a日本語テキスト~");
+            EXPECT_EQ(display_width_utf8(l), 19u);
+            /* 8 wide characters fit whole, with no '~' */
+            EXPECT_EQ(min_legend_line("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                      "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5"),
+                      L"◘  日本語テキスト日");
+        });
+    }
+}
+
+TEST(Text, legend_combining_marks_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            /* 17 x "e" + U+0301: 17 columns, the whole label fits */
+            std::string label;
+            std::wstring whole = L"◘  ";
+            for (int i = 0; i < 17; i++) {
+                label += "e\xcc\x81";
+                whole += L"é";
+            }
+            std::wstring l = min_legend_line(label.c_str());
+            EXPECT_EQ(l, whole);
+            EXPECT_EQ(display_width_utf8(l), 20u);
+            /* one more: cut after 16, the mark stays with its letter */
+            label += "e\xcc\x81";
+            l = min_legend_line(label.c_str());
+            EXPECT_EQ(l, whole.substr(0, whole.size() - 2) + L"~");
+            EXPECT_EQ(display_width_utf8(l), 20u);
+        });
+    }
+}
+
+/* the decision for the C locale (#18): labels are read as UTF-8, as in a
+ * UTF-8 locale, not as '?'s; a byte that isn't UTF-8 is still one '?' */
+TEST(Text, legend_utf8_label_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            EXPECT_EQ(min_legend_line("caf\xc3\xa9"), L"◘  café");
+            EXPECT_EQ(min_legend_line("caf\xe9 \xe6\x97 ok"), L"◘  caf? ?? ok");
+            EXPECT_EQ(min_legend_line("\xc2\x9b" "31m"), L"◘  ?31m");
+        });
+    }
+}
+
+/* custom X labels (#9 cuts them to their room) are cut by columns.  On
+ * the minimum screen the plot is 12 columns from column 8, so with 4
+ * labels the ticks are 3 columns apart: 2 columns for each label and a
+ * blank, 3 for the last one */
+TEST(Text, x_labels_wide_characters_any_locale)
+{
+    for (const char *loc : WIDE_LOCALES) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            /* 日本 한국 ＡＢ 😀🚀: one wide character each */
+            EXPECT_LINES_EQ(min_x_rows({ "\xe6\x97\xa5\xe6\x9c\xac", "\xed\x95\x9c\xea\xb5\xad",
+                                         "\xef\xbc\xa1\xef\xbc\xa2",
+                                         "\xf0\x9f\x98\x80\xf0\x9f\x9a\x80" }),
+                            Lines({ L"       +*--*--*--*--",
+                                    L"        \u65e5 \ud55c \uff21 \U0001f600 " }));
+            /* éééé (combining marks) is 4 columns, cut to 2; a日 is 3,
+             * and 日 can't take the second column; 日b is cut to 日.  A
+             * CJK legend below: 日本語テキスト日本 is cut to 8 and '~' */
+            EXPECT_LINES_EQ(min_x_rows({ "e\xcc\x81" "e\xcc\x81" "e\xcc\x81" "e\xcc\x81",
+                                         "a\xe6\x97\xa5", "\xe6\x97\xa5" "b", "zz" },
+                                       "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                       "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac"),
+                            Lines({ L"       +*--*--*--*--",
+                                    L"        e\u0301e\u0301 a  \u65e5 zz ",
+                                    L"◘  \u65e5\u672c\u8a9e\u30c6\u30ad\u30b9\u30c8\u65e5~" }));
+            /* 日本語テキスト日本 and 日本語テキスト日本語: cut to the same
+             * text, so only the first gets a tick (#9); longer than the
+             * axis, so it is cut to 11 of its 12 columns and marked: 5
+             * wide characters and the '~' */
+            EXPECT_LINES_EQ(min_x_rows({ "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                         "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac",
+                                         "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad"
+                                         "\xe3\x82\xb9\xe3\x83\x88\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e" }),
+                            Lines({ L"       +*-----------",
+                                    L"        \u65e5\u672c\u8a9e\u30c6\u30ad~ " }));
+        });
+    }
 }
 
 /* #22: the legend details of a layer with non-finite Y values.  The
