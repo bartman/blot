@@ -362,8 +362,9 @@ TEST(Edge, huge_range)
                 /* the bottom-left and the top-right cell of the plot */
                 EXPECT_TRUE(m.count({ 0, 0 })) << cells_str(m);
                 EXPECT_TRUE(m.count({ r.plot_cols() - 1, r.plot_rows() - 1 })) << cells_str(m);
-                if (type == BLOT_SCATTER)
+                if (type == BLOT_SCATTER) {
                     EXPECT_EQ(m.size(), 2u) << cells_str(m);
+                }
             });
         }
     }
