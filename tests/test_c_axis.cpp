@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cerrno>
 #include <cfloat>
 #include <cmath>
 
@@ -540,7 +541,10 @@ TEST(Axis, non_finite_limits_rejected)
         GError *error = NULL;
         blot_axis *axs = blot_axis_new(true, true, 7, 20, l[0], l[1], NULL, &error);
         EXPECT_TRUE(axs == NULL);
-        EXPECT_TRUE(error != NULL);
+        ASSERT_TRUE(error != NULL);
+        /* the setters' errors: EINVAL for NaN or inf, ERANGE for too wide */
+        bool finite = std::isfinite(l[0]) && std::isfinite(l[1]);
+        EXPECT_EQ(error->code, finite ? ERANGE : EINVAL) << error->message;
         g_clear_error(&error);
         blot_axis_delete(axs);
     }

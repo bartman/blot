@@ -113,7 +113,8 @@ TEST(Figure, set_limits_rejects_non_finite)
                         : blot_figure_set_y_limits(fig, l[0], l[1], &error);
             EXPECT_FALSE(ok);
             ASSERT_TRUE(error != NULL);
-            EXPECT_TRUE(error->code == EINVAL || error->code == ERANGE) << error->message;
+            bool finite = std::isfinite(l[0]) && std::isfinite(l[1]);
+            EXPECT_EQ(error->code, finite ? ERANGE : EINVAL) << error->message;
             g_clear_error(&error);
             EXPECT_FALSE(fig->x_limits_set);
             EXPECT_FALSE(fig->y_limits_set);

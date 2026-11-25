@@ -1547,6 +1547,71 @@ TEST(Layer, huge_range_mapping)
     EXPECT_CELLS_EQ(got, Cells({ { 0, 0 }, { 500, 5 }, { 999, 9 } }));
 }
 
+/* #6: in the overflow regime of blot_layer_pos ((v - min) * len is inf),
+ * the axis's tick values are drawn
+ * - exactly where the plain formula puts them on the same data scaled
+ *   down by 2^-600, a normal range where it doesn't overflow (scaling by
+ *   a power of two changes no rounding), and
+ * - in their tick's cell, or one cell off: the axis computes its ticks
+ *   with its own d_jump/s_jump arithmetic, and on ordinary ranges too a
+ *   tick value on a cell boundary can round into the cell below, and the
+ *   zero-aligned tick's cell can be one low (-1..1 on 74 rows: the 0 tick
+ *   is in cell 36, 0 maps to 37).
+ * By scatter and by line, on both axes. */
+TEST(Layer, huge_range_ticks_land_in_their_cells)
+{
+    const double D = DBL_MAX;
+    const double ranges[][2] = { { 0, D }, { -D, 0 }, { -D / 2, D / 2 }, { 1e307, D },
+                                 { -1e308, 7e307 }, { 0, 1e308 }, { -D, -1e308 } };
+    unsigned checked = 0, exact = 0;
+    for (const auto &rg : ranges) {
+        for (unsigned len = 18; len <= 200; len += 7) {
+            ASSERT_FALSE(std::isfinite((rg[1] - rg[0]) * len)) << "not the fallback regime";
+            for (bool vertical : { true, false }) {
+                GError *error = NULL;
+                blot_axis *axs = blot_axis_new(vertical, true, 7, len, rg[0], rg[1], NULL, &error);
+                ASSERT_TRUE(axs != NULL) << (error ? error->message : "");
+                for (unsigned i = 0; i < len; i++) {
+                    const blot_axis_tick *t = blot_axis_get_tick_at(axs, i, NULL);
+                    if (!t)
+                        continue;
+                    SCOPED_TRACE(testing::Message() << rg[0] << ".." << rg[1] << " len " << len
+                                                    << (vertical ? " V" : " H") << " tick " << i
+                                                    << " value " << t->value);
+                    double v = t->value;
+                    /* with the zero alignment, tick 0 can be an ulp below
+                     * min; such a value has no cell (an axis rounding,
+                     * the same on ordinary ranges) */
+                    if (!(v >= rg[0] && v <= rg[1]))
+                        continue;
+                    unsigned plain = expected_cell(std::ldexp(v, -600), std::ldexp(rg[0], -600),
+                                                   std::ldexp(rg[1], -600), len);
+                    EXPECT_LE(std::abs((int)plain - (int)i), 1) << "plain cell " << plain;
+                    exact += plain == i;
+
+                    /* the tick value on the axis under test, 0 on the other */
+                    blot_xy_limits lim = vertical ? blot_xy_limits{ -1, 1, rg[0], rg[1] }
+                                                  : blot_xy_limits{ rg[0], rg[1], -1, 1 };
+                    blot_dimensions dim = vertical ? blot_dimensions{ 3, len } : blot_dimensions{ len, 3 };
+                    Cell want = vertical ? Cell{ 1, plain } : Cell{ plain, 1 };
+                    const double xs[] = { vertical ? 0 : v }, ys[] = { vertical ? v : 0 };
+                    for (blot_plot_type type : { BLOT_SCATTER, BLOT_LINE }) {
+                        EXPECT_CELLS_EQ(layer_cells(type, BLOT_DATA_DOUBLE, 1, xs, ys, lim, dim), Cells({ want }))
+                            << "plot " << type;
+                    }
+                    checked ++;
+                }
+                blot_axis_delete(axs);
+                if (HasFailure())
+                    return;
+            }
+        }
+    }
+    EXPECT_GT(checked, 1000u);
+    /* the one-off cases are rare */
+    EXPECT_GT(exact, checked * 95 / 100) << exact << " of " << checked;
+}
+
 /* #6: the overflow-safe mapping changes no cell for ordinary ranges: a
  * sweep of values, including every cell boundary and its neighbours,
  * lands where the plain formula floor((v - min) * len / (max - min)) puts
