@@ -4,12 +4,15 @@
 #include <gtest/gtest.h>
 #include <cerrno>
 #include <cstdint>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "blot.hpp"
+#include "blot_test.hpp"
 
 /* Screen owns a blot_screen, Figure owns its layers */
 static_assert(!std::is_copy_constructible_v<Blot::Screen>, "Screen copy would double free");
@@ -28,6 +31,8 @@ static_assert(std::is_copy_constructible_v<Blot::Exception>);
 static_assert(std::is_copy_assignable_v<Blot::Exception>);
 static_assert(std::is_nothrow_move_constructible_v<Blot::Exception>);
 static_assert(std::is_nothrow_move_assignable_v<Blot::Exception>);
+/* what() is noexcept, as std::exception::what() is */
+static_assert(noexcept(std::declval<const Blot::Exception &>().what()));
 
 namespace {
 
@@ -271,4 +276,118 @@ TEST(CppException, throw_catch_and_copy)
 		EXPECT_NE(e.what(), nullptr);
 		EXPECT_NE(e.what(), thrown.what());
 	}
+}
+
+/* An Exception without a GError: a moved-from one, or one made from a C
+ * call that failed without setting an error.  what() must still give a
+ * message, never nullptr: std::string(nullptr) and `os << nullptr` are
+ * undefined behaviour (#27).  The printing tests run isolated, since on
+ * a nullptr what() they may crash. */
+
+namespace {
+
+const char unknown[] = "blot: unknown error";
+
+/* what a catch (const std::exception &) handler would print */
+std::string printed(const std::exception &e)
+{
+	std::ostringstream os;
+	os << e.what();
+	EXPECT_TRUE(os.good());
+	return os.str();
+}
+
+} // namespace
+
+TEST(CppException, what_of_empty)
+{
+	Blot::Exception e(nullptr);
+	EXPECT_FALSE(e);
+	ASSERT_NE(e.what(), nullptr);
+	EXPECT_STREQ(e.what(), unknown);
+}
+
+TEST(CppException, what_of_moved_from)
+{
+	Blot::Exception a = make_exception(EINVAL);
+	Blot::Exception b(std::move(a));
+	EXPECT_FALSE(a);
+	ASSERT_NE(a.what(), nullptr);
+	EXPECT_STREQ(a.what(), unknown);
+	EXPECT_STREQ(b.what(), "error 22");
+
+	/* and from a move assignment */
+	Blot::Exception c = make_exception(ERANGE);
+	c = std::move(b);
+	ASSERT_NE(b.what(), nullptr);
+	EXPECT_STREQ(b.what(), unknown);
+	EXPECT_STREQ(c.what(), "error 22");
+}
+
+TEST(CppException, what_of_copy_of_empty)
+{
+	Blot::Exception a(nullptr);
+	Blot::Exception b(a);
+	Blot::Exception c = make_exception(EINVAL);
+	c = a;
+	EXPECT_STREQ(b.what(), unknown);
+	EXPECT_STREQ(c.what(), unknown);
+}
+
+TEST(CppException, print_empty)
+{
+	RUN_ISOLATED(10, {
+		Blot::Exception e(nullptr);
+		EXPECT_EQ(printed(e), unknown);
+		EXPECT_EQ(std::string(e.what()), unknown);
+	});
+}
+
+TEST(CppException, print_moved_from)
+{
+	RUN_ISOLATED(10, {
+		Blot::Exception a = make_exception(EINVAL);
+		Blot::Exception b(std::move(a));
+		EXPECT_EQ(printed(a), unknown);
+		EXPECT_EQ(printed(b), "error 22");
+		EXPECT_EQ(std::string(a.what()), unknown);
+	});
+}
+
+TEST(CppException, print_thrown_empty)
+{
+	/* what a caller sees that catches std::exception */
+	RUN_ISOLATED(10, {
+		try {
+			throw Blot::Exception(nullptr);
+		} catch (const std::exception &e) {
+			EXPECT_EQ(printed(e), unknown);
+			EXPECT_EQ(std::string(e.what()), unknown);
+		}
+	});
+}
+
+TEST(CppException, accessors_of_empty)
+{
+	Blot::Exception e(nullptr);
+	EXPECT_FALSE(e);
+	EXPECT_EQ(e.code(), 0);
+	/* str() says the same as what() */
+	EXPECT_EQ(e.str(), unknown);
+
+	Blot::Exception a = make_exception(EINVAL);
+	Blot::Exception b(std::move(a));
+	EXPECT_FALSE(a);
+	EXPECT_EQ(a.code(), 0);
+	EXPECT_EQ(a.str(), unknown);
+}
+
+TEST(CppException, accessors_of_error)
+{
+	/* an Exception with a GError is unchanged */
+	Blot::Exception e = make_exception(ERANGE);
+	EXPECT_TRUE(e);
+	EXPECT_EQ(e.code(), ERANGE);
+	EXPECT_EQ(e.str(), "error 34");
+	EXPECT_STREQ(e.what(), "error 34");
 }
