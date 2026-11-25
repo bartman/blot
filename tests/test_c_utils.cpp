@@ -154,17 +154,45 @@ TEST(Utils, format_number_fallback_chain)
         /* 16             10           9           8         7         6        5       4      3 */
         { "123.457",      "123.457",   "123.457",  "123.457", "123.46", "123.5", "123",  "123", "-1" },
         { "100000.000",   "100000.00", "100000.0", "100000",  "100000", "1e+05", "-1",   "-1",  "-1" },
-        { "1234567.891",  "1234567.9", "1.23e+06", "1e+06",   "1e+06",  "1e+06", "-1",   "-1",  "-1" },
-        { "-1234567.891", "-1.23e+06", "-1e+06",   "-1e+06",  "-1e+06", "-1",    "-1",   "-1",  "-1" },
+        { "1234567.891",  "1234567.9", "1.23e+06", "",        "1e+06",  "1e+06", "-1",   "-1",  "-1" },
+        { "-1234567.891", "-1.23e+06", "",         "-1e+06",  "-1e+06", "-1",    "-1",   "-1",  "-1" },
         { "1e+15",        "1e+15",     "1e+15",    "1e+15",   "1e+15",  "1e+15", "-1",   "-1",  "-1" },
         { "1e+100",       "1e+100",    "1e+100",   "1e+100",  "1e+100", "-1",    "-1",   "-1",  "-1" },
         { "0.000",        "0.000",     "0.000",    "0.000",   "0.000",  "0.000", "0.00", "0.0", "0" },
         { "-1.000",       "-1.000",    "-1.000",   "-1.000",  "-1.000", "-1.00", "-1.0", "-1",  "-1" },
     };
+    /* "": not checked here, see DISABLED_format_number_two_digits_fit */
     for (size_t vi = 0; vi < G_N_ELEMENTS(U2_VALUES); vi++)
-        for (size_t ri = 0; ri < G_N_ELEMENTS(rooms); ri++)
+        for (size_t ri = 0; ri < G_N_ELEMENTS(rooms); ri++) {
+            if (table[vi][ri].empty())
+                continue;
             EXPECT_EQ(fmt(U2_VALUES[vi], rooms[ri]), table[vi][ri])
                 << "value " << U2_VALUES[vi] << " room " << rooms[ri];
+        }
+}
+
+// BUG: https://git.jukie.net/bart/blot/-/work_items/13
+TEST(Utils, DISABLED_format_number_two_digits_fit)
+{
+    /* The chain goes %.3g, then "%3.g" (precision 0: one digit), so it
+     * prints 1e+06 (19% off) where 1234568 or 1.2e+06 fits.  The text
+     * must be at least as precise as %.2g, the step the chain is missing:
+     * within half a unit of the second significant digit (50000 here).
+     * 1234568 / -1234568 (the most precise that fit) pass, and so do
+     * 1.2e+06 / -1.2e+06; the test doesn't pick the fix. */
+    const struct {
+        double v;
+        unsigned room;
+    } cases[] = { { 1234567.891, 8 }, { -1234567.891, 9 } };
+    for (const auto &c : cases) {
+        char buf[64];
+        int rc = blot_format_number(buf, c.room, c.v);
+        ASSERT_GT(rc, 0) << c.v << " room " << c.room;
+        EXPECT_LT(rc, (int)c.room) << buf;
+        double half_unit = 0.5 * pow(10, floor(log10(fabs(c.v))) - 1);
+        EXPECT_LE(fabs(strtod(buf, NULL) - c.v), half_unit)
+            << c.v << " room " << c.room << " -> " << buf;
+    }
 }
 
 TEST(Utils, format_number_respects_room)
