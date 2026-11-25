@@ -1,5 +1,7 @@
 #include "blot_test.hpp"
 
+#include <cfloat>
+
 #include "blot_terminal.h"
 #include "blot_layer.h"
 #include "blot_types.h"
@@ -1386,6 +1388,76 @@ TEST(Layer, summary_disabled_and_reset)
     EXPECT_EQ(lay->summary.count, 4u);
     EXPECT_DOUBLE_EQ(lay->summary.yttl, 5.5);
     blot_layer_delete(lay);
+}
+
+// BUG B22: https://git.jukie.net/bart/blot/-/work_items/22
+TEST(Layer, summary_skips_non_finite)
+{
+    /* a point is summarized when its X and Y are both finite */
+    const blot_xy_limits lim = { 0, 5, 0, 9 };
+    const double xs[] = { 0, 1, 2, 3, 4, NAN }, ys[] = { 2, NAN, INFINITY, -INFINITY, 4, 7 };
+    for (auto t : { BLOT_SCATTER, BLOT_LINE, BLOT_BAR }) {
+        SCOPED_TRACE(testing::Message() << "plot " << t);
+        blot_layer *lay = blot_layer_new(t, BLOT_DATA_DOUBLE, 6, xs, ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+        blot_canvas_delete(blot_layer_render(lay, &lim, &DIM10,
+                                             BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_DETAILS, NULL));
+        const blot_layer_summary &s = lay->summary;
+        EXPECT_TRUE(s.enabled);
+        EXPECT_EQ(s.count, 2u);
+        EXPECT_DOUBLE_EQ(s.xmin, 0);
+        EXPECT_DOUBLE_EQ(s.xmax, 4);
+        EXPECT_DOUBLE_EQ(s.xttl, 4);
+        EXPECT_DOUBLE_EQ(s.ymin, 2);
+        EXPECT_DOUBLE_EQ(s.ymax, 4);
+        EXPECT_DOUBLE_EQ(s.yttl, 6);
+        blot_layer_delete(lay);
+    }
+}
+
+/* #22: the mean of finite values whose sum overflows stays finite, and
+ * between ymin and ymax even where the scaled sum rounds up; the sums
+ * are compensated */
+TEST(Layer, summary_yavg_overflow)
+{
+    const blot_xy_limits lim = { 0, 5, 0, 9 };
+    const double xs[] = { 0, 1, 2, 3, 4 };
+    const struct {
+        size_t n;
+        double ys[5];
+        double avg;
+    } cases[] = {
+        { 3, { DBL_MAX, DBL_MAX, DBL_MAX }, DBL_MAX },
+        { 4, { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX }, 0 },
+        { 2, { -DBL_MAX, -DBL_MAX }, -DBL_MAX },
+        { 2, { 1e308, 1e308 }, 1e308 },
+        { 3, { 1, 2, 4 }, 7.0 / 3 },
+        /* compensated: plain and scaled sums keep the 1 */
+        { 3, { 1e17, 1, -1e17 }, 1.0 / 3 },
+        { 5, { 1e308, 1, 1e308, -1e308, -1e308 }, 0.2 },
+        /* the clamp on the plain path: 0.3 / 3 is 0.10000000000000002 */
+        { 3, { 0.1, 0.1, 0.1 }, 0.1 },
+        /* the scaled sum's mean rounds past max, or below min: the
+         * true means round to max and min */
+        { 3, { 0x1.fffffffffffeap+1023, 0x1.fffffffffffe9p+1023, 0x1.fffffffffffeap+1023 },
+          0x1.fffffffffffeap+1023 },
+        { 3, { 0x1.fffffffffffe6p+1023, 0x1.fffffffffffe7p+1023, 0x1.fffffffffffe6p+1023 },
+          0x1.fffffffffffe6p+1023 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "ys[0] " << c.ys[0] << " n " << c.n);
+        blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_DOUBLE, c.n, xs, c.ys, 1, "l", NULL);
+        ASSERT_TRUE(lay != NULL);
+        blot_canvas_delete(blot_layer_render(lay, &lim, &DIM10,
+                                             BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_DETAILS, NULL));
+        EXPECT_EQ(lay->summary.count, c.n);
+        EXPECT_EQ(blot_layer_summary_yavg(&lay->summary), c.avg);
+        blot_layer_delete(lay);
+    }
+
+    blot_layer_summary none = {};
+    none.enabled = true;
+    EXPECT_TRUE(std::isnan(blot_layer_summary_yavg(&none)));
 }
 
 /* B6 (#6): a NaN no longer makes get_lim forget the values before it */

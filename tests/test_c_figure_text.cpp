@@ -2,6 +2,7 @@
  * lines without trimming; in the expected text "\e" stands for ESC. */
 #include "blot_test.hpp"
 
+#include <cfloat>
 #include <clocale>
 #include <cwchar>
 
@@ -691,4 +692,143 @@ TEST(Text, legend_utf8_invalid_byte_is_one_question_mark)
         std::wstring l = utf8_legend_line("caf\xc3\xa9 \xff ok", 40);
         EXPECT_EQ(l, L"◘  caf\u00e9 ? ok") << to_utf8(l);
     });
+}
+
+/* #22: the legend details of a layer with non-finite Y values.  The
+ * summary takes the points whose X and Y are both finite: avg, min and
+ * max are over them, count is how many there are, and "(+N non-finite)"
+ * says how many points were left out.  With none left, avg, min and max
+ * are "-".  No legend prints nan or inf */
+namespace {
+
+const double NF_X[] = { 0, 1, 2 };
+
+std::wstring details_line(blot_plot_type t, size_t n, const double *xs, const double *ys)
+{
+    /* wide enough for the longest line: #11 cuts it at the screen width */
+    Fig f(120, 14);
+    f.lim(0, 9, 0, 9);
+    f.plot(t, BLOT_DATA_DOUBLE, n, xs, ys, 1, "data");
+    Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_DETAILS);
+    EXPECT_TRUE(r.ok) << r.message;
+    if (r.lines.empty())
+        return L"";
+    for (const auto &l : r.lines) {
+        std::string s = to_utf8(l);
+        for (auto &c : s)
+            c = (char)tolower((unsigned char)c);
+        EXPECT_EQ(s.find("nan"), std::string::npos) << s;
+        EXPECT_EQ(s.find("inf"), std::string::npos) << s;
+    }
+    return r.lines.front();
+}
+
+} // namespace
+
+// BUG B22: https://git.jukie.net/bart/blot/-/work_items/22
+TEST(Text, legend_details_nan)
+{
+    const double ys[] = { 1, NAN, 3 };
+    for (auto t : { BLOT_SCATTER, BLOT_LINE }) {
+        SCOPED_TRACE(t);
+        EXPECT_EQ(details_line(t, 3, NF_X, ys),
+                  L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+    }
+}
+
+TEST(Text, legend_details_inf)
+{
+    const double ys[] = { 1, INFINITY, 3 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+}
+
+TEST(Text, legend_details_minus_inf)
+{
+    const double ys[] = { -INFINITY, 1, 3 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+}
+
+TEST(Text, legend_details_non_finite_x)
+{
+    /* a point with a non-finite X isn't drawn, nor summarized */
+    const double xs[] = { 0, NAN, 2 }, ys[] = { 1, 5, 3 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, xs, ys),
+              L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+}
+
+TEST(Text, legend_details_all_non_finite)
+{
+    const double ys[] = { NAN, INFINITY, -INFINITY };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=- min=- max=- count=0 (+3 non-finite)");
+}
+
+TEST(Text, legend_details_sum_overflows)
+{
+    /* each value is finite, their sum is not */
+    const double big[] = { 1e308, 1e308, 1e308 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, big),
+              L"◘  data   \tavg=1e+308 min=1e+308 max=1e+308 count=3");
+
+    const double mixed[] = { 1.5e308, 1.5e308, 0 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, mixed),
+              L"◘  data   \tavg=1e+308 min=0.000 max=1.5e+308 count=3");
+
+    /* the running sum overflows, then comes back: the mean is exactly 0 */
+    const double sym[] = { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX };
+    const double sym_x[] = { 0, 1, 2, 3 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 4, sym_x, sym),
+              L"◘  data   \tavg=0.000 min=-1.79769e+308 max=1.79769e+308 count=4");
+}
+
+TEST(Text, legend_details_finite_unchanged)
+{
+    const double ys[] = { 1, 2, 4 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=2.333 min=1.000 max=4.000 count=3");
+}
+
+/* #22 (review note 35657): the mean is of a compensated sum, so a small
+ * value next to large ones isn't lost; a plain sum gives avg=0.000 */
+TEST(Text, legend_details_compensated_sum)
+{
+    const double ys[] = { 1e17, 1, -1e17 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
+              L"◘  data   \tavg=0.333 min=-100000000000000000.000 max=100000000000000000.000 count=3");
+
+    /* the same past the overflow, on the scaled sum */
+    const double big[] = { 1e308, 1, 1e308, -1e308, -1e308 };
+    const double big_x[] = { 0, 1, 2, 3, 4 };
+    EXPECT_EQ(details_line(BLOT_SCATTER, 5, big_x, big),
+              L"◘  data   \tavg=0.200 min=-1e+308 max=1e+308 count=5");
+}
+
+TEST(Text, legend_details_compensated_long_series)
+{
+    /* 3000 points: 1000 times 1e16, 1, -1e16; a plain sum loses
+     * every 1 (ulp(1e16) is 2), the true mean is 1/3 */
+    std::vector<double> xs, ys;
+    for (int i = 0; i < 1000; i++) {
+        for (double y : { 1e16, 1.0, -1e16 }) {
+            xs.push_back(xs.size());
+            ys.push_back(y);
+        }
+    }
+    EXPECT_EQ(details_line(BLOT_SCATTER, ys.size(), xs.data(), ys.data()),
+              L"◘  data   \tavg=0.333 min=-10000000000000000.000 max=10000000000000000.000 count=3000");
+
+    /* 10000 points: 2500 times 1e16, 0.5, -1e16, 0.5; a plain sum
+     * loses the 0.5 after each 1e16, the true mean is 0.25 */
+    xs.clear();
+    ys.clear();
+    for (int i = 0; i < 2500; i++) {
+        for (double y : { 1e16, 0.5, -1e16, 0.5 }) {
+            xs.push_back(xs.size());
+            ys.push_back(y);
+        }
+    }
+    EXPECT_EQ(details_line(BLOT_SCATTER, ys.size(), xs.data(), ys.data()),
+              L"◘  data   \tavg=0.250 min=-10000000000000000.000 max=10000000000000000.000 count=10000");
 }
