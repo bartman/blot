@@ -154,28 +154,25 @@ TEST(Utils, format_number_fallback_chain)
         /* 16             10           9           8         7         6        5       4      3 */
         { "123.457",      "123.457",   "123.457",  "123.457", "123.46", "123.5", "123",  "123", "-1" },
         { "100000.000",   "100000.00", "100000.0", "100000",  "100000", "1e+05", "-1",   "-1",  "-1" },
-        { "1234567.891",  "1234567.9", "1.23e+06", "",        "1e+06",  "1e+06", "-1",   "-1",  "-1" },
-        { "-1234567.891", "-1.23e+06", "",         "-1e+06",  "-1e+06", "-1",    "-1",   "-1",  "-1" },
+        { "1234567.891",  "1234567.9", "1234568",  "1234568", "1e+06",  "1e+06", "-1",   "-1",  "-1" },
+        { "-1234567.891", "-1234568",  "-1234568", "-1e+06",  "-1e+06", "-1",    "-1",   "-1",  "-1" },
         { "1e+15",        "1e+15",     "1e+15",    "1e+15",   "1e+15",  "1e+15", "-1",   "-1",  "-1" },
         { "1e+100",       "1e+100",    "1e+100",   "1e+100",  "1e+100", "-1",    "-1",   "-1",  "-1" },
         { "0.000",        "0.000",     "0.000",    "0.000",   "0.000",  "0.000", "0.00", "0.0", "0" },
         { "-1.000",       "-1.000",    "-1.000",   "-1.000",  "-1.000", "-1.00", "-1.0", "-1",  "-1" },
     };
-    /* "": not checked here, see DISABLED_format_number_two_digits_fit */
     for (size_t vi = 0; vi < G_N_ELEMENTS(U2_VALUES); vi++)
         for (size_t ri = 0; ri < G_N_ELEMENTS(rooms); ri++) {
-            if (table[vi][ri].empty())
-                continue;
             EXPECT_EQ(fmt(U2_VALUES[vi], rooms[ri]), table[vi][ri])
                 << "value " << U2_VALUES[vi] << " room " << rooms[ri];
         }
 }
 
-// BUG: https://git.jukie.net/bart/blot/-/work_items/13
-TEST(Utils, DISABLED_format_number_two_digits_fit)
+/* #13: the chain used to go %.3g, then "%3.g" (precision 0: one digit) */
+TEST(Utils, format_number_two_digits_fit)
 {
-    /* The chain goes %.3g, then "%3.g" (precision 0: one digit), so it
-     * prints 1e+06 (19% off) where 1234568 or 1.2e+06 fits.  The text
+    /* The chain went %.3g, then "%3.g" (precision 0: one digit), so it
+     * printed 1e+06 (19% off) where 1234568 or 1.2e+06 fits.  The text
      * must be at least as precise as %.2g, the step the chain is missing:
      * within half a unit of the second significant digit (50000 here).
      * 1234568 / -1234568 (the most precise that fit) pass, and so do
@@ -193,6 +190,79 @@ TEST(Utils, DISABLED_format_number_two_digits_fit)
         EXPECT_LE(fabs(strtod(buf, NULL) - c.v), half_unit)
             << c.v << " room " << c.room << " -> " << buf;
     }
+}
+
+/* #13: each step of the chain, and its boundaries.  The text is the most
+ * precise that fits in room - 1 characters: fixed point with 3, 2, 1
+ * decimals first, then the most precise of the integer and %.6g..%.1g
+ * (the first of those on a tie), never less precise than %.1g. */
+TEST(Utils, format_number_most_precise_fit)
+{
+    const struct {
+        double v;
+        unsigned room;
+        const char *text; /* "-1": nothing fits */
+    } cases[] = {
+        /* fixed point; room == length doesn't fit (the NUL needs one) */
+        { 123.4567, 8, "123.457" },
+        { 123.4567, 7, "123.46" },
+        { 123.4567, 6, "123.5" },
+        { 123.4567, 5, "123" },  /* integer */
+        { 123.4567, 4, "123" },  /* room == length + 1 */
+        { 123.4567, 3, "-1" },   /* room == length */
+        /* the integer in full, before any %g */
+        { 1234567.891, 9, "1234568" },
+        { 1234567.891, 8, "1234568" },
+        { 1234567.0, 8, "1234567" },
+        { -1234567.891, 9, "-1234568" },
+        { 1e15, 17, "1000000000000000" },
+        { 1e15, 16, "1e+15" },
+        { 99999.9996, 7, "100000" }, /* tie of %.0f and %.6g: the integer */
+        { 99999.9996, 6, "1e+05" },
+        /* %.6g down to %.1g, when the integer doesn't fit */
+        { 123456789012.0, 13, "123456789012" },
+        { 123456789012.0, 12, "1.23457e+11" },
+        { 123456789012.0, 11, "1.2346e+11" },
+        { 123456789012.0, 10, "1.235e+11" },
+        { 123456789012.0, 9, "1.23e+11" },
+        { 123456789012.0, 8, "1.2e+11" },
+        { 123456789012.0, 7, "1e+11" },
+        { 123456789012.0, 6, "1e+11" },
+        { 123456789012.0, 5, "-1" },
+        { -123456789012.0, 12, "-1.2346e+11" },
+        { -123456789012.0, 9, "-1.2e+11" },
+        { -123456789012.0, 8, "-1e+11" },
+        { -123456789012.0, 7, "-1e+11" },
+        { -123456789012.0, 6, "-1" },
+        /* two digits instead of one (#9's duplicate -2e+05 labels) */
+        { -190000.0, 8, "-190000" },
+        { -210000.0, 8, "-210000" },
+        { -190000.0, 7, "-2e+05" }, /* -1.9e+05 needs 9 */
+        /* values below 1 */
+        { 0.123456, 6, "0.123" },
+        { 0.123456, 5, "0.12" },
+        { 0.123456, 4, "0.1" },
+        { 0.123456, 3, "-1" },
+        { 0.5, 3, "-1" },  /* not "0": less precise than %.1g */
+        { -0.4, 3, "-1" }, /* not "-0" */
+        { 0.05, 3, "-1" },
+        /* rounding with a carry */
+        { 9.99, 5, "9.99" },
+        { 9.99, 4, "10" },
+        { 9.99, 3, "10" },
+        { 9.99, 2, "-1" },
+        { -9.99, 6, "-9.99" },
+        { -9.99, 5, "-10" },
+        { -9.99, 4, "-10" },
+        { -9.99, 3, "-1" },
+        { 9.96, 4, "10" },
+        { 99.96, 6, "99.96" },
+        { 99.96, 5, "100" },
+        { 99.96, 4, "100" },
+        { -1.5, 3, "-2" },
+    };
+    for (const auto &c : cases)
+        EXPECT_EQ(fmt(c.v, c.room), c.text) << "value " << c.v << " room " << c.room;
 }
 
 TEST(Utils, format_number_respects_room)
