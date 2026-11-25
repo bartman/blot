@@ -423,8 +423,58 @@ TEST(Axis, custom_label_ticks_in_their_cells)
     }
 }
 
+/* A tick whose position is on the edge of a cell is in the cell above
+ * it, even when its value rounded to just below it (5/7 on 21 cells over
+ * 0..1 is 0.71428571428571419, in cell 14 by an ulp): its value is raised
+ * into that cell by the rounding error, so the ticks stay evenly spaced
+ * and a point on the tick's value is still drawn on the tick (#31). */
+TEST(Axis, ticks_on_cell_edges_evenly_spaced)
+{
+    {
+        Axis a(true, 21, 0, 1);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 0, 3, 6, 9, 12, 15, 18 },
+                                  { "0.000", "0.143", "0.286", "0.429", "0.571", "0.714", "0.857" }));
+        ticks_in_their_cells(a, true, 21, 0, 1);
+    }
+    {
+        /* zero-aligned: -1 + 1/37 is at 1, then every 3 */
+        Axis a(true, 111, -1, 2);
+        ASSERT_TRUE(a.axs) << a.error;
+        std::vector<unsigned> idx;
+        for (const auto &t : a.ticks())
+            idx.push_back(t.index);
+        std::vector<unsigned> want;
+        for (unsigned c = 1; c < 111; c += 3)
+            want.push_back(c);
+        EXPECT_EQ(idx, want);
+        ticks_in_their_cells(a, true, 111, -1, 2);
+    }
+    /* ticks a whole number of cells apart, no zero alignment */
+    for (const auto &rg : SWEEP_RANGES) {
+        if (rg[0] < 0 && 0 < rg[1])
+            continue;
+        for (unsigned len = 10; len <= 200; len++) {
+            for (bool vertical : { false, true }) {
+                Axis a(vertical, len, rg[0], rg[1]);
+                ASSERT_TRUE(a.axs) << a.error;
+                auto ticks = a.ticks();
+                if (ticks.size() < 2 || len % ticks.size())
+                    continue;
+                unsigned step = len / ticks.size();
+                for (unsigned i = 0; i < ticks.size(); i++)
+                    EXPECT_EQ(ticks[i].index, i * step) << (vertical ? "V" : "H") << " len " << len << " ["
+                                                        << rg[0] << "," << rg[1] << "] tick " << i;
+            }
+        }
+    }
+}
+
 /* the ticks of the A6 formula with the zero alignment, as blot_axis_new()
- * lays them out: {cell, value} */
+ * lays them out: {cell, value}.  The value is within the limits and the
+ * cell is its cell; or, when the screen offset is on the edge of the next
+ * cell, that one (the value is then raised into it by a rounding error,
+ * unless it is 0: #31) */
 static std::vector<std::pair<unsigned, double>> formula_ticks(unsigned len, unsigned n, double min, double max)
 {
     double d_jump = (max - min) / n, s_jump = (double)len / n, d_base = 0, s_base = 0;
@@ -435,8 +485,12 @@ static std::vector<std::pair<unsigned, double>> formula_ticks(unsigned len, unsi
         s_base = (t_shift - ti) * s_jump;
     }
     std::vector<std::pair<unsigned, double>> out;
-    for (unsigned i = 0; i < n; i++)
-        out.push_back({ (unsigned)(s_base + i * s_jump), d_base + i * d_jump + min });
+    for (unsigned i = 0; i < n; i++) {
+        double v = std::min(std::max(d_base + i * d_jump + min, min), max);
+        unsigned cell = blot_test::expected_cell(v, min, max, len);
+        double s = s_base + i * s_jump, edge = std::nearbyint(s);
+        out.push_back({ v != 0 && std::fabs(s - edge) < 1e-9 && cell + 1 == edge ? cell + 1 : cell, v });
+    }
     return out;
 }
 
@@ -467,7 +521,7 @@ TEST(Axis, tick_count_formula)
                     auto f = formula_ticks(len, n, rg[0], rg[1]);
                     for (unsigned i = 0; i + 1 < n; i++) {
                         EXPECT_EQ(ticks[i].index, f[i].first) << "tick " << i;
-                        EXPECT_EQ(ticks[i].value, f[i].second) << "tick " << i;
+                        EXPECT_NEAR(ticks[i].value, f[i].second, 1e-12 * (rg[1] - rg[0]) / len) << "tick " << i;
                     }
                     /* the dropped one was in the last tick spacing */
                     EXPECT_GE(f[n - 1].first + std::floor((double)len / n), len);

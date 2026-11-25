@@ -5,15 +5,19 @@
 #include <string.h>
 #include "blot_axis.h"
 #include "blot_error.h"
+#include "blot_layer.h"
 #include "blot_types.h"
 #include "blot_utils.h"
 
-/* Where the ticks go: tick ti has the value d_base + ti*d_jump + data_min
- * and sits in screen cell (unsigned)(s_base + ti*s_jump). */
+/* Where the ticks go: tick ti is at about the value d_base + ti*d_jump +
+ * data_min and the screen offset s_base + ti*s_jump; blot_axis_place_tick()
+ * gives its exact value and cell. */
 struct blot_axis_layout {
 	unsigned count;
 	double d_jump, s_jump;
 	double d_base, s_base;
+	double data_min, data_max;
+	unsigned screen_length;
 	unsigned y_room;	/* vertical: the room of every number label */
 };
 
@@ -22,6 +26,9 @@ static void blot_axis_layout_init(struct blot_axis_layout *lay, unsigned tick_co
 				  bool align_zero)
 {
 	lay->count = tick_count;
+	lay->data_min = data_min;
+	lay->data_max = data_max;
+	lay->screen_length = screen_length;
 
 	// jump is the width of each tick in data and screen offsets
 	lay->d_jump = (data_max - data_min) / tick_count;
@@ -46,14 +53,92 @@ static void blot_axis_layout_init(struct blot_axis_layout *lay, unsigned tick_co
 	}
 }
 
-static double blot_axis_tick_value(const struct blot_axis_layout *lay, unsigned ti, double data_min)
+/* The cell a data point at v is drawn in; screen_length (off the axis)
+ * if it isn't drawn. */
+static unsigned blot_axis_cell_of(const struct blot_axis_layout *lay, double v)
 {
-	return lay->d_base + (ti * lay->d_jump) + data_min;
+	unsigned cell;
+	if (!blot_layer_value_cell(v, lay->data_min, lay->data_max, lay->screen_length, &cell))
+		return lay->screen_length;
+	return cell;
+}
+
+/* The lowest value in cell `cell`, which v is just below (a rounding error
+ * away), or v if there is no such value that close. */
+static double blot_axis_raise_into_cell(const struct blot_axis_layout *lay, double v, unsigned cell)
+{
+	double width = (lay->data_max - lay->data_min) / lay->screen_length;
+	double lo = v;
+	double hi = fmin(lay->data_min + (cell + 0.5) * width, lay->data_max);
+
+	if (blot_axis_cell_of(lay, hi) != cell)
+		return v;
+
+	/* lo is below the cell, hi is in it: halve the gap until they are
+	 * neighbouring doubles */
+	for (;;) {
+		double mid = lo + (hi - lo) / 2;
+		if (!(lo < mid && mid < hi))
+			break;
+		if (blot_axis_cell_of(lay, mid) == cell)
+			hi = mid;
+		else
+			lo = mid;
+	}
+
+	/* a rounding error is far less than a millionth of a cell */
+	return hi - v <= width * 1e-6 ? hi : v;
+}
+
+/* Tick ti: its value, within the limits, and its cell, which is the cell
+ * blot_layer_value_cell() draws a data point with that value in, so a
+ * point on a tick's value is drawn on the tick (#31).
+ *
+ * Its value and its screen offset are two roundings of one position, which
+ * is often exactly on the lower edge of a cell: when the ticks are a whole
+ * number of cells apart (5/7 on 21 cells over 0..1 is at 15), and for the
+ * zero-aligned 0.  Either rounding can land just below that edge.  The
+ * cell truncated from the offset was then one below its value's (0 at
+ * 36.99999999999999 on 74 cells over -1..1), and the value's own cell
+ * would leave the ticks unevenly spaced (0.71428571428571419 in cell 14,
+ * and some of -1..2 on 111 cells, at 1, 4, 7.., in 3, 6..).  So when the
+ * offset is on an edge, to within a rounding error, and the value is in
+ * the cell below it, the value is raised to the lowest value of the cell
+ * above, which differs from it by that rounding error alone: its label
+ * stays the same.  Not 0, the zero-aligned tick: it is exact and must read
+ * 0 (not 9e-16), so it is where 0 is drawn (row 49 of 83 over -10..6.6,
+ * where 830 / 16.6 is 49.99999999999999). */
+static double blot_axis_place_tick(const struct blot_axis_layout *lay, unsigned ti, unsigned *cell)
+{
+	double v = lay->d_base + (ti * lay->d_jump) + lay->data_min;
+
+	/* the zero alignment can leave tick 0 an ulp below data_min */
+	v = fmin(fmax(v, lay->data_min), lay->data_max);
+
+	unsigned c = blot_axis_cell_of(lay, v);
+	double s = lay->s_base + (ti * lay->s_jump);
+	double edge = nearbyint(s);
+
+	if (v != 0 && fabs(s - edge) < 1e-9 && c + 1 == edge) {
+		v = blot_axis_raise_into_cell(lay, v, c + 1);
+		c = blot_axis_cell_of(lay, v);
+	}
+
+	if (cell)
+		*cell = c;
+	return v;
+}
+
+static double blot_axis_tick_value(const struct blot_axis_layout *lay, unsigned ti)
+{
+	return blot_axis_place_tick(lay, ti, NULL);
 }
 
 static unsigned blot_axis_tick_cell(const struct blot_axis_layout *lay, unsigned ti)
 {
-	return lay->s_base + (ti * lay->s_jump);
+	unsigned cell;
+	blot_axis_place_tick(lay, ti, &cell);
+	return cell;
 }
 
 /* The room blot_format_number() takes for a horizontal label at a tick in
@@ -142,7 +227,7 @@ static enum blot_axis_fit blot_axis_numbers_fit(const struct blot_axis_layout *l
 
 #define TEXT(ti) (text + (size_t)(ti) * (BLOT_AXIS_LABEL_MAX + 1))
 	for (unsigned ti=0; ti<lay->count; ti++) {
-		double d_val = blot_axis_tick_value(lay, ti, data_min);
+		double d_val = blot_axis_tick_value(lay, ti);
 		unsigned room = blot_axis_number_room(lay, ti, screen_length);
 		if (blot_axis_good_text(TEXT(ti), room, d_val, half_cell))
 			continue;
@@ -158,9 +243,9 @@ static enum blot_axis_fit blot_axis_numbers_fit(const struct blot_axis_layout *l
 				continue;
 
 			char a[BLOT_AXIS_LABEL_MAX + 1], b[BLOT_AXIS_LABEL_MAX + 1];
-			int ra = blot_axis_format(a, sizeof(a), blot_axis_tick_value(lay, ti, data_min),
+			int ra = blot_axis_format(a, sizeof(a), blot_axis_tick_value(lay, ti),
 						  half_cell);
-			int rb = blot_axis_format(b, sizeof(b), blot_axis_tick_value(lay, tj, data_min),
+			int rb = blot_axis_format(b, sizeof(b), blot_axis_tick_value(lay, tj),
 						  half_cell);
 			if (ra >= 0 && rb >= 0 && strcmp(a, b))
 				return BLOT_AXIS_DOES_NOT_FIT;
@@ -434,8 +519,8 @@ blot_axis * blot_axis_new_with_room(bool is_vertical, bool is_visible,
 
 	for (unsigned ti=0; ti<lay.count; ti+=cus.step) {
 
-		double   d_val = blot_axis_tick_value(&lay, ti, data_min);
-		unsigned s_val = blot_axis_tick_cell(&lay, ti);
+		unsigned s_val;
+		double   d_val = blot_axis_place_tick(&lay, ti, &s_val);
 
 		const char *custom = use_labels_arg ? labels->strings[ti] : NULL;
 		char *label = p;
