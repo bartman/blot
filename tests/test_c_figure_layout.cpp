@@ -255,6 +255,37 @@ TEST(Layout, one_sided_limits_auto_range_all_data)
     }
 }
 
+/* #7: X and Y data differ, so ranging the free axis from the other
+ * coordinate (or from the fixed limits) changes its labels */
+TEST(Layout, one_sided_limits_free_axis_uses_its_own_data)
+{
+    const gint32 xs[] = { 0, 5, 10 }, ys[] = { -200, 0, 300 };
+    Fig none(40, 16);
+    none.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys);
+    Rendered rn = render(none, F);
+    ASSERT_TRUE(rn.ok) << rn.message;
+    EXPECT_EQ(labels_of(x_ticks(rn)), std::vector<std::string>({ "0.000", "3.340", "6.680" }));
+    {
+        Fig f(40, 16);
+        f.ylim(0, 100);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(labels_of(x_ticks(r)), labels_of(x_ticks(rn)));
+        EXPECT_EQ(labels_of(y_ticks(r)),
+                  std::vector<std::string>({ "0.000", "20.000", "40.000", "60.000", "80.000" }));
+    }
+    {
+        Fig f(40, 16);
+        f.xlim(0, 100);
+        f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, xs, ys);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_EQ(labels_of(y_ticks(r)), labels_of(y_ticks(rn)));
+        EXPECT_EQ(labels_of(x_ticks(r)), std::vector<std::string>({ "0.000", "33.333", "66.667" }));
+    }
+}
+
 TEST(Layout, explicit_limits_exact_ticks)
 {
     LineAcross la(40, 14, 0, 1, -9.9996, 9.9996);
