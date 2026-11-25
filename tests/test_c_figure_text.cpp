@@ -63,7 +63,11 @@ void two_layers(Fig &f)
     f.plot(BLOT_LINE, BLOT_DATA_INT32, 3, TWO_X, TWO_Y2, 2, "two");
 }
 
-const wchar_t LEGEND_MARK = 0x25D8;     /* ◘ */
+const wchar_t LEGEND_MARK = L'#';    /* under NO_UNICODE (#46) */
+
+/* the tests of labels past ASCII (#11, #18) render with Unicode: under
+ * NO_UNICODE such a character is a '?' per column (#46) */
+constexpr blot_render_flags UNI = BLOT_RENDER_NO_COLOR;
 
 } // namespace
 
@@ -187,7 +191,7 @@ TEST(Text, legend_above_line)
     Rendered r = render(f, BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_ABOVE);
     ASSERT_TRUE(r.ok) << r.message;
     ASSERT_FALSE(r.lines.empty());
-    EXPECT_EQ(r.lines[0], sgr(L"\\e[38;5;1m◘ \\e[0m pts"));
+    EXPECT_EQ(r.lines[0], sgr(L"\\e[38;5;1m# \\e[0m pts"));
 }
 
 TEST(Text, legend_below_details)
@@ -201,8 +205,8 @@ TEST(Text, legend_below_details)
     ASSERT_GE(r.lines.size(), 2u);
     Lines last(r.lines.end() - 2, r.lines.end());
     EXPECT_LINES_EQ(last, sgr(Lines{
-        L"\\e[38;5;3m◘ \\e[0m sc   \tavg=0.875 min=-2.000 max=4.000 count=4",
-        L"\\e[38;5;200m◘ \\e[0m a much longer label   \tavg=0.875 min=-2.000 max=4.000 count=4",
+        L"\\e[38;5;3m# \\e[0m sc   \tavg=0.875 min=-2.000 max=4.000 count=4",
+        L"\\e[38;5;200m# \\e[0m a much longer label   \tavg=0.875 min=-2.000 max=4.000 count=4",
     }));
 }
 
@@ -221,8 +225,8 @@ TEST(Text, legend_skips_unlabelled_layers)
     ASSERT_EQ(legend.size(), 2u);
     /* 40 columns: cut between items (#29) */
     EXPECT_LINES_EQ(legend, (Lines{
-        L"◘  sc   \tavg=0.875 min=-2.000",
-        L"◘  a much longer label",
+        L"#  sc   \tavg=0.875 min=-2.000",
+        L"#  a much longer label",
     }));
 }
 
@@ -274,8 +278,8 @@ TEST(Text, colour_support_disabled)
         ASSERT_TRUE(l.ok) << l.message;
         EXPECT_FALSE(has_esc(l.text)) << to_utf8(l.text);
         ASSERT_EQ(l.lines.size(), 14u);
-        EXPECT_EQ(l.lines.front(), L"◘  pts");
-        EXPECT_EQ(l.lines.back(), L"◘  pts");
+        EXPECT_EQ(l.lines.front(), L"#  pts");
+        EXPECT_EQ(l.lines.back(), L"#  pts");
     });
 }
 
@@ -285,7 +289,7 @@ TEST(Text, colour_support_disabled)
 TEST(Text, legend_rows_and_placement)
 {
     const gint32 xs[] = { 0, 10 };
-    const Lines legend = { L"◘  one", L"◘  two" };
+    const Lines legend = { L"#  one", L"#  two" };
 
     Fig f;
     two_layers(f);
@@ -416,7 +420,7 @@ TEST(Text, legend_details_without_summary)
     const wchar_t *txt = blot_screen_get_text(scr, &size, NULL);
     Lines lines = split_lines(std::wstring(txt, size));
     ASSERT_FALSE(lines.empty());
-    EXPECT_EQ(strip_sgr(lines[0]), L"◘  pts   \tcount=3") << to_utf8(lines[0]);
+    EXPECT_EQ(strip_sgr(lines[0]), L"#  pts   \tcount=3") << to_utf8(lines[0]);
 
     blot_screen_delete(scr);
     blot_axis_delete(xa);
@@ -466,7 +470,7 @@ TEST(Text, long_label_cut_to_width)
             expect_lines_fit(r, 20, 12);
             ASSERT_EQ(r.lines.size(), 12u);
             const std::wstring &l = legend == BLOT_RENDER_LEGEND_ABOVE ? r.lines.front() : r.lines.back();
-            EXPECT_EQ(strip_sgr(l), L"◘  " + std::wstring(16, L'x') + L"~") << to_utf8(l);
+            EXPECT_EQ(strip_sgr(l), L"#  " + std::wstring(16, L'x') + L"~") << to_utf8(l);
             EXPECT_EQ(has_esc(r.text), colour == BLOT_RENDER_NONE);
         }
     }
@@ -483,8 +487,8 @@ TEST(Text, legend_details_cut_to_width)
     expect_lines_fit(r, 40, 16);
     ASSERT_EQ(r.lines.size(), 16u);
     EXPECT_LINES_EQ(Lines(r.lines.end() - 2, r.lines.end()), (Lines{
-        L"◘  sc   \tavg=0.875 min=-2.000",
-        L"◘  a much longer label",
+        L"#  sc   \tavg=0.875 min=-2.000",
+        L"#  a much longer label",
     }));
 
     /* a label that reaches the tab stop: no item fits after it, and the
@@ -495,7 +499,7 @@ TEST(Text, legend_details_cut_to_width)
     Rendered d = render(g, F | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_DETAILS);
     expect_lines_fit(d, 20, 14);
     ASSERT_FALSE(d.lines.empty());
-    EXPECT_EQ(d.lines.front(), L"◘  abcdefghijklm") << to_utf8(d.lines.front());
+    EXPECT_EQ(d.lines.front(), L"#  abcdefghijklm") << to_utf8(d.lines.front());
 }
 
 /* #11 (note 34955): a newline in a label added a line, and an escape
@@ -513,14 +517,15 @@ TEST(Text, legend_control_characters_replaced)
         EXPECT_FALSE(has_esc(r.text)) << to_utf8(r.text);
         ASSERT_EQ(r.lines.size(), 14u);
         const std::wstring &l = legend == BLOT_RENDER_LEGEND_ABOVE ? r.lines.front() : r.lines.back();
-        EXPECT_EQ(l, L"◘  a?b?[31mc\td?e?") << to_utf8(l);
+        EXPECT_EQ(l, L"#  a?b?[31mc\td?e?") << to_utf8(l);
     }
 }
 
 /* not in the design's list (#11): bytes that aren't text failed the render
  * with EILSEQ; each one becomes '?'.  #18: labels are UTF-8 in every locale
  * (the tests run in the C locale), so "café" is kept and only a byte that
- * isn't UTF-8 (Latin-1 é) is a '?' */
+ * isn't UTF-8 (Latin-1 é) is a '?'.  #46: under NO_UNICODE the UTF-8 é is
+ * a '?' too, one column, so both read "caf?s" */
 TEST(Text, legend_label_not_valid_text)
 {
     Fig f(40, 13);
@@ -529,7 +534,7 @@ TEST(Text, legend_label_not_valid_text)
     Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE);
     expect_lines_fit(r, 40, 13);
     ASSERT_FALSE(r.lines.empty());
-    EXPECT_EQ(r.lines.front(), L"◘  caf\u00e9s caf?s") << to_utf8(r.lines.front());
+    EXPECT_EQ(r.lines.front(), L"#  caf?s caf?s") << to_utf8(r.lines.front());
 }
 
 /* #11 (note 34955): a legend taller than the screen can give it failed the
@@ -562,8 +567,8 @@ TEST(Text, tall_legend_is_cut)
     EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_PLOT_ROWS);
     EXPECT_EQ(r.mrg.top, 2u);
     EXPECT_EQ(r.mrg.bottom, 4u);
-    EXPECT_LINES_EQ(Lines(r.lines.begin(), r.lines.begin() + 2), (Lines{ L"◘  l0", L"◘  l1" }));
-    EXPECT_LINES_EQ(Lines(r.lines.end() - 2, r.lines.end()), (Lines{ L"◘  l0", L"◘  l1" }));
+    EXPECT_LINES_EQ(Lines(r.lines.begin(), r.lines.begin() + 2), (Lines{ L"#  l0", L"#  l1" }));
+    EXPECT_LINES_EQ(Lines(r.lines.end() - 2, r.lines.end()), (Lines{ L"#  l0", L"#  l1" }));
 
     /* one row more: the legend above gets it */
     f.size(28, 17);
@@ -585,7 +590,7 @@ TEST(Text, legend_label_tab_kept)
     Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE);
     expect_lines_fit(r, 40, 13);
     ASSERT_FALSE(r.lines.empty());
-    EXPECT_EQ(r.lines.front(), L"◘  a\tb") << to_utf8(r.lines.front());
+    EXPECT_EQ(r.lines.front(), L"#  a\tb") << to_utf8(r.lines.front());
 
     Fig g(20, 12);
     g.lim(0, 9, 0, 9);
@@ -593,7 +598,7 @@ TEST(Text, legend_label_tab_kept)
     Rendered n = render(g, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
     expect_lines_fit(n, 20, 12);
     ASSERT_FALSE(n.lines.empty());
-    EXPECT_EQ(n.lines.front(), L"◘  abcdefghijklmno~") << to_utf8(n.lines.front());
+    EXPECT_EQ(n.lines.front(), L"#  abcdefghijklmno~") << to_utf8(n.lines.front());
 }
 
 namespace {
@@ -621,7 +626,7 @@ std::wstring utf8_legend_line(const char *label, unsigned cols)
     Fig f(cols, 12);
     f.lim(0, 9, 0, 9);
     f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, label);
-    Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
+    Rendered r = render(f, UNI | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
     EXPECT_TRUE(r.ok) << r.message;
     EXPECT_EQ(r.lines.size(), 12u);
     if (r.lines.empty())
@@ -765,7 +770,7 @@ std::wstring min_legend_line(const char *label)
     Fig f(BLOT_MIN_COLS, BLOT_MIN_ROWS);
     f.lim(0, 9, 0, 9);
     f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, label);
-    Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
+    Rendered r = render(f, UNI | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
     expect_lines_fit_utf8(r, BLOT_MIN_COLS, BLOT_MIN_ROWS);
     if (r.lines.empty())
         return L"";
@@ -783,7 +788,7 @@ Lines min_x_rows(std::vector<const char *> labels, const char *legend = NULL)
     Fig f(BLOT_MIN_COLS, rows);
     EXPECT_TRUE(blot_figure_set_x_axis_labels(f, labels.size(), (char **)labels.data(), NULL));
     f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, NULL, ys, 1, legend);
-    Rendered r = render(f, F | (legend ? BLOT_RENDER_LEGEND_BELOW : BLOT_RENDER_NONE));
+    Rendered r = render(f, UNI | (legend ? BLOT_RENDER_LEGEND_BELOW : BLOT_RENDER_NONE));
     expect_lines_fit_utf8(r, BLOT_MIN_COLS, rows);
     if (!r.ok)
         return {};
@@ -996,7 +1001,7 @@ TEST(Text, legend_details_nan)
     for (auto t : { BLOT_SCATTER, BLOT_LINE }) {
         SCOPED_TRACE(t);
         EXPECT_EQ(details_line(t, 3, NF_X, ys),
-                  L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+                  L"#  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
     }
 }
 
@@ -1004,14 +1009,14 @@ TEST(Text, legend_details_inf)
 {
     const double ys[] = { 1, INFINITY, 3 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
-              L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+              L"#  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
 }
 
 TEST(Text, legend_details_minus_inf)
 {
     const double ys[] = { -INFINITY, 1, 3 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
-              L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+              L"#  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
 }
 
 TEST(Text, legend_details_non_finite_x)
@@ -1019,14 +1024,14 @@ TEST(Text, legend_details_non_finite_x)
     /* a point with a non-finite X isn't drawn, nor summarized */
     const double xs[] = { 0, NAN, 2 }, ys[] = { 1, 5, 3 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 3, xs, ys),
-              L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+              L"#  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
 }
 
 TEST(Text, legend_details_all_non_finite)
 {
     const double ys[] = { NAN, INFINITY, -INFINITY };
     EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
-              L"◘  data   \tavg=- min=- max=- count=0 (+3 non-finite)");
+              L"#  data   \tavg=- min=- max=- count=0 (+3 non-finite)");
 }
 
 TEST(Text, legend_details_sum_overflows)
@@ -1034,24 +1039,24 @@ TEST(Text, legend_details_sum_overflows)
     /* each value is finite, their sum is not */
     const double big[] = { 1e308, 1e308, 1e308 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, big),
-              L"◘  data   \tavg=1e+308 min=1e+308 max=1e+308 count=3");
+              L"#  data   \tavg=1e+308 min=1e+308 max=1e+308 count=3");
 
     const double mixed[] = { 1.5e308, 1.5e308, 0 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, mixed),
-              L"◘  data   \tavg=1e+308 min=0.000 max=1.5e+308 count=3");
+              L"#  data   \tavg=1e+308 min=0.000 max=1.5e+308 count=3");
 
     /* the running sum overflows, then comes back: the mean is exactly 0 */
     const double sym[] = { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX };
     const double sym_x[] = { 0, 1, 2, 3 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 4, sym_x, sym),
-              L"◘  data   \tavg=0.000 min=-1.79769e+308 max=1.79769e+308 count=4");
+              L"#  data   \tavg=0.000 min=-1.79769e+308 max=1.79769e+308 count=4");
 }
 
 TEST(Text, legend_details_finite_unchanged)
 {
     const double ys[] = { 1, 2, 4 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
-              L"◘  data   \tavg=2.333 min=1.000 max=4.000 count=3");
+              L"#  data   \tavg=2.333 min=1.000 max=4.000 count=3");
 }
 
 /* #22 (review note 35657): the mean is of a compensated sum, so a small
@@ -1060,13 +1065,13 @@ TEST(Text, legend_details_compensated_sum)
 {
     const double ys[] = { 1e17, 1, -1e17 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 3, NF_X, ys),
-              L"◘  data   \tavg=0.333 min=-100000000000000000.000 max=100000000000000000.000 count=3");
+              L"#  data   \tavg=0.333 min=-100000000000000000.000 max=100000000000000000.000 count=3");
 
     /* the same past the overflow, on the scaled sum */
     const double big[] = { 1e308, 1, 1e308, -1e308, -1e308 };
     const double big_x[] = { 0, 1, 2, 3, 4 };
     EXPECT_EQ(details_line(BLOT_SCATTER, 5, big_x, big),
-              L"◘  data   \tavg=0.200 min=-1e+308 max=1e+308 count=5");
+              L"#  data   \tavg=0.200 min=-1e+308 max=1e+308 count=5");
 }
 
 TEST(Text, legend_details_compensated_long_series)
@@ -1081,7 +1086,7 @@ TEST(Text, legend_details_compensated_long_series)
         }
     }
     EXPECT_EQ(details_line(BLOT_SCATTER, ys.size(), xs.data(), ys.data()),
-              L"◘  data   \tavg=0.333 min=-10000000000000000.000 max=10000000000000000.000 count=3000");
+              L"#  data   \tavg=0.333 min=-10000000000000000.000 max=10000000000000000.000 count=3000");
 
     /* 10000 points: 2500 times 1e16, 0.5, -1e16, 0.5; a plain sum
      * loses the 0.5 after each 1e16, the true mean is 0.25 */
@@ -1094,7 +1099,7 @@ TEST(Text, legend_details_compensated_long_series)
         }
     }
     EXPECT_EQ(details_line(BLOT_SCATTER, ys.size(), xs.data(), ys.data()),
-              L"◘  data   \tavg=0.250 min=-10000000000000000.000 max=10000000000000000.000 count=10000");
+              L"#  data   \tavg=0.250 min=-10000000000000000.000 max=10000000000000000.000 count=10000");
 }
 
 /* #29: a legend line too wide for the screen was cut at any character,
@@ -1154,16 +1159,16 @@ std::vector<std::wstring> detail_items(const std::wstring &line)
 TEST(Text, legend_cut_between_items)
 {
     const std::vector<double> ys = { 1, 2, 4 };
-    /* "◘  data   " is 10 columns, the tab goes to 16, then avg ends in
+    /* "#  data   " is 10 columns, the tab goes to 16, then avg ends in
      * 25, min in 35, max in 45, count in 53 */
-    EXPECT_EQ(cut_line("data", ys, 53), L"◘  data   \tavg=2.333 min=1.000 max=4.000 count=3");
-    EXPECT_EQ(cut_line("data", ys, 52), L"◘  data   \tavg=2.333 min=1.000 max=4.000");
-    EXPECT_EQ(cut_line("data", ys, 45), L"◘  data   \tavg=2.333 min=1.000 max=4.000");
-    EXPECT_EQ(cut_line("data", ys, 44), L"◘  data   \tavg=2.333 min=1.000");
-    EXPECT_EQ(cut_line("data", ys, 26), L"◘  data   \tavg=2.333");
-    EXPECT_EQ(cut_line("data", ys, 25), L"◘  data   \tavg=2.333");
-    EXPECT_EQ(cut_line("data", ys, 24), L"◘  data");
-    EXPECT_EQ(cut_line("data", ys, 20), L"◘  data");     /* the minimum width */
+    EXPECT_EQ(cut_line("data", ys, 53), L"#  data   \tavg=2.333 min=1.000 max=4.000 count=3");
+    EXPECT_EQ(cut_line("data", ys, 52), L"#  data   \tavg=2.333 min=1.000 max=4.000");
+    EXPECT_EQ(cut_line("data", ys, 45), L"#  data   \tavg=2.333 min=1.000 max=4.000");
+    EXPECT_EQ(cut_line("data", ys, 44), L"#  data   \tavg=2.333 min=1.000");
+    EXPECT_EQ(cut_line("data", ys, 26), L"#  data   \tavg=2.333");
+    EXPECT_EQ(cut_line("data", ys, 25), L"#  data   \tavg=2.333");
+    EXPECT_EQ(cut_line("data", ys, 24), L"#  data");
+    EXPECT_EQ(cut_line("data", ys, 20), L"#  data");     /* the minimum width */
 }
 
 TEST(Text, legend_cut_never_splits_a_number)
@@ -1171,16 +1176,16 @@ TEST(Text, legend_cut_never_splits_a_number)
     /* avg ends in 26, min in 36, max in 49, count in 57: 47 columns
      * printed "max=1.5e+3", which reads as 1500 */
     const std::vector<double> big = { 1.5e308, 1.5e308, 0 };
-    EXPECT_EQ(cut_line("data", big, 57), L"◘  data   \tavg=1e+308 min=0.000 max=1.5e+308 count=3");
-    EXPECT_EQ(cut_line("data", big, 49), L"◘  data   \tavg=1e+308 min=0.000 max=1.5e+308");
-    EXPECT_EQ(cut_line("data", big, 48), L"◘  data   \tavg=1e+308 min=0.000");
-    EXPECT_EQ(cut_line("data", big, 47), L"◘  data   \tavg=1e+308 min=0.000");
+    EXPECT_EQ(cut_line("data", big, 57), L"#  data   \tavg=1e+308 min=0.000 max=1.5e+308 count=3");
+    EXPECT_EQ(cut_line("data", big, 49), L"#  data   \tavg=1e+308 min=0.000 max=1.5e+308");
+    EXPECT_EQ(cut_line("data", big, 48), L"#  data   \tavg=1e+308 min=0.000");
+    EXPECT_EQ(cut_line("data", big, 47), L"#  data   \tavg=1e+308 min=0.000");
 
     /* avg ends in 25, min in 43: 32 columns printed "min=-1" */
     const std::vector<double> sym = { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX };
-    EXPECT_EQ(cut_line("data", sym, 32), L"◘  data   \tavg=0.000");
-    EXPECT_EQ(cut_line("data", sym, 42), L"◘  data   \tavg=0.000");
-    EXPECT_EQ(cut_line("data", sym, 43), L"◘  data   \tavg=0.000 min=-1.79769e+308");
+    EXPECT_EQ(cut_line("data", sym, 32), L"#  data   \tavg=0.000");
+    EXPECT_EQ(cut_line("data", sym, 42), L"#  data   \tavg=0.000");
+    EXPECT_EQ(cut_line("data", sym, 43), L"#  data   \tavg=0.000 min=-1.79769e+308");
 }
 
 TEST(Text, legend_cut_drops_suffix_with_count)
@@ -1188,9 +1193,9 @@ TEST(Text, legend_cut_drops_suffix_with_count)
     /* max ends in 45, " count=2 (+1 non-finite)" in 69: 53 columns
      * printed "count=2" without its suffix */
     const std::vector<double> ys = { 1, NAN, 3 };
-    EXPECT_EQ(cut_line("data", ys, 69), L"◘  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
-    EXPECT_EQ(cut_line("data", ys, 68), L"◘  data   \tavg=2.000 min=1.000 max=3.000");
-    EXPECT_EQ(cut_line("data", ys, 53), L"◘  data   \tavg=2.000 min=1.000 max=3.000");
+    EXPECT_EQ(cut_line("data", ys, 69), L"#  data   \tavg=2.000 min=1.000 max=3.000 count=2 (+1 non-finite)");
+    EXPECT_EQ(cut_line("data", ys, 68), L"#  data   \tavg=2.000 min=1.000 max=3.000");
+    EXPECT_EQ(cut_line("data", ys, 53), L"#  data   \tavg=2.000 min=1.000 max=3.000");
 }
 
 TEST(Text, legend_long_label_cut_with_mark)
@@ -1200,15 +1205,15 @@ TEST(Text, legend_long_label_cut_with_mark)
     for (auto flags : { F, F | BLOT_RENDER_LEGEND_DETAILS }) {
         SCOPED_TRACE(flags);
         /* the minimum width: 16 characters and the '~' */
-        EXPECT_EQ(cut_line(label, ys, 20, flags), L"◘  a much longer la~");
-        EXPECT_EQ(cut_line(label, ys, 30, flags), L"◘  a much longer label for th~");
-        EXPECT_EQ(cut_line(label, ys, 36, flags), L"◘  a much longer label for the lege~");
+        EXPECT_EQ(cut_line(label, ys, 20, flags), L"#  a much longer la~");
+        EXPECT_EQ(cut_line(label, ys, 30, flags), L"#  a much longer label for th~");
+        EXPECT_EQ(cut_line(label, ys, 36, flags), L"#  a much longer label for the lege~");
         /* the label fits exactly: not cut, no '~' */
-        EXPECT_EQ(cut_line(label, ys, 37, flags), L"◘  a much longer label for the legend");
+        EXPECT_EQ(cut_line(label, ys, 37, flags), L"#  a much longer label for the legend");
     }
     /* "   " goes to 40, the tab to 48, avg ends in 57 */
-    EXPECT_EQ(cut_line(label, ys, 56), L"◘  a much longer label for the legend");
-    EXPECT_EQ(cut_line(label, ys, 57), L"◘  a much longer label for the legend   \tavg=2.333");
+    EXPECT_EQ(cut_line(label, ys, 56), L"#  a much longer label for the legend");
+    EXPECT_EQ(cut_line(label, ys, 57), L"#  a much longer label for the legend   \tavg=2.333");
 }
 
 TEST(Text, legend_cut_with_colour)
@@ -1216,28 +1221,28 @@ TEST(Text, legend_cut_with_colour)
     /* the escapes take no column: the same cuts as without colour */
     const std::vector<double> ys = { 1, 2, 4 };
     const blot_render_flags colour = BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_DETAILS;
-    EXPECT_EQ(cut_line("data", ys, 36, colour), sgr(L"\\e[38;5;1m◘ \\e[0m data   \tavg=2.333 min=1.000"));
-    EXPECT_EQ(cut_line("data", ys, 24, colour), sgr(L"\\e[38;5;1m◘ \\e[0m data"));
+    EXPECT_EQ(cut_line("data", ys, 36, colour), sgr(L"\\e[38;5;1m# \\e[0m data   \tavg=2.333 min=1.000"));
+    EXPECT_EQ(cut_line("data", ys, 24, colour), sgr(L"\\e[38;5;1m# \\e[0m data"));
     EXPECT_EQ(cut_line("a much longer label for the legend", ys, 20, colour),
-              sgr(L"\\e[38;5;1m◘ \\e[0m a much longer la~"));
+              sgr(L"\\e[38;5;1m# \\e[0m a much longer la~"));
 }
 
 TEST(Text, legend_cut_with_tabs)
 {
     const std::vector<double> ys = { 1, 2, 4 };
-    /* "◘  a" is 4 columns, its tab goes to 8, "b   " to 12, the next tab
+    /* "#  a" is 4 columns, its tab goes to 8, "b   " to 12, the next tab
      * to 16; avg ends in 25, min in 35 */
-    EXPECT_EQ(cut_line("a\tb", ys, 34), L"◘  a\tb   \tavg=2.333");
-    EXPECT_EQ(cut_line("a\tb", ys, 35), L"◘  a\tb   \tavg=2.333 min=1.000");
-    /* a label cut after its tab: "◘  ab" is 5, the tab goes to 8, then
+    EXPECT_EQ(cut_line("a\tb", ys, 34), L"#  a\tb   \tavg=2.333");
+    EXPECT_EQ(cut_line("a\tb", ys, 35), L"#  a\tb   \tavg=2.333 min=1.000");
+    /* a label cut after its tab: "#  ab" is 5, the tab goes to 8, then
      * 11 characters to 19 and the '~' */
-    EXPECT_EQ(cut_line("ab\tcdefghijklmnopqrstu", ys, 20), L"◘  ab\tcdefghijklm~");
-    EXPECT_EQ(cut_line("ab\tcdefghijklmnopqrstu", ys, 22), L"◘  ab\tcdefghijklmno~");
-    /* "◘  abcdefghijklmn" is 17, its tab goes to 24, the z ends in 25: it
+    EXPECT_EQ(cut_line("ab\tcdefghijklmnopqrstu", ys, 20), L"#  ab\tcdefghijklm~");
+    EXPECT_EQ(cut_line("ab\tcdefghijklmnopqrstu", ys, 22), L"#  ab\tcdefghijklmno~");
+    /* "#  abcdefghijklmn" is 17, its tab goes to 24, the z ends in 25: it
      * fits in 25; in 24 the tab doesn't fit with the '~' and the label is
      * cut before it */
-    EXPECT_EQ(cut_line("abcdefghijklmn\tz", ys, 25), L"◘  abcdefghijklmn\tz");
-    EXPECT_EQ(cut_line("abcdefghijklmn\tz", ys, 24), L"◘  abcdefghijklmn~");
+    EXPECT_EQ(cut_line("abcdefghijklmn\tz", ys, 25), L"#  abcdefghijklmn\tz");
+    EXPECT_EQ(cut_line("abcdefghijklmn\tz", ys, 24), L"#  abcdefghijklmn~");
 }
 
 /* a combining mark stays with its base character at a '~' cut */
@@ -1277,14 +1282,14 @@ TEST(Text, legend_cut_values_are_whole)
         const std::vector<std::wstring> items = detail_items(full);
         SCOPED_TRACE(to_utf8(full));
         ASSERT_EQ(items.size(), 4u);
-        EXPECT_EQ(full, L"◘  data   \t" + items[0] + L" " + items[1] + L" " + items[2] + L" " + items[3]);
+        EXPECT_EQ(full, L"#  data   \t" + items[0] + L" " + items[1] + L" " + items[2] + L" " + items[3]);
 
         for (unsigned cols = BLOT_MIN_COLS; cols <= display_width(full) + 2; cols++) {
             SCOPED_TRACE(cols);
             const std::wstring l = cut_line("data", ys, cols);
 
             /* the longest line of whole items that fits */
-            std::wstring expected = L"◘  data";
+            std::wstring expected = L"#  data";
             for (size_t k = 0; k < items.size(); k++) {
                 std::wstring next = expected + (k ? L" " : L"   \t") + items[k];
                 if (display_width(next) > cols)

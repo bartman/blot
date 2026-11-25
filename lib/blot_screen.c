@@ -119,7 +119,24 @@ struct blot_legend_line {
 	wchar_t *p, *end;
 	unsigned col, cols;
 	bool full;
+	bool ascii;     /* NO_UNICODE (#46) */
 };
+
+/* a label's character wc, which takes w columns, at p: as it is, or under
+ * NO_UNICODE (ascii) a character past ASCII is a '?' per column, so the
+ * output is ASCII and as wide as the label (#46): a wide character is "??",
+ * a combining mark nothing.  Returns the end of what it wrote */
+static wchar_t *blot_screen_label_char(wchar_t *p, wchar_t wc, unsigned w,
+				       bool ascii)
+{
+	if (!ascii || (unsigned)wc < 0x80) {
+		*(p++) = wc;
+		return p;
+	}
+	for (unsigned i=0; i<w; i++)
+		*(p++) = L'?';
+	return p;
+}
 
 static bool blot_legend_room(struct blot_legend_line *ll, size_t n,
 			     GError **error)
@@ -170,9 +187,10 @@ static bool blot_legend_putc(struct blot_legend_line *ll, wchar_t wc,
 		return true;
 	}
 
-	if (!blot_legend_room(ll, 1, error))
+	unsigned w = next - ll->col;
+	if (!blot_legend_room(ll, ll->ascii && (unsigned)wc >= 0x80 ? w : 1, error))
 		return false;
-	*(ll->p++) = wc;
+	ll->p = blot_screen_label_char(ll->p, wc, w, ll->ascii);
 	ll->col = next;
 	return true;
 }
@@ -269,6 +287,7 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 		.p = scr->data + scr->data_used,
 		.end = scr->data + scr->data_size,
 		.cols = scr->dim.cols,
+		.ascii = !!(scr->flags & BLOT_RENDER_NO_UNICODE),
 	};
 	bool use_color = blot_screen_use_color(scr);
 	unsigned lines = 0;
@@ -284,7 +303,9 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
 		const char *rststr = use_color ? COL_RESET : "";
 
 		//wchar_t star = 0x2605; // does not show up in Terminus font
-		wchar_t symbol = 0x25D8; // inverse bullet ◘
+		/* inverse bullet ◘; NO_UNICODE output is ASCII (#46): '#' is the
+		 * nearest solid swatch, and unlike '*' isn't read as a mark */
+		wchar_t symbol = (scr->flags & BLOT_RENDER_NO_UNICODE) ? L'#' : 0x25D8;
 		/* the details: items, each with the separator before it.
 		 * The line is cut between them, never inside one, so a value
 		 * is shown whole or not at all; count and its "(+N
@@ -363,7 +384,7 @@ static bool blot_screen_can_legend(blot_screen *scr, unsigned count,
  * BLOT_TEXT_MAX_MARKS + (BLOT_TEXT_MAX_MARKS + 1) * room characters, well
  * within the screen buffer's 16 per column. */
 static bool blot_screen_x_label(wchar_t **pp, wchar_t *end, const char *label,
-				unsigned room, GError **error)
+				unsigned room, bool ascii, GError **error)
 {
 	struct blot_text_reader r;
 	wchar_t *p = *pp;
@@ -377,7 +398,8 @@ static bool blot_screen_x_label(wchar_t **pp, wchar_t *end, const char *label,
 		/* this one and the blanks, and one more for the '\n' */
 		RETURN_ERRORx((size_t)(end - p) <= room - col + 1, false, error,
 			      ENOSPC, "screen buffer too small for the X labels");
-		*(p++) = wc;
+		/* w <= room - col: it fits where the blanks would go */
+		p = blot_screen_label_char(p, wc, w, ascii);
 		col += w;
 	}
 	RETURN_ERRORx((size_t)(end - p) <= room - col, false, error,
@@ -587,7 +609,8 @@ skip_cell:
 			if (!room)
 				room = 1;
 
-			if (!blot_screen_x_label(&p, end, xtick->label, room, error))
+			if (!blot_screen_x_label(&p, end, xtick->label, room,
+						 scr->flags & BLOT_RENDER_NO_UNICODE, error))
 				return false;
 
 			c_x += room;
