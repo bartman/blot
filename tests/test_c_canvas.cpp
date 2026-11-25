@@ -116,6 +116,8 @@ TEST(Canvas, fill_rect)
  * as well as missing ones. */
 
 #include <climits>
+#include <cstddef>
+#include <cstdint>
 
 #include "blot_test.hpp"
 
@@ -354,4 +356,38 @@ TEST(Canvas, DISABLED_draw_rect_smallest)
     Canvas can(6, 6);
     blot_canvas_draw_rect(can, 1, 1, 2, 2);
     EXPECT_CELLS_EQ(cells(can), Cells({ { 1, 1 }, { 1, 2 }, { 2, 1 }, { 2, 2 } }));
+}
+
+/* struct blot_canvas declares its bitmap __aligned64, so the canvas must be
+ * allocated 64-byte aligned (#15): g_malloc only guarantees 16 bytes, and
+ * UBSan reports every access to a misaligned canvas.  A single allocation
+ * can be 64-byte aligned by luck, so keep many canvases of varied sizes
+ * and flags alive at once and require every one to be aligned. */
+TEST(Canvas, bitmap_is_64_byte_aligned)
+{
+    const blot_render_flags flags[] = {
+        BLOT_RENDER_NONE,
+        BLOT_RENDER_NO_UNICODE,
+        BLOT_RENDER_BRAILLE,
+        (blot_render_flags)(BLOT_RENDER_BRAILLE | BLOT_RENDER_DONT_INVERT_Y_AXIS),
+    };
+    std::vector<blot_canvas *> cans;
+    unsigned misaligned = 0;
+    for (unsigned i = 0; i < 256; i++) {
+        unsigned cols = 1 + (i * 7) % 97;
+        unsigned rows = 1 + (i * 13) % 61;
+        GError *error = NULL;
+        blot_canvas *can = blot_canvas_new(cols, rows, flags[i % 4], 1, &error);
+        ASSERT_TRUE(can != NULL) << cols << "x" << rows;
+        ASSERT_TRUE(error == NULL);
+        cans.push_back(can);
+        /* uintptr_t: no access through a misaligned pointer here */
+        uintptr_t base = (uintptr_t)can;
+        uintptr_t bitmap = base + offsetof(blot_canvas, bitmap);
+        if (base % 64 || bitmap % 64)
+            misaligned++;
+    }
+    EXPECT_EQ(misaligned, 0u) << "of " << cans.size() << " canvases";
+    for (blot_canvas *can : cans)
+        blot_canvas_delete(can);
 }
