@@ -232,6 +232,17 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 	lim.y_min -= y_fudge;
 	lim.y_max += y_fudge;
 
+	/* an axis with user limits keeps them; the other one is
+	 * auto-ranged over all of the data (#7) */
+	if (fig->x_limits_set) {
+		lim.x_min = fig->lim.x_min;
+		lim.x_max = fig->lim.x_max;
+	}
+	if (fig->y_limits_set) {
+		lim.y_min = fig->lim.y_min;
+		lim.y_max = fig->lim.y_max;
+	}
+
 	return lim;
 }
 
