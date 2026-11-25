@@ -4,3 +4,5 @@
 # prep-container:<name> job in .gitlab-ci.yml.
 deb12  debian:bookworm  common.packages
 deb13  debian:trixie    common.packages
+# clang and its sanitizer runtimes, for sanitize-deb13 only
+deb13-clang  debian:trixie  common.packages clang.packages
