@@ -709,8 +709,8 @@ void expect_no_line_wider(const Rendered &r, unsigned cols)
 }
 } // namespace
 
-// BUG B13: https://git.jukie.net/bart/blot/-/work_items/9
-TEST(Layout, DISABLED_x_label_row_fits_zero_crossing)
+// #9 (B13): the label row was 62 and 78 columns wide
+TEST(Layout, x_label_row_fits_zero_crossing)
 {
     {
         const double v[] = { -1, 0, 2 };
@@ -726,8 +726,8 @@ TEST(Layout, DISABLED_x_label_row_fits_zero_crossing)
     }
 }
 
-// BUG B13: https://git.jukie.net/bart/blot/-/work_items/9
-TEST(Layout, DISABLED_long_custom_x_labels)
+// #9 (B13): labels 2 and 3 were hidden by labels 1 and 4
+TEST(Layout, long_custom_x_labels)
 {
     const gint32 ys[] = { 3, 1, 4, 1 };
     const char *names[] = { "first-label-xxxx", "second-label-xxx", "third-label-xxxx", "fourth-label-xxx" };
@@ -749,14 +749,230 @@ TEST(Layout, DISABLED_long_custom_x_labels)
     }
 }
 
-// BUG B14: https://git.jukie.net/bart/blot/-/work_items/9
-TEST(Layout, DISABLED_narrow_screen_large_x_values)
+// #9 (B14): the render failed
+TEST(Layout, narrow_screen_large_x_values)
 {
     const double xs[] = { -200000, -100000 }, ys[] = { 1, 2 };
     Fig f(28, 14);
     f.plot(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys);
     Rendered r = render(f, F);
     EXPECT_TRUE(r.ok) << r.message;
+}
+
+namespace {
+/* the X-axis line and the label line, right-trimmed */
+Lines x_rows(const Rendered &r)
+{
+    Lines l = rtrim(strip_sgr(r.lines));
+    unsigned ax = r.mrg.top + r.plot_rows();
+    if (ax + 1 >= l.size())
+        return {};
+    return { l[ax], l[ax + 1] };
+}
+
+/* Every X tick has a label that starts under it and is a number that
+ * names a value within half a cell of the tick's cell (the rule of the
+ * axis, #9 review); the labels are all different; no line is wider than
+ * the screen. */
+void expect_x_labels_exact(const Rendered &r, double x_min, double x_max)
+{
+    ASSERT_TRUE(r.ok) << r.message;
+    for (size_t i = 0; i < r.lines.size(); i++)
+        EXPECT_LE(r.lines[i].size(), r.dim.cols) << "line " << i << " |" << to_utf8(r.lines[i]) << "|";
+    double range = x_max - x_min, cell = range / r.plot_cols();
+    auto ticks = x_ticks(r);
+    EXPECT_FALSE(ticks.empty());
+    std::set<std::string> seen;
+    for (const auto &t : ticks) {
+        const std::string &label = t.second;
+        char *end = NULL;
+        double v = strtod(label.c_str(), &end);
+        EXPECT_TRUE(!label.empty() && end && *end == 0) << "column " << t.first << " label '" << label << "'";
+        double lo = x_min + t.first * cell, eps = 0.5 * cell + 1e-9 * std::fabs(range);
+        EXPECT_GE(v, lo - eps) << "column " << t.first << " label '" << label << "'";
+        EXPECT_LT(v, lo + cell + eps) << "column " << t.first << " label '" << label << "'";
+        EXPECT_TRUE(seen.insert(label).second) << "duplicate label " << label;
+    }
+}
+} // namespace
+
+/* #9: the boundary widths of B14, exact.  The plot is 8 columns in.  Up to
+ * 19 plot columns there is one tick, at x_min; from 20 the three ticks of
+ * the formula need 6-character labels, -2e+05 for both -200100 and -166700,
+ * so there are two: x_min and the middle, -150000 (the limits are the data
+ * padded by 0.1% of the range). */
+TEST(Layout, x_labels_large_negative_values_exact)
+{
+    const double xs[] = { -200000, -100000 }, ys[] = { 1, 2 };
+    const struct {
+        unsigned cols;
+        const wchar_t *axis, *labels;
+    } cases[] = {
+        { 20, L"       +*-----------", L"        -200100.000" },
+        { 21, L"       +*------------", L"        -200100.000" },
+        { 22, L"       +*-------------", L"        -200100.000" },
+        { 23, L"       +*--------------", L"        -200100.000" },
+        { 24, L"       +*---------------", L"        -200100.000" },
+        { 25, L"       +*----------------", L"        -200100.000" },
+        { 26, L"       +*-----------------", L"        -200100.000" },
+        { 27, L"       +*------------------", L"        -200100.000" },
+        { 28, L"       +*---------*---------", L"        -200100.0 -150000.0" },
+        { 29, L"       +*---------*----------", L"        -200100.0 -150000.0" },
+        { 30, L"       +*----------*----------", L"        -200100.00 -150000.00" },
+        { 31, L"       +*----------*-----------", L"        -200100.00 -150000.00" },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << c.cols << "x14");
+        Fig f(c.cols, 14);
+        f.plot(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        EXPECT_LINES_EQ(x_rows(r), Lines({ c.axis, c.labels }));
+        expect_x_labels_exact(r, -200100, -99900);
+    }
+}
+
+/* #9: INT64 extremes; the left margin is capped at half the screen.  At 40
+ * columns the five ticks of the formula don't fit 6-character labels, so
+ * there are two: x_min and 0 (the zero alignment). */
+TEST(Layout, x_labels_int64_extremes_exact)
+{
+    const gint64 v[] = { G_MININT64, 0, G_MAXINT64 };
+    Fig f(40, 14);
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT64, 3, v, v);
+    Rendered r = render(f, F);
+    ASSERT_TRUE(r.ok) << r.message;
+    EXPECT_LINES_EQ(x_rows(r), Lines({ L"                   +*---------*---------",
+                                       L"                    -9.24e+18 0.000" }));
+}
+
+/* #9: the zero alignment moves the ticks right; the last label is cut
+ * to the edge (1.80) or, with no room for any text, its tick is dropped
+ * (2.863 at 73 columns), never written past the screen */
+TEST(Layout, x_labels_zero_crossing_exact)
+{
+    {
+        const double v[] = { -1, 0, 2 };
+        Fig f(60, 20);
+        f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 3, v, v);
+        Rendered r = render(f, F);
+        EXPECT_LINES_EQ(x_rows(r),
+                        Lines({ L"        +------*----------*---------*---------*---------*---",
+                                L"               -0.601     0.000     0.601     1.202     1.80" }));
+    }
+    {
+        const double v[] = { -7, 3 };
+        Fig f(73, 23);
+        f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, v, v);
+        Rendered r = render(f, F);
+        EXPECT_LINES_EQ(x_rows(r),
+                        Lines({ L"        +--------*--------*--------*--------*--------*--------*----------",
+                                L"                 -5.726   -4.294   -2.863   -1.431   0.000    1.431" }));
+    }
+}
+
+/* #9: long custom labels are cut before the next tick less a blank (7 of
+ * 8 columns; the last one to the edge), each starts at its own tick; too
+ * many labels for the columns: every k-th gets a tick */
+TEST(Layout, x_custom_labels_exact)
+{
+    const gint32 ys[] = { 3, 1, 4, 1 };
+    {
+        const char *names[] = { "first-label-xxxx", "second-label-xxx", "third-label-xxxx", "fourth-label-xxx" };
+        Fig f(40, 14);
+        ASSERT_TRUE(blot_figure_set_x_axis_labels(f, 4, (char **)names, NULL));
+        f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, NULL, ys);
+        Rendered r = render(f, F);
+        EXPECT_LINES_EQ(x_rows(r), Lines({ L"       +*-------*-------*-------*-------",
+                                           L"        first-l second- third-l fourth-l" }));
+    }
+    {
+        /* 30 labels on 32 columns: every second one */
+        std::vector<std::string> s;
+        std::vector<char *> names;
+        for (int i = 0; i < 30; i++)
+            s.push_back(std::string(1, (char)('A' + i % 26)));
+        for (auto &n : s)
+            names.push_back((char *)n.c_str());
+        Fig f(40, 14);
+        ASSERT_TRUE(blot_figure_set_x_axis_labels(f, names.size(), names.data(), NULL));
+        f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, NULL, ys);
+        Rendered r = render(f, F);
+        ASSERT_TRUE(r.ok) << r.message;
+        /* ticks 0 2 4 ... 28 at cells floor(i * 32 / 30) */
+        EXPECT_LINES_EQ(x_rows(r), Lines({ L"       +*-*-*-*-*-*-*-*--*-*-*-*-*-*-*--",
+                                           L"        A C E G I K M O  Q S U W Y A C" }));
+    }
+}
+
+/* #9: a sweep of widths and data; every X label row fits the screen, each
+ * tick's label is the value of its cell, and no two are the same.  The
+ * ranges that abort without the fix are in the isolated test below.  Not
+ * [0.001,0.002]: 0.001 for both 0.0010 and 0.0014 is the formatter's
+ * precision with all the room it wants (#13, #10), not the layout's; for
+ * the same reason not [-0.01003,0.02003]: from 69 columns half a cell is
+ * under 0.0002 and %.3f, the formatter's first choice, is coarser.  The
+ * bound for those (no further off than the full text) needs each tick's
+ * value: Axis.x_labels_no_worse_than_needed_sweep has both ranges. */
+TEST(Layout, x_labels_fit_and_match_their_cells)
+{
+    const double RANGES[][2] = {
+        { -200000, -100000 }, { -1, 2 }, { -7, 3 }, { 0, 1 }, { -1e100, 1e100 },
+        { -0.5, 1e6 }, { 1e9, 5.2e9 },
+    };
+    for (const auto &rg : RANGES) {
+        for (unsigned cols = 18; cols <= 130; cols++) {
+            SCOPED_TRACE(testing::Message() << "x [" << rg[0] << "," << rg[1] << "] " << cols << "x14");
+            const double xs[] = { rg[0], rg[1] }, ys[] = { 1, 2 };
+            Fig f(cols, 14);
+            f.lim(rg[0], rg[1], 1, 2);
+            f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
+            Rendered r = render(f, F);
+            expect_x_labels_exact(r, rg[0], rg[1]);
+        }
+    }
+}
+
+/* #9: the same sweep for |x| >= 1e12, whose 17-18 character labels on a
+ * one-tick axis aborted the process: isolated, so the other tests run */
+TEST(Layout, x_labels_fit_and_match_their_cells_large)
+{
+    RUN_ISOLATED(30, {
+        const double RANGES[][2] = { { 1e12, 2e12 }, { -2e12, -1e12 }, { 1e17, 2e17 }, { -2e17, -1e17 } };
+        for (const auto &rg : RANGES) {
+            for (unsigned cols = 18; cols <= 130; cols++) {
+                SCOPED_TRACE(testing::Message() << "x [" << rg[0] << "," << rg[1] << "] " << cols << "x14");
+                const double xs[] = { rg[0], rg[1] }, ys[] = { 1, 2 };
+                Fig f(cols, 14);
+                f.lim(rg[0], rg[1], 1, 2);
+                f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
+                Rendered r = render(f, F);
+                expect_x_labels_exact(r, rg[0], rg[1]);
+            }
+        }
+    });
+}
+
+/* #9 and the #13 review: with one X tick (plot widths under 20) the label
+ * room was the whole axis, not BLOT_AXIS_LABEL_MAX, and a 17-18 character
+ * label (|x| >= 1e12) tripped an assertion and aborted the process */
+TEST(Layout, long_x_label_on_one_tick_does_not_abort)
+{
+    RUN_ISOLATED(10, {
+        const double RANGES[][2] = { { 1e12, 2e12 }, { -2e12, -1e12 }, { 1e17, 2e17 }, { -2e17, -1e17 } };
+        for (const auto &rg : RANGES) {
+            for (unsigned cols = 18; cols <= 40; cols++) {
+                const double xs[] = { rg[0], rg[1] }, ys[] = { 1, 2 };
+                Fig f(cols, 14);
+                f.lim(rg[0], rg[1], 1, 2);
+                f.plot(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys);
+                Rendered r = render(f, F);
+                EXPECT_TRUE(r.ok) << r.message;
+                for (const auto &t : x_ticks(r))
+                    EXPECT_LE(t.second.size(), 16u) << t.second;
+            }
+        }
+    });
 }
 
 TEST(Layout, line_reaches_top_right_at_every_size)
