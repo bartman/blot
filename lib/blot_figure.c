@@ -159,7 +159,7 @@ bool blot_figure_plot(blot_figure *fig,
 		      blot_color data_color, const char *data_label,
 		      GError **error)
 {
-	RETURN_EFAULT_IF(fig==NULL, false, error);
+	RETURN_ERRORx(!fig, false, error, EFAULT, "fig is NULL");
 
 	blot_layer *lay = blot_layer_new(plot_type,
 					 data_type,
@@ -171,11 +171,17 @@ bool blot_figure_plot(blot_figure *fig,
 					 error);
 	RETURN_IF(lay==NULL,false);
 
-	blot_layer **layers = g_realloc_n(fig->layers,
-					 fig->layer_count + 1,
-					 sizeof(blot_layer*));
-	RETURN_ERROR(!layers, NULL, error,
-		     "realloc *blot_layers x %u", fig->layer_count + 1);
+	/* g_try_renew() returns NULL, where g_realloc_n() would abort; then
+	 * the figure is unchanged (#34) */
+	blot_layer **layers = g_try_renew(blot_layer *, fig->layers,
+					  fig->layer_count + 1);
+	if (unlikely (!layers)) {
+		blot_layer_delete(lay);
+		blot_set_error_unix(error, ENOMEM,
+				    "cannot grow the layers array to %" G_GSIZE_FORMAT " layers",
+				    fig->layer_count + 1);
+		return false;
+	}
 
 	fig->layers = layers;
 	fig->layers[fig->layer_count] = lay;
@@ -260,7 +266,7 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 	blot_xy_limits lim = {0,0,0,0};
 	bool something_set = false;
 
-	for (int li=0; li<fig->layer_count; li++) {
+	for (gsize li=0; li<fig->layer_count; li++) {
 		blot_layer *lay = fig->layers[li];
 
 		if (!lay->count)
@@ -446,9 +452,9 @@ static blot_dimensions blot_figure_finalize_usable(const blot_figure *fig,
 	return use;
 }
 
-static void __free_canvases_array(blot_canvas **cans, unsigned count)
+static void __free_canvases_array(blot_canvas **cans, gsize count)
 {
-	for (int ci=0; ci<count; ci++) {
+	for (gsize ci=0; ci<count; ci++) {
 		if (!cans[ci])
 			continue;
 		blot_canvas_delete(cans[ci]);
@@ -499,7 +505,7 @@ static blot_screen * blot_figure_render_error(blot_figure *fig,
 	cans = g_new0(blot_canvas*, fig->layer_count);
 	RETURN_ERROR(!cans, NULL, error, "new *canvas x %u", fig->layer_count);
 
-	for (int li=0; li<fig->layer_count; li++) {
+	for (gsize li=0; li<fig->layer_count; li++) {
 		blot_layer *lay = fig->layers[li];
 
 		cans[li] = blot_layer_render(lay, &lim, &use,
