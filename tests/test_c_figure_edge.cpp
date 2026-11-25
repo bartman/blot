@@ -55,8 +55,7 @@ int top_row_in(const Cells &cs, unsigned c0, unsigned c1)
 
 } // namespace
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_scatter_agrees_with_axes)
+TEST(Edge, scatter_agrees_with_axes)
 {
     const double v[] = { 0, 0.25, 0.5, 0.75, 1 };
     Rendered r = render_one(40, 16, BLOT_SCATTER, BLOT_DATA_DOUBLE, 5, v, v);
@@ -129,15 +128,13 @@ TEST(Edge, DISABLED_point_on_tick_value_lands_on_tick_line)
     expect_marks_on_ticks(BLOT_LINE);
 }
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_point_on_tick_value_lands_on_tick_scatter_bar)
+TEST(Edge, point_on_tick_value_lands_on_tick_scatter_bar)
 {
     expect_marks_on_ticks(BLOT_SCATTER);
     expect_marks_on_ticks(BLOT_BAR);
 }
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_scatter_and_line_share_cells)
+TEST(Edge, scatter_and_line_share_cells)
 {
     const gint32 v[] = { 0, 5, 10 };
     for (blot_plot_type type : { BLOT_LINE, BLOT_SCATTER }) {
@@ -150,8 +147,7 @@ TEST(Edge, DISABLED_scatter_and_line_share_cells)
     }
 }
 
-// BUG B2: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_wide_range_scatter_keeps_all_points)
+TEST(Edge, wide_range_scatter_keeps_all_points)
 {
     const gint32 v[] = { 0, 500, 1000 };
     Rendered r = render_one(40, 16, BLOT_SCATTER, BLOT_DATA_INT32, 3, v, v);
@@ -161,8 +157,7 @@ TEST(Edge, DISABLED_wide_range_scatter_keeps_all_points)
     EXPECT_TRUE(rows_of(m).count(r.plot_rows() - 1)) << cells_str(m);
 }
 
-// BUG B2: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_wide_range_bar_keeps_tallest)
+TEST(Edge, wide_range_bar_keeps_tallest)
 {
     const gint32 v[] = { 0, 500, 1000 };
     Rendered r = render_one(40, 16, BLOT_BAR, BLOT_DATA_INT32, 3, v, v);
@@ -171,8 +166,7 @@ TEST(Edge, DISABLED_wide_range_bar_keeps_tallest)
     EXPECT_TRUE(rows_of(m).count(r.plot_rows() - 1)) << cells_str(m);
 }
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Edge, DISABLED_single_point_is_centred)
+TEST(Edge, single_point_is_centred)
 {
     const double xs[] = { 5 }, ys[] = { -250 };
     Rendered r = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys);
@@ -180,8 +174,15 @@ TEST(Edge, DISABLED_single_point_is_centred)
     ASSERT_EQ(r.plot_cols(), 29u);
     ASSERT_EQ(r.plot_rows(), 12u);
     EXPECT_EQ(plot_cells(r), Cells({ { 14, 6 } })) << cells_str(plot_cells(r));
+}
 
-    r = render_one(40, 14, BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys);
+/* bar X uses a slot per integer of the X range, not the axis mapping (#3):
+ * on this numeric axis the bar starts in column 7, not 14 */
+// BUG B21: https://git.jukie.net/bart/blot/-/work_items/12
+TEST(Edge, DISABLED_single_point_bar_is_centred)
+{
+    const double xs[] = { 5 }, ys[] = { -250 };
+    Rendered r = render_one(40, 14, BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys);
     ASSERT_TRUE(r.ok) << r.message;
     Cells m = plot_cells(r);
     ASSERT_FALSE(m.empty());

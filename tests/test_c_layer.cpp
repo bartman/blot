@@ -975,8 +975,7 @@ TEST(Layer, scatter_out_of_range_clipped)
     EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT32, 7, xs, ys), Cells({ {5,5} }));
 }
 
-// BUG B9: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Layer, DISABLED_scatter_far_out_of_range_not_wrapped)
+TEST(Layer, scatter_far_out_of_range_not_wrapped)
 {
     /* (2^32 + 5) / 6: far above the limit, the cell index wraps to row 5 */
     const double xs[] = { 0.5 }, ys[] = { 715827883.5 };
@@ -984,29 +983,132 @@ TEST(Layer, DISABLED_scatter_far_out_of_range_not_wrapped)
                     Cells());
 }
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Layer, DISABLED_scatter_fractional_range)
+TEST(Layer, scatter_fractional_range)
 {
     const double xs[] = { 0, 1 }, ys[] = { 0, 1 };
     EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys, { 0, 1, 0, 1 }),
                     Cells({ {0,0}, {9,9} }));
 }
 
-// BUG B2: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Layer, DISABLED_scatter_wide_range_keeps_max)
+TEST(Layer, scatter_wide_range_keeps_max)
 {
     const gint32 xs[] = { 0, 1000 }, ys[] = { 0, 1000 };
     EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT32, 2, xs, ys, { 0, 1000, 0, 1000 }, { 20, 10 }),
                     Cells({ {0,0}, {19,9} }));
 }
 
-// BUG B2: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Layer, DISABLED_bar_wide_range_keeps_max)
+TEST(Layer, bar_wide_range_keeps_max)
 {
     const gint32 xs[] = { 1000 }, ys[] = { 1000 };
     Cells got = layer_cells(BLOT_BAR, BLOT_DATA_INT32, 1, xs, ys, { 0, 1000, 0, 1000 }, { 20, 10 });
     for (unsigned r = 0; r < 10; r++)
         EXPECT_TRUE(got.count({19, r})) << "row " << r << "; cells:" << cells_str(got);
+}
+
+/* #3: the same mapping checks for scatter_int64, and bar heights */
+TEST(Layer, scatter_int64_fractional_range)
+{
+    const gint64 xs[] = { 0, 1 }, ys[] = { 0, 1 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT64, 2, xs, ys, { 0, 1, 0, 1 }),
+                    Cells({ {0,0}, {9,9} }));
+}
+
+TEST(Layer, scatter_int64_wide_range_keeps_max)
+{
+    const gint64 xs[] = { 0, 1000 }, ys[] = { 0, 1000 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT64, 2, xs, ys, { 0, 1000, 0, 1000 }, { 20, 10 }),
+                    Cells({ {0,0}, {19,9} }));
+}
+
+TEST(Layer, scatter_int64_far_out_of_range_not_wrapped)
+{
+    /* 6 * 715827883 is 2^32 + 2: far above the limit, the old cell index wrapped to row 2 */
+    const gint64 xs[] = { 0 }, ys[] = { 715827883 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT64, 1, xs, ys, { 0, 1, 0, 1 }, { 12, 12 }),
+                    Cells());
+}
+
+TEST(Layer, bar_height_fractional_range)
+{
+    /* y 0..1 on 10 rows: 1 is the top row, 0.5 is row 5; the bar for x 1 starts in column 5 */
+    const double xs[] = { 0, 1 }, ys[] = { 0.5, 1 };
+    Cells got = layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 2, xs, ys, { 0, 1, 0, 1 });
+    EXPECT_TRUE(got.count({0, 5})) << cells_str(got);
+    EXPECT_FALSE(got.count({0, 6})) << cells_str(got);
+    EXPECT_TRUE(got.count({5, 9})) << cells_str(got);
+}
+
+TEST(Layer, bar_taller_than_limits_cut_at_top)
+{
+    /* 6 * 715827883.5 is 2^32 + 5: the old bar height wrapped to row 5.  X has
+     * 2 slots of 6 columns, the bar fills columns 0..3 */
+    const double xs[] = { 0 }, ys[] = { 715827883.5 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys, { 0, 1, 0, 1 }, { 12, 12 }),
+                    rect(0, 3, 0, 11));
+}
+
+/* #3: a value exactly at max is in the last cell.  The position
+ * (max - min) * len / (max - min) can round to just above len, e.g. 0.1 .. 0.7
+ * on 7 cells gives 7.000000000000001, and the point used to be dropped. */
+static bool reaches_row(const Cells &cs, unsigned row)
+{
+    for (const auto &c : cs)
+        if (c.second == row)
+            return true;
+    return false;
+}
+
+TEST(Layer, value_at_max_in_last_cell_reproducer)
+{
+    const double xs[] = { 0.7 }, ys[] = { 0.7 };
+    EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys, { 0.1, 0.7, 0.1, 0.7 }, { 7, 7 }),
+                    Cells({ {6,6} }));
+    /* bar X is the slot model (#12); only its height is checked */
+    Cells bar = layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys, { 0.1, 0.7, 0.1, 0.7 }, { 7, 7 });
+    EXPECT_TRUE(reaches_row(bar, 6)) << cells_str(bar);
+}
+
+TEST(Layer, value_at_max_in_last_cell_sweep)
+{
+    const double ranges[][2] = {
+        { 0.1, 0.7 }, { 0.1, 0.3 }, { 0.2, 0.9 }, { -0.3, 0.7 }, { 0.15, 1.35 },
+        { -2.2, -0.1 }, { 1e-9, 3e-9 }, { 0.001, 0.007 }, { 3.3, 9.9 }, { -1e300, 1e300 },
+    };
+    unsigned bad = 0;
+    for (const auto &rg : ranges) {
+        for (unsigned len = 1; len <= 64; len++) {
+            SCOPED_TRACE(testing::Message() << "range " << rg[0] << ".." << rg[1] << " len " << len);
+            const blot_xy_limits lim = { rg[0], rg[1], rg[0], rg[1] };
+            const blot_dimensions dim = { len, len };
+            const double xs[] = { rg[1] }, ys[] = { rg[1] };
+            Cells sc = layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys, lim, dim);
+            EXPECT_EQ(sc, Cells({ { len - 1, len - 1 } })) << cells_str(sc);
+            Cells bar = layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 1, xs, ys, lim, dim);
+            EXPECT_TRUE(reaches_row(bar, len - 1)) << cells_str(bar);
+            bad += sc.size() != 1 || !reaches_row(bar, len - 1);
+            if (bad > 5)
+                return;
+        }
+    }
+}
+
+/* an infinite range (-DBL_MAX .. DBL_MAX) or NaN limits give every value a
+ * NaN position: nothing is drawn, and nothing is converted to unsigned */
+TEST(Layer, infinite_or_nan_range_draws_nothing)
+{
+    const double xs[] = { 0, G_MAXDOUBLE }, ys[] = { 0, G_MAXDOUBLE };
+    const double nan = std::nan("");
+    const blot_xy_limits lims[] = {
+        { -G_MAXDOUBLE, G_MAXDOUBLE, -G_MAXDOUBLE, G_MAXDOUBLE },
+        { nan, nan, nan, nan },
+    };
+    for (const auto &lim : lims) {
+        SCOPED_TRACE(testing::Message() << "x " << lim.x_min << ".." << lim.x_max);
+        EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 2, xs, ys, lim), Cells());
+        EXPECT_CELLS_EQ(layer_cells(BLOT_BAR, BLOT_DATA_DOUBLE, 2, xs, ys, lim), Cells());
+        const gint64 xi[] = { 0, 1 }, yi[] = { 0, 1 };
+        EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_INT64, 2, xi, yi, lim), Cells());
+    }
 }
 
 TEST(Layer, line_fractional_tiny_huge)
@@ -1085,8 +1187,7 @@ TEST(Layer, DISABLED_bar_negative_starts_at_zero)
                     rect(2, 3, 2, 5) + rect(6, 7, 5, 8));
 }
 
-// BUG B8: https://git.jukie.net/bart/blot/-/work_items/5
-TEST(Layer, DISABLED_bar_below_limit_terminates)
+TEST(Layer, bar_below_limit_terminates)
 {
     RUN_ISOLATED(5, {
         const gint32 xs[] = { 1, 2 }, ys[] = { -5, 5 };
@@ -1117,8 +1218,7 @@ TEST(Layer, line_infinite_value_terminates)
     });
 }
 
-// BUG B6: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Layer, DISABLED_nan_points_not_drawn)
+TEST(Layer, nan_points_not_drawn)
 {
     const double xs[] = { 0.5, NAN, 5 }, ys[] = { NAN, 0.5, 5 };
     EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 3, xs, ys), Cells({ {5,5} }));
