@@ -332,9 +332,10 @@ prep-container:deb13-clang:
 # Sanitizer (#15): ci/sanitize.sh builds twice, with address,undefined
 # and with undefined alone (see there why), and summarizes the reports.
 # allow_failure while known UB is still there: the float-to-unsigned
-# conversions in blot_layer.c (#3, #5) and blot_screen's data[], which is
-# __aligned64 but comes from g_malloc like the canvas did; then make it
-# required.
+# conversion of scatter heights at blot_layer.c:221 (#3, fixed in !8).
+# blot_screen's __aligned64 data[] from g_malloc was #16, fixed with
+# posix_memalign like the canvas (#15).  #19 takes allow_failure off once
+# !8, !9 and the #16 MR are merged.
 .sanitize:
   stage: unit-test
   allow_failure: true
