@@ -1,5 +1,6 @@
 #include <glib.h>
 #include <math.h>
+#include <signal.h>
 #include <stdio.h>
 #include <locale.h>
 #include "blot.h"
@@ -15,10 +16,10 @@
 		g_error("%s:%u: %s", __func__, __LINE__, (error)->message); \
 })
 
-static bool signaled = false;
+static volatile sig_atomic_t signaled = 0;
 static void sighandler(int sig)
 {
-	signaled = true;
+	signaled = 1;
 }
 
 int main(void)
