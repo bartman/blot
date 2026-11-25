@@ -281,6 +281,8 @@ prep-container:deb13:
   stage: unit-test
   script:
     - make test
+    # tests run, passed and disabled (known failures, see #2) per program
+    - sh ci/test-summary.sh build
   artifacts:
     when: always
     paths:
@@ -297,6 +299,19 @@ prep-container:deb13:
     when: always
     paths:
       - build/test/smoke/smoke.log
+
+# Line and branch coverage of lib/*.c (#2), from a gcc --coverage build
+# of its own (make would pick clang where it's installed) and the unit
+# tests.  It reports, it doesn't gate.
+.coverage:
+  stage: unit-test
+  allow_failure: true
+  script:
+    - cmake -Bbuild-cov -S. -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DENABLE_IPO=OFF "-DCMAKE_C_FLAGS=--coverage -O0" "-DCMAKE_CXX_FLAGS=--coverage -O0"
+    - ninja -C build-cov
+    - (cd build-cov && ctest --output-on-failure)
+    - sh ci/coverage.sh build-cov
+  coverage: '/TOTAL lines: (\d+\.\d+)%/'
 
 # ---
 
@@ -339,3 +354,6 @@ smoke-test-deb13:
       optional: true
     - job: build-deb13
       artifacts: true
+
+coverage-deb13:
+  extends: [.deb13, .coverage]

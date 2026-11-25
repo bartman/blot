@@ -107,3 +107,163 @@ TEST(Utils, abs_t)
     EXPECT_EQ(abs_t(int,1), 1);
     EXPECT_EQ(abs_t(int,-1), 1);
 }
+
+/* --- number formatting and environment (#2, group U) -------------------
+ *
+ * blot_format_number(buf, room, v) returns the length, or -1 when nothing
+ * fits in room - 1 characters. */
+
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+
+namespace {
+
+/* the text, or "-1" when it doesn't fit */
+std::string fmt(double v, unsigned room)
+{
+    char buf[64];
+    int rc = blot_format_number(buf, room, v);
+    if (rc < 0)
+        return "-1";
+    EXPECT_EQ((size_t)rc, strlen(buf)) << buf;
+    return buf;
+}
+
+const double U1_VALUES[] = { 0, 1, -1, 0.5, 123.4567, 0.1 + 0.2, 99999.9996 };
+const double U2_VALUES[] = { 123.4567, 99999.9996, 1234567.891, -1234567.891, 1e15, 1e100, 0, -1 };
+
+/* a variable of our own, so nothing else in the process depends on it */
+const char *ENV = "BLOT_TEST_ENV_TO_UINT";
+
+} // namespace
+
+TEST(Utils, format_number_fixed_3)
+{
+    const char *expected[] = { "0.000", "1.000", "-1.000", "0.500", "123.457", "0.300", "100000.000" };
+    for (size_t i = 0; i < G_N_ELEMENTS(U1_VALUES); i++)
+        EXPECT_EQ(fmt(U1_VALUES[i], 16), expected[i]) << U1_VALUES[i];
+}
+
+TEST(Utils, format_number_fallback_chain)
+{
+    const unsigned rooms[] = { 16, 10, 9, 8, 7, 6, 5, 4, 3 };
+    const std::vector<std::vector<std::string>> table = {
+        /* 16             10           9           8         7         6        5       4      3 */
+        { "123.457",      "123.457",   "123.457",  "123.457", "123.46", "123.5", "123",  "123", "-1" },
+        { "100000.000",   "100000.00", "100000.0", "100000",  "100000", "1e+05", "-1",   "-1",  "-1" },
+        { "1234567.891",  "1234567.9", "1.23e+06", "",        "1e+06",  "1e+06", "-1",   "-1",  "-1" },
+        { "-1234567.891", "-1.23e+06", "",         "-1e+06",  "-1e+06", "-1",    "-1",   "-1",  "-1" },
+        { "1e+15",        "1e+15",     "1e+15",    "1e+15",   "1e+15",  "1e+15", "-1",   "-1",  "-1" },
+        { "1e+100",       "1e+100",    "1e+100",   "1e+100",  "1e+100", "-1",    "-1",   "-1",  "-1" },
+        { "0.000",        "0.000",     "0.000",    "0.000",   "0.000",  "0.000", "0.00", "0.0", "0" },
+        { "-1.000",       "-1.000",    "-1.000",   "-1.000",  "-1.000", "-1.00", "-1.0", "-1",  "-1" },
+    };
+    /* "": not checked here, see DISABLED_format_number_two_digits_fit */
+    for (size_t vi = 0; vi < G_N_ELEMENTS(U2_VALUES); vi++)
+        for (size_t ri = 0; ri < G_N_ELEMENTS(rooms); ri++) {
+            if (table[vi][ri].empty())
+                continue;
+            EXPECT_EQ(fmt(U2_VALUES[vi], rooms[ri]), table[vi][ri])
+                << "value " << U2_VALUES[vi] << " room " << rooms[ri];
+        }
+}
+
+// BUG: https://git.jukie.net/bart/blot/-/work_items/13
+TEST(Utils, DISABLED_format_number_two_digits_fit)
+{
+    /* The chain goes %.3g, then "%3.g" (precision 0: one digit), so it
+     * prints 1e+06 (19% off) where 1234568 or 1.2e+06 fits.  The text
+     * must be at least as precise as %.2g, the step the chain is missing:
+     * within half a unit of the second significant digit (50000 here).
+     * 1234568 / -1234568 (the most precise that fit) pass, and so do
+     * 1.2e+06 / -1.2e+06; the test doesn't pick the fix. */
+    const struct {
+        double v;
+        unsigned room;
+    } cases[] = { { 1234567.891, 8 }, { -1234567.891, 9 } };
+    for (const auto &c : cases) {
+        char buf[64];
+        int rc = blot_format_number(buf, c.room, c.v);
+        ASSERT_GT(rc, 0) << c.v << " room " << c.room;
+        EXPECT_LT(rc, (int)c.room) << buf;
+        double half_unit = 0.5 * pow(10, floor(log10(fabs(c.v))) - 1);
+        EXPECT_LE(fabs(strtod(buf, NULL) - c.v), half_unit)
+            << c.v << " room " << c.room << " -> " << buf;
+    }
+}
+
+TEST(Utils, format_number_respects_room)
+{
+    std::vector<double> values(std::begin(U1_VALUES), std::end(U1_VALUES));
+    values.insert(values.end(), std::begin(U2_VALUES), std::end(U2_VALUES));
+    values.insert(values.end(), { NAN, INFINITY, -INFINITY });
+
+    for (double v : values) {
+        for (unsigned room = 0; room <= 16; room++) {
+            char buf[32];
+            memset(buf, 0x5a, sizeof(buf));
+            int rc = blot_format_number(buf, room, v);
+            if (room <= 1) {
+                EXPECT_EQ(rc, -1) << "value " << v << " room " << room;
+            }
+            if (rc != -1) {
+                EXPECT_GT(rc, 0) << "value " << v << " room " << room;
+                EXPECT_LT(rc, (int)room) << "value " << v << " room " << room;
+                EXPECT_EQ(strnlen(buf, sizeof(buf)), (size_t)rc) << "value " << v << " room " << room;
+            }
+            for (size_t i = room; i < sizeof(buf); i++)
+                ASSERT_EQ(buf[i], 0x5a) << "value " << v << " room " << room << " wrote byte " << i;
+        }
+    }
+}
+
+TEST(Utils, format_number_non_finite)
+{
+    std::string n = fmt(NAN, 16);
+    EXPECT_TRUE(n == "nan" || n == "-nan") << n;
+    EXPECT_EQ(fmt(INFINITY, 16), "inf");
+    EXPECT_EQ(fmt(-INFINITY, 16), "-inf");
+    for (double v : { (double)NAN, (double)INFINITY, -(double)INFINITY })
+        EXPECT_EQ(fmt(v, 3), "-1") << v;
+}
+
+// BUG B16: https://git.jukie.net/bart/blot/-/work_items/10
+TEST(Utils, DISABLED_format_number_tiny_not_zero)
+{
+    for (double v : { 1e-5, 0.0004, -0.0004 }) {
+        std::string s = fmt(v, 16);
+        EXPECT_NE(strtod(s.c_str(), NULL), 0.0) << v << " -> " << s;
+        EXPECT_NE(s, "-0.000") << v;
+    }
+}
+
+TEST(Utils, env_to_uint_valid)
+{
+    const struct {
+        const char *text;
+        unsigned expected;
+    } cases[] = {
+        { "12", 12 }, { "0x10", 16 }, { "010", 8 }, { " 7", 7 }, { "", 77 }, { NULL, 77 }, { "-1", 77 },
+    };
+    for (const auto &c : cases) {
+        if (c.text)
+            setenv(ENV, c.text, 1);
+        else
+            unsetenv(ENV);
+        EXPECT_EQ(blot_env_to_uint(ENV, 77), c.expected) << (c.text ? c.text : "(unset)");
+    }
+    unsetenv(ENV);
+}
+
+// BUG B20: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Utils, DISABLED_env_to_uint_garbage)
+{
+    for (const char *text : { "abc", "99999999999", "4294967296" }) {
+        setenv(ENV, text, 1);
+        EXPECT_EQ(blot_env_to_uint(ENV, 77), 77u) << text;
+    }
+    unsetenv(ENV);
+}

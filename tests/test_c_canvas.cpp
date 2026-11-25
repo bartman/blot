@@ -109,3 +109,249 @@ TEST(Canvas, fill_rect)
 
     blot_canvas_delete(canvas);
 }
+
+/* --- canvas primitives: exact cells (#2, group C) ----------------------
+ *
+ * Every test compares the exact set of cells, so stray cells are caught
+ * as well as missing ones. */
+
+#include <climits>
+
+#include "blot_test.hpp"
+
+using namespace blot_test;
+
+namespace {
+
+Cells line_cells(unsigned w, unsigned h, double x0, double y0, double x1, double y1)
+{
+    Canvas can(w, h);
+    blot_canvas_draw_line(can, x0, y0, x1, y1);
+    return cells(can);
+}
+
+Cells row_cells(unsigned row, unsigned c0, unsigned c1)
+{
+    Cells out;
+    for (unsigned c = c0; c <= c1; c++)
+        out.insert({ c, row });
+    return out;
+}
+
+Cells col_cells(unsigned col, unsigned r0, unsigned r1)
+{
+    Cells out;
+    for (unsigned r = r0; r <= r1; r++)
+        out.insert({ col, r });
+    return out;
+}
+
+/* C10, C11: from (12,12) on a 25x25 canvas */
+const int DELTAS[][2] = {
+    { 10, 1 }, { 10, 3 }, { 3, 10 }, { 1, 10 }, { -10, 3 }, { 10, -3 }, { -3, -10 }, { -10, -1 },
+};
+
+} // namespace
+
+TEST(Canvas, every_cell_roundtrip)
+{
+    Canvas can(13, 7);
+    ASSERT_TRUE(can.can);
+    for (unsigned r = 0; r < 7; r++) {
+        for (unsigned c = 0; c < 13; c++) {
+            ASSERT_TRUE(blot_canvas_set(can, c, r, true));
+            ASSERT_EQ(cells(can), Cells({ { c, r } }));
+            ASSERT_TRUE(blot_canvas_set(can, c, r, false));
+            ASSERT_TRUE(cells(can).empty()) << c << "," << r;
+        }
+    }
+}
+
+TEST(Canvas, out_of_bounds_access)
+{
+    Canvas can(10, 10);
+    const unsigned pts[][2] = { { 10, 0 }, { 0, 10 }, { UINT_MAX, UINT_MAX } };
+    for (const auto &p : pts) {
+        EXPECT_FALSE(blot_canvas_set(can, p[0], p[1], true)) << p[0] << "," << p[1];
+        EXPECT_FALSE(blot_canvas_get(can, p[0], p[1]));
+        EXPECT_EQ(blot_canvas_get_cell(can, p[0], p[1]), 0);
+    }
+    EXPECT_TRUE(cells(can).empty());
+}
+
+TEST(Canvas, plot_char_by_flag)
+{
+    Canvas uni(4, 4, BLOT_RENDER_NONE), ascii(4, 4, BLOT_RENDER_NO_UNICODE);
+    blot_canvas_draw_point(uni, 1, 2);
+    blot_canvas_draw_point(ascii, 1, 2);
+    EXPECT_EQ(blot_canvas_get_cell(uni, 1, 2), (wchar_t)0x2022);
+    EXPECT_EQ(blot_canvas_get_cell(ascii, 1, 2), L'*');
+}
+
+namespace {
+/* one dot at a time on a 1x1 braille canvas */
+void expect_braille_dots(blot_render_flags flags, const wchar_t expected[4][2])
+{
+    for (unsigned y = 0; y < 4; y++) {
+        for (unsigned x = 0; x < 2; x++) {
+            Canvas can(1, 1, flags);
+            ASSERT_TRUE(can.can);
+            blot_canvas_draw_point(can, x, y);
+            EXPECT_EQ((unsigned)blot_canvas_get_cell(can, 0, 0), (unsigned)expected[y][x])
+                << "dot (" << x << "," << y << ")";
+        }
+    }
+    Canvas all(1, 1, flags);
+    for (unsigned y = 0; y < 4; y++)
+        for (unsigned x = 0; x < 2; x++)
+            blot_canvas_draw_point(all, x, y);
+    EXPECT_EQ((unsigned)blot_canvas_get_cell(all, 0, 0), 0x28FFu);
+}
+} // namespace
+
+TEST(Canvas, braille_dots_default)
+{
+    const wchar_t expected[4][2] = {
+        { 0x2840, 0x2880 }, { 0x2804, 0x2820 }, { 0x2802, 0x2810 }, { 0x2801, 0x2808 },
+    };
+    expect_braille_dots(BLOT_RENDER_BRAILLE, expected);
+}
+
+TEST(Canvas, braille_dots_dont_invert)
+{
+    const wchar_t expected[4][2] = {
+        { 0x2801, 0x2808 }, { 0x2802, 0x2810 }, { 0x2804, 0x2820 }, { 0x2840, 0x2880 },
+    };
+    expect_braille_dots(BLOT_RENDER_BRAILLE | BLOT_RENDER_DONT_INVERT_Y_AXIS, expected);
+}
+
+TEST(Canvas, braille_cell_addressing)
+{
+    Canvas can(3, 2, BLOT_RENDER_BRAILLE);
+    ASSERT_TRUE(can.can);
+    EXPECT_EQ(can->dim.cols, 6u);
+    EXPECT_EQ(can->dim.rows, 8u);
+    EXPECT_EQ(can->bitmap_bytes, 6u);
+
+    blot_canvas_draw_point(can, 5, 7);
+    std::map<Cell, wchar_t> expected = { { { 2, 1 }, 0x2808 } };
+    EXPECT_EQ(glyphs(can), expected);
+    EXPECT_EQ(blot_canvas_get_cell(can, 3, 0), 0);
+    EXPECT_EQ(blot_canvas_get_cell(can, 0, 2), 0);
+    EXPECT_EQ(cells(can), Cells({ { 5, 7 } }));   /* the other 47 dots are clear */
+
+    EXPECT_TRUE(blot_canvas_set(can, 5, 7, false));
+    EXPECT_TRUE(glyphs(can).empty());
+}
+
+TEST(Canvas, braille_with_no_unicode_rejected)
+{
+    GError *error = NULL;
+    blot_canvas *can = blot_canvas_new(4, 4, BLOT_RENDER_BRAILLE | BLOT_RENDER_NO_UNICODE, 1, &error);
+    EXPECT_TRUE(can == NULL);
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EINVAL);
+    g_clear_error(&error);
+    blot_canvas_delete(can);
+}
+
+TEST(Canvas, line_horizontal_vertical)
+{
+    EXPECT_CELLS_EQ(line_cells(12, 12, 2, 3, 8, 3), row_cells(3, 2, 8));
+    EXPECT_CELLS_EQ(line_cells(12, 12, 8, 3, 2, 3), row_cells(3, 2, 8));
+    EXPECT_CELLS_EQ(line_cells(12, 12, 4, 1, 4, 9), col_cells(4, 1, 9));
+    EXPECT_CELLS_EQ(line_cells(12, 12, 4, 9, 4, 1), col_cells(4, 1, 9));
+}
+
+TEST(Canvas, line_diagonals)
+{
+    Canvas can(6, 6);
+    blot_canvas_draw_line(can, 0, 0, 5, 5);
+    blot_canvas_draw_line(can, 0, 5, 5, 0);
+    Cells expected;
+    for (unsigned i = 0; i < 6; i++) {
+        expected.insert({ i, i });
+        expected.insert({ i, 5 - i });
+    }
+    EXPECT_CELLS_EQ(cells(can), expected);
+}
+
+// BUG B5: https://git.jukie.net/bart/blot/-/work_items/4
+TEST(Canvas, DISABLED_line_reaches_both_endpoints)
+{
+    for (const auto &d : DELTAS) {
+        SCOPED_TRACE(testing::Message() << "(12,12) to (" << 12 + d[0] << "," << 12 + d[1] << ")");
+        Cells got = line_cells(25, 25, 12, 12, 12 + d[0], 12 + d[1]);
+        EXPECT_TRUE(got.count({ 12, 12 })) << cells_str(got);
+        EXPECT_TRUE(got.count({ 12 + d[0], 12 + d[1] })) << cells_str(got);
+        EXPECT_EQ(got.size(), (size_t)std::max(std::abs(d[0]), std::abs(d[1])) + 1) << cells_str(got);
+    }
+}
+
+// BUG B5: https://git.jukie.net/bart/blot/-/work_items/4
+TEST(Canvas, DISABLED_line_direction_independent)
+{
+    for (const auto &d : DELTAS) {
+        SCOPED_TRACE(testing::Message() << "(12,12) - (" << 12 + d[0] << "," << 12 + d[1] << ")");
+        EXPECT_CELLS_EQ(line_cells(25, 25, 12 + d[0], 12 + d[1], 12, 12),
+                        line_cells(25, 25, 12, 12, 12 + d[0], 12 + d[1]));
+    }
+}
+
+// BUG B4: https://git.jukie.net/bart/blot/-/work_items/4
+TEST(Canvas, DISABLED_line_between_neighbours)
+{
+    EXPECT_CELLS_EQ(line_cells(5, 5, 0, 0, 1, 1), Cells({ { 0, 0 }, { 1, 1 } }));
+    EXPECT_CELLS_EQ(line_cells(5, 5, 0, 0, 1, 0), Cells({ { 0, 0 }, { 1, 0 } }));
+    EXPECT_CELLS_EQ(line_cells(5, 5, 0, 0, 0, 1), Cells({ { 0, 0 }, { 0, 1 } }));
+    EXPECT_CELLS_EQ(line_cells(5, 5, 2, 2, 2, 2), Cells({ { 2, 2 } }));
+}
+
+TEST(Canvas, line_clipped_at_edge)
+{
+    EXPECT_CELLS_EQ(line_cells(10, 10, 5, 5, 30, 5), row_cells(5, 5, 9));
+    EXPECT_CELLS_EQ(line_cells(10, 10, 5, 5, 5, 40), col_cells(5, 5, 9));
+}
+
+TEST(Canvas, fill_rect_exact)
+{
+    Cells nine;
+    for (unsigned c = 2; c <= 4; c++)
+        for (unsigned r = 1; r <= 3; r++)
+            nine.insert({ c, r });
+    {
+        Canvas can(8, 8);
+        blot_canvas_fill_rect(can, 2, 1, 4, 3);
+        EXPECT_CELLS_EQ(cells(can), nine);
+    }
+    {
+        Canvas can(8, 8);
+        blot_canvas_fill_rect(can, 4, 3, 2, 1);
+        EXPECT_CELLS_EQ(cells(can), nine);
+    }
+    {
+        Canvas can(8, 8);
+        blot_canvas_fill_rect(can, 6, 6, 20, 20);
+        EXPECT_CELLS_EQ(cells(can), Cells({ { 6, 6 }, { 6, 7 }, { 7, 6 }, { 7, 7 } }));
+    }
+}
+
+TEST(Canvas, draw_rect_outline)
+{
+    Canvas can(6, 6);
+    blot_canvas_draw_rect(can, 1, 1, 4, 4);
+    Cells border = row_cells(1, 1, 4);
+    for (const auto &c : row_cells(4, 1, 4)) border.insert(c);
+    for (const auto &c : col_cells(1, 1, 4)) border.insert(c);
+    for (const auto &c : col_cells(4, 1, 4)) border.insert(c);
+    ASSERT_EQ(border.size(), 12u);
+    EXPECT_CELLS_EQ(cells(can), border);
+}
+
+// BUG B4: https://git.jukie.net/bart/blot/-/work_items/4
+TEST(Canvas, DISABLED_draw_rect_smallest)
+{
+    Canvas can(6, 6);
+    blot_canvas_draw_rect(can, 1, 1, 2, 2);
+    EXPECT_CELLS_EQ(cells(can), Cells({ { 1, 1 }, { 1, 2 }, { 2, 1 }, { 2, 2 } }));
+}
