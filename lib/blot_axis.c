@@ -20,6 +20,10 @@ blot_axis * blot_axis_new(bool is_vertical, bool is_visible,
 			  GError **error)
 {
 	RETURN_ERRORx(screen_length == 0, NULL, error, EINVAL, "screen_length cannot be zero");
+	/* NaN or inf limits, or limits so far apart that data_max - data_min
+	 * is inf, would make NaN or inf tick values and labels (#6) */
+	RETURN_ERRORx(!isfinite(data_min) || !isfinite(data_max) || !isfinite(data_max - data_min),
+		      NULL, error, ERANGE, "axis limits %g..%g are not finite", data_min, data_max);
 	RETURN_ERRORx(data_min >= data_max, NULL, error, EINVAL, "data_min must be less than data_max");
 
 	blot_axis *axs;
