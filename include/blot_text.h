@@ -2,9 +2,11 @@
 /* vim: set noet sw=8 ts=8 tw=120: */
 #pragma once
 
-/* Internal: for the library and its tests only, not a stable API.  The
- * functions are exported (BLOT_API) so that the tests, which link
- * libblot.so, can call them; they may change or go away in any release. */
+/* Internal: for the library, its tests and blot's own CLI (cli/
+ * plot_encode.hpp counts the '?'s for a character the locale can't encode
+ * with blot_text_wcwidth()), not a stable API.  The functions are exported
+ * (BLOT_API) so that the tests and the CLI, which link libblot.so, can
+ * call them; they may change or go away in any release. */
 
 #include <stdbool.h>
 #include <stddef.h>
