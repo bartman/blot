@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "blot_test.hpp"
+
 #include "blot_terminal.h"
 #include "blot_figure.h"
 #include "blot_error.h"
@@ -298,8 +300,132 @@ TEST(Figure, add_plot_zero_count)
     const int ys[] = {4, 5, 6};
     ASSERT_FALSE(blot_figure_scatter(fig, BLOT_DATA_INT32, 0, xs, ys, 1, "scatter", &error));
     ASSERT_TRUE(error != NULL);
-    ASSERT_EQ(error->code, EFAULT);
+    /* a zero count is an invalid value, not a NULL pointer (#34) */
+    ASSERT_EQ(error->code, EINVAL);
     g_clear_error(&error);
 
     blot_figure_delete(fig);
+}
+
+/* #34: a failed blot_figure_plot() returns false with the error of the
+ * argument that is wrong, and leaves the figure as it was: same layers
+ * array, same count, the old layer still there */
+
+/* "<func>:<line>: <text>: <strerror>" -> "<text>: <strerror>", if the
+ * message starts with "<func>:<line>: " */
+static std::string figure_error_text(const GError *error, const char *func)
+{
+    const std::string prefix = std::string(func) + ":";
+    const std::string msg = error->message;
+
+    if (msg.compare(0, prefix.size(), prefix) != 0)
+        return "unexpected location in: " + msg;
+    size_t i = prefix.size();
+    size_t digits = i;
+    while (i < msg.size() && isdigit((unsigned char)msg[i]))
+        i++;
+    if (i == digits || msg.compare(i, 2, ": ") != 0)
+        return "unexpected location in: " + msg;
+    return msg.substr(i + 2);
+}
+
+TEST(Figure, plot_bad_argument_leaves_figure_unchanged)
+{
+    const int32_t xs[] = {1, 2, 3};
+    const int32_t ys[] = {4, 5, 6};
+    const struct {
+        const char *name;
+        blot_plot_type plot_type;
+        unsigned data_type;
+        size_t count;
+        const void *ys;
+        int code;
+        const char *text;
+    } cases[] = {
+        { "plot type", BLOT_PLOT_TYPE_MAX, BLOT_DATA_INT32, 3, ys,
+          EINVAL, "plot_type 3 is not valid: Invalid argument" },
+        { "data type", BLOT_SCATTER, 0x05, 3, ys,
+          EINVAL, "data_type 0x5 is not valid: Invalid argument" },
+        { "zero count", BLOT_SCATTER, BLOT_DATA_INT32, 0, ys,
+          EINVAL, "data_count is 0: Invalid argument" },
+        { "NULL ys", BLOT_SCATTER, BLOT_DATA_INT32, 3, NULL,
+          EFAULT, "data_ys is NULL: Bad address" },
+    };
+
+    for (const auto &c : cases) {
+        SCOPED_TRACE(c.name);
+        GError *error = NULL;
+        blot_figure *fig = blot_figure_new(&error);
+        ASSERT_TRUE(fig != NULL);
+
+        ASSERT_TRUE(blot_figure_plot(fig, BLOT_LINE, BLOT_DATA_INT32, 3, xs, ys, 2, "first", &error));
+        ASSERT_EQ(fig->layer_count, 1u);
+        blot_layer **layers = fig->layers;
+        blot_layer *first = fig->layers[0];
+
+        EXPECT_FALSE(blot_figure_plot(fig, c.plot_type, (blot_data_type)c.data_type,
+                                      c.count, xs, c.ys, 1, "bad", &error));
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, c.code);
+        EXPECT_EQ(figure_error_text(error, "blot_layer_new"), c.text);
+        g_clear_error(&error);
+
+        EXPECT_EQ(fig->layer_count, 1u);
+        EXPECT_EQ(fig->layers, layers);
+        EXPECT_EQ(fig->layers[0], first);
+        EXPECT_STREQ(fig->layers[0]->label, "first");
+
+        blot_figure_delete(fig);
+    }
+}
+
+TEST(Figure, plot_NULL_figure)
+{
+    const int32_t ys[] = {4, 5, 6};
+    GError *error = NULL;
+
+    EXPECT_FALSE(blot_figure_plot(NULL, BLOT_SCATTER, BLOT_DATA_INT32, 3, NULL, ys, 1, "x", &error));
+    ASSERT_TRUE(error != NULL);
+    EXPECT_EQ(error->code, EFAULT);
+    EXPECT_EQ(figure_error_text(error, "blot_figure_plot"), "fig is NULL: Bad address");
+    g_clear_error(&error);
+}
+
+/* The layers array can't grow: blot_figure_plot() frees the new layer,
+ * and returns false with ENOMEM, the figure unchanged.  A layer count so
+ * large that (count + 1) * sizeof(blot_layer *) overflows gsize makes the
+ * resize fail without allocating anything; g_realloc_n() would abort, so
+ * this runs isolated.  The child's LeakSanitizer check (sanitize job)
+ * finds the layer if it leaks. */
+TEST(Figure, plot_layers_resize_failure)
+{
+    RUN_ISOLATED(10, {
+        const int32_t ys[] = {4, 5, 6};
+        GError *error = NULL;
+        blot_figure *fig = blot_figure_new(&error);
+        ASSERT_TRUE(fig != NULL);
+
+        ASSERT_TRUE(blot_figure_plot(fig, BLOT_LINE, BLOT_DATA_INT32, 3, NULL, ys, 2, "first", &error));
+        blot_layer **layers = fig->layers;
+        blot_layer *first = fig->layers[0];
+
+        const gsize huge = G_MAXSIZE / sizeof(blot_layer *);
+        fig->layer_count = huge;
+
+        EXPECT_FALSE(blot_figure_plot(fig, BLOT_SCATTER, BLOT_DATA_INT32, 3, NULL, ys, 1, "new", &error));
+        ASSERT_TRUE(error != NULL);
+        EXPECT_EQ(error->code, ENOMEM);
+        gchar *text = g_strdup_printf("cannot grow the layers array to %" G_GSIZE_FORMAT
+                                      " layers: Cannot allocate memory", huge + 1);
+        EXPECT_EQ(figure_error_text(error, "blot_figure_plot"), text);
+        g_free(text);
+        g_clear_error(&error);
+
+        EXPECT_EQ(fig->layer_count, huge);
+        EXPECT_EQ(fig->layers, layers);
+
+        fig->layer_count = 1;
+        EXPECT_EQ(fig->layers[0], first);
+        blot_figure_delete(fig);
+    });
 }
