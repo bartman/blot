@@ -190,12 +190,15 @@ static inline double blot_layer_pos(double v, double min, double max, unsigned l
 	double pos = (v - min) * len / (max - min);
 
 	/* (v - min) * len overflows to inf when the range is wider than
-	 * about DBL_MAX / len (#6); divide first then.  Only then: for every
-	 * other value the cell is exactly the one of the formula above, the
-	 * axis's.  A v so far outside the limits that v - min itself is
-	 * inf stays inf, and has no cell. */
+	 * about DBL_MAX / len (#6).  Then scale both differences by 2^-32
+	 * first: len < 2^32, so the product can't overflow, and scaling a
+	 * value this large by a power of two is exact, so this rounds exactly
+	 * as the formula above would without the overflow.  Only then: for
+	 * every other value the cell is the one of the formula above, the
+	 * axis's.  A v so far outside the limits that v - min, or the
+	 * result, is still inf stays inf, and has no cell. */
 	if (unlikely (isinf(pos)) && isfinite(v - min))
-		pos = (v - min) / (max - min) * len;
+		pos = ldexp(v - min, -32) * len / ldexp(max - min, -32);
 
 	return pos;
 }
