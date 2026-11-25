@@ -257,14 +257,16 @@ TEST(CppFigureLayers, failed_plot_adds_nothing)
 {
 	/* the copies made for a layer that isn't added are freed (LeakSanitizer
 	 * checks), and the figure still renders its other layers */
-	Blot::Figure fig;
-	fix_a(fig);
-	fig.scatter(as<int32_t>(SC_X), as<int32_t>(SC_Y), 1, "pts");
-	EXPECT_THROW(fig.scatter(std::vector<int32_t>{ 1, 2 }, as<int32_t>(SC_Y), 2, "bad"), Blot::Exception);
-	EXPECT_THROW(fig.line(std::vector<double>(), 3, "empty"), Blot::Exception);
-	EXPECT_EQ(fig.layer_count, 1u);
-	EXPECT_CELLS_EQ(cells_of(fig), SC_CELLS);
-	EXPECT_EQ(legend_of(fig), Lines({ L"◘  pts" }));
+	RUN_ISOLATED(10, {
+		Blot::Figure fig;
+		fix_a(fig);
+		fig.scatter(as<int32_t>(SC_X), as<int32_t>(SC_Y), 1, "pts");
+		EXPECT_THROW(fig.scatter(std::vector<int32_t>{ 1, 2 }, as<int32_t>(SC_Y), 2, "bad"), Blot::Exception);
+		EXPECT_THROW(fig.line(std::vector<double>(), 3, "empty"), Blot::Exception);
+		EXPECT_EQ(fig.layer_count, 1u);
+		EXPECT_CELLS_EQ(cells_of(fig), SC_CELLS);
+		EXPECT_EQ(legend_of(fig), Lines({ L"◘  pts" }));
+	});
 }
 
 TEST(CppFigureLayers, span_is_borrowed)
