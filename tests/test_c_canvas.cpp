@@ -359,3 +359,60 @@ TEST(Canvas, line_rounds_fractional_endpoints)
     EXPECT_CELLS_EQ(line_cells(8, 8, 0.6, 0.4, 4.4, 2.6), diag);
     EXPECT_CELLS_EQ(line_cells(8, 8, 4.4, 2.6, 0.6, 0.4), diag);
 }
+
+TEST(Canvas, line_exact_cells_shallow_and_steep)
+{
+    /* rows round(0.3 * x), the 1.5 tie at x=5 towards the far end */
+    const unsigned rows[] = { 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3 };
+    Cells shallow, steep;
+    for (unsigned i = 0; i < 11; i++) {
+        shallow.insert({ i, rows[i] });
+        steep.insert({ rows[i], i });
+    }
+    EXPECT_CELLS_EQ(line_cells(12, 12, 0, 0, 10, 3), shallow);
+    EXPECT_CELLS_EQ(line_cells(12, 12, 10, 3, 0, 0), shallow);
+    EXPECT_CELLS_EQ(line_cells(12, 12, 0, 0, 3, 10), steep);
+    EXPECT_CELLS_EQ(line_cells(12, 12, 3, 10, 0, 0), steep);
+}
+
+TEST(Canvas, line_tie_same_both_directions)
+{
+    Cells tie = { { 0, 0 }, { 1, 1 }, { 2, 1 } };
+    EXPECT_CELLS_EQ(line_cells(5, 5, 0, 0, 2, 1), tie);
+    EXPECT_CELLS_EQ(line_cells(5, 5, 2, 1, 0, 0), tie);
+}
+
+TEST(Canvas, line_interior_follows_true_segment)
+{
+    /* ends (0.49,0) -> (0,0) and (10.49,3) -> (10,3); inside, the rows are
+     * nearest to y = 0.3 * (x - 0.49), not to the line between the end
+     * cells (that would put x=2 and x=5 a row higher) */
+    const unsigned rows[] = { 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3 };
+    Cells want;
+    for (unsigned i = 0; i < 11; i++)
+        want.insert({ i, rows[i] });
+    EXPECT_CELLS_EQ(line_cells(12, 12, 0.49, 0, 10.49, 3), want);
+    EXPECT_CELLS_EQ(line_cells(12, 12, 10.49, 3, 0.49, 0), want);
+}
+
+TEST(Canvas, line_without_gaps_when_ends_round_steeper)
+{
+    /* ends (0.6,0.4) -> (1,0) and (2.6,2.4) -> (3,2): the true segment
+     * at x=2 is y=1.8, but the cell moves one row per column at most */
+    Cells want = { { 1, 0 }, { 2, 1 }, { 3, 2 } };
+    EXPECT_CELLS_EQ(line_cells(5, 5, 0.6, 0.4, 2.6, 2.4), want);
+    EXPECT_CELLS_EQ(line_cells(5, 5, 2.6, 2.4, 0.6, 0.4), want);
+}
+
+TEST(Canvas, line_with_non_finite_end_terminates)
+{
+    /* lround() of NaN/inf is unspecified; such a segment is not drawn
+     * (what it should look like is #6) */
+    RUN_ISOLATED(5, {
+        EXPECT_CELLS_EQ(line_cells(8, 8, 1, 1, NAN, 5), Cells());
+        EXPECT_CELLS_EQ(line_cells(8, 8, 1, 1, 5, NAN), Cells());
+        EXPECT_CELLS_EQ(line_cells(8, 8, NAN, NAN, 5, 5), Cells());
+        EXPECT_CELLS_EQ(line_cells(8, 8, 1, 1, INFINITY, 5), Cells());
+        EXPECT_CELLS_EQ(line_cells(8, 8, 1, -INFINITY, 5, 5), Cells());
+    });
+}

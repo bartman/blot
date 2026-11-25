@@ -1040,6 +1040,24 @@ TEST(Layer, line_shallow_segment_endpoint)
     EXPECT_EQ(got.size(), 11u) << cells_str(got);
 }
 
+/* a NaN point must not hang the walk (lround(NaN) is LONG_MIN on x86-64);
+ * how NaN should look is #6, so only the finite segment is pinned */
+TEST(Layer, line_with_nan_terminates)
+{
+    RUN_ISOLATED(5, {
+        const double xs[] = { 0, 1, 2, 3 }, ys[] = { 0, NAN, 2, 3 };
+        Cells got = layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 4, xs, ys, { 0, 3, 0, 3 });
+        for (unsigned i = 6; i <= 9; i++)
+            EXPECT_TRUE(got.count({ i, i })) << cells_str(got);
+    });
+    RUN_ISOLATED(5, {
+        const double xs[] = { 0, NAN, 2, 3 }, ys[] = { 0, 1, 2, 3 };
+        Cells got = layer_cells(BLOT_LINE, BLOT_DATA_DOUBLE, 4, xs, ys, { 0, 3, 0, 3 });
+        for (unsigned i = 6; i <= 9; i++)
+            EXPECT_TRUE(got.count({ i, i })) << cells_str(got);
+    });
+}
+
 TEST(Layer, line_right_to_left_and_downward)
 {
     const gint32 xs[] = { 9, 0 }, ys[] = { 0, 9 };
@@ -1089,8 +1107,9 @@ TEST(Layer, DISABLED_line_far_outside_limits_terminates)
     });
 }
 
-// BUG B7: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Layer, DISABLED_line_infinite_value_terminates)
+/* B7 (#6): terminates since #4 (a non-finite segment is not drawn); #6
+ * still owns how inf should look */
+TEST(Layer, line_infinite_value_terminates)
 {
     RUN_ISOLATED(5, {
         const double xs[] = { 0, 1 }, ys[] = { 0, INFINITY };

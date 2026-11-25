@@ -195,77 +195,119 @@ static inline void blot_canvas_draw_point(blot_canvas *can, unsigned x, unsigned
 	blot_canvas_set(can, x, y, 1);
 }
 
-/* Draw a line between two cells, both included.
- *
- * Integer stepping: the major axis advances one cell per step and the
- * minor axis is the ideal line rounded to the nearest cell, so there are
- * no gaps, both ends are drawn, and a line from a cell to itself draws
- * that cell.  The walk always starts at the end with the smaller x (the
- * smaller y for a vertical line), so swapping the ends gives the same
- * cells.  Cells outside the canvas are skipped.
- *
- * The arithmetic is unsigned so that it is defined for any pair of longs;
- * the caller decides what to do with ends far outside the canvas. */
-static inline void blot_canvas_draw_line_cells(blot_canvas *can,
-					       long x0, long y0,
-					       long x1, long y1)
+/* draw one cell given as signed coordinates; cells off the canvas are skipped */
+static inline void blot_canvas_draw_cell_l(blot_canvas *can, long x, long y)
 {
-	if (x0 > x1 || (x0 == x1 && y0 > y1)) {
-		swap_t(long, x0, x1);
-		swap_t(long, y0, y1);
-	}
-
-	bool y_down = y1 < y0;
-	unsigned long dx = (unsigned long)x1 - (unsigned long)x0;
-	unsigned long dy = y_down ? (unsigned long)y0 - (unsigned long)y1
-				  : (unsigned long)y1 - (unsigned long)y0;
-
-	/* n steps along the major axis; the minor axis moves m in total */
-	bool x_major = dx >= dy;
-	unsigned long n = x_major ? dx : dy;
-	unsigned long m = x_major ? dy : dx;
-
-	/* at step i the minor offset is i*m/n = q + t/n with 0 <= t < n */
-	unsigned long q = 0, t = 0;
-
-	for (unsigned long i = 0; ; i++) {
-		/* round to nearest: up when t/n >= 1/2 */
-		unsigned long minor = q + (t && t >= n - t);
-		unsigned long major = i;
-
-		unsigned long ox = x_major ? major : minor;
-		unsigned long oy = x_major ? minor : major;
-
-		/* both are within [x0,x1] and [y0,y1], so they fit a long */
-		long x = (long)((unsigned long)x0 + ox);
-		long y = y_down ? (long)((unsigned long)y0 - oy)
-				: (long)((unsigned long)y0 + oy);
-
-		if (x >= 0 && y >= 0 && x < (long)can->dim.cols && y < (long)can->dim.rows)
-			blot_canvas_draw_point(can, (unsigned)x, (unsigned)y);
-
-		if (i == n)
-			break;
-
-		/* advance i*m/n by m/n, without overflow */
-		if (t >= n - m) {
-			t -= n - m;
-			q++;
-		} else {
-			t += m;
-		}
-	}
+	if (x >= 0 && y >= 0 && x < (long)can->dim.cols && y < (long)can->dim.rows)
+		blot_canvas_draw_point(can, (unsigned)x, (unsigned)y);
 }
 
-/* Draw a line between two points in canvas coordinates.  Each end is
- * rounded to its nearest cell and the cells between are stepped as
- * integers (see blot_canvas_draw_line_cells). */
+/* Draw a line between two points in canvas coordinates.
+ *
+ * - Each end is drawn in its nearest cell.
+ * - Between them the walk takes one cell per step along the major axis
+ *   (the one with more cells between the two end cells); on the minor
+ *   axis it takes the cell nearest to the true segment at that major
+ *   cell (rounded half towards the far end).
+ * - A cell never moves more than one cell on the minor axis from the
+ *   previous one and always stays within reach of the far end, so the
+ *   line has no gaps.  This only matters for segments whose true slope is
+ *   steeper than their end cells suggest; otherwise the cells are the
+ *   nearest ones.
+ * - The walk always starts at the end whose cell has the smaller x (the
+ *   smaller y for a vertical line), so swapping the ends gives the same
+ *   cells, and a line from a point to itself draws that point's cell.
+ * - Cells off the canvas are skipped.
+ *
+ * A segment with a non-finite end is not drawn: lround() of NaN or inf is
+ * unspecified (LONG_MIN on x86-64), and the walk would then take ~2^63
+ * steps.  How NaN and inf should be shown is #6.  Ends beyond the range of
+ * a long are not handled here either (#5): they need clipping on the
+ * doubles, before the rounding.  The step and offset arithmetic below is
+ * unsigned, so it is defined for any two longs the rounding returns. */
 static inline void blot_canvas_draw_line(blot_canvas *can,
 					double x0, double y0,
 					double x1, double y1)
 {
-	blot_canvas_draw_line_cells(can, lround(x0), lround(y0),
-				    lround(x1), lround(y1));
+	if (!isfinite(x0) || !isfinite(y0) || !isfinite(x1) || !isfinite(y1))
+		return;
+
+	long cx0 = lround(x0), cy0 = lround(y0);
+	long cx1 = lround(x1), cy1 = lround(y1);
+
+	if (cx0 > cx1 || (cx0 == cx1 && cy0 > cy1)) {
+		swap_t(long, cx0, cx1);
+		swap_t(long, cy0, cy1);
+		swap_t(double, x0, x1);
+		swap_t(double, y0, y1);
+	}
+
+	bool y_down = cy1 < cy0;
+	unsigned long dx = (unsigned long)cx1 - (unsigned long)cx0;
+	unsigned long dy = y_down ? (unsigned long)cy0 - (unsigned long)cy1
+				  : (unsigned long)cy1 - (unsigned long)cy0;
+
+	/* n steps along the major axis; the minor axis moves m in total.
+	 * Both go away from the start cell: x always up, y up or down. */
+	bool x_major = dx >= dy;
+	unsigned long n = x_major ? dx : dy;
+	unsigned long m = x_major ? dy : dx;
+
+	/* the true segment, as major -> minor, in the walk's direction */
+	double a0 = x_major ? x0 : y0;           /* major start */
+	double a1 = x_major ? x1 : y1;
+	double b0 = x_major ? y0 : x0;           /* minor start */
+	double b1 = x_major ? y1 : x1;
+	double ca0 = (double)(x_major ? cx0 : cy0);
+	double cb0 = (double)(x_major ? cy0 : cx0);
+	double a_dir = (!x_major && y_down) ? -1 : 1;   /* major direction */
+	double b_dir = (x_major && y_down) ? -1 : 1;    /* minor direction */
+
+	unsigned long off = 0;  /* minor offset from the start cell, 0..m */
+
+	for (unsigned long i = 0; ; i++) {
+		if (i == n) {
+			off = m;
+		} else if (i > 0) {
+			/* nearest minor cell to the true segment at this
+			 * major cell; n >= 2 here, so a1 != a0 */
+			double a = ca0 + a_dir * (double)i;
+			double b = b0 + (a - a0) * (b1 - b0) / (a1 - a0);
+			double d = (b - cb0) * b_dir;
+			unsigned long want;
+			if (!(d > 0))
+				want = 0;
+			else if (d >= (double)m)
+				want = m;
+			else
+				want = (unsigned long)lround(d);
+
+			/* no gaps: at most one cell from the previous one,
+			 * and the far end still reachable in n - i steps */
+			unsigned long lo = off ? off - 1 : 0;
+			unsigned long hi = off < m ? off + 1 : m;
+			if (m - lo > n - i)
+				lo = m - (n - i);
+			if (want < lo)
+				want = lo;
+			if (want > hi)
+				want = hi;
+			off = want;
+		}
+
+		unsigned long ox = x_major ? i : off;
+		unsigned long oy = x_major ? off : i;
+
+		/* within [cx0,cx1] and between cy0 and cy1, so they fit a long */
+		long x = (long)((unsigned long)cx0 + ox);
+		long y = y_down ? (long)((unsigned long)cy0 - oy)
+				: (long)((unsigned long)cy0 + oy);
+
+		blot_canvas_draw_cell_l(can, x, y);
+
+		if (i == n)
+			break;
+	}
 }
 
 static inline void blot_canvas_draw_rect(blot_canvas *can,

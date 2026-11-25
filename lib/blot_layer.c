@@ -268,7 +268,7 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 	double per_col = (double)(can->dim.cols-1) / x_range;
 	double per_row = (double)(can->dim.rows-1) / y_range;
 
-	bool visible = false;
+	bool have_prev = false;
 	double px=0, py=0;
 
 	for (int di=0; di<lay->count; di++) {
@@ -287,7 +287,7 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 
 		// plot it: a segment from the previous point, or the first
 		// point on its own so that a one-point series is drawn too
-		if (likely (visible))
+		if (likely (have_prev))
 			blot_canvas_draw_line(can, px, py, dx, dy);
 		else
 			blot_canvas_draw_line(can, dx, dy, dx, dy);
@@ -295,7 +295,7 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 		// remember current point for next line
 		px = dx;
 		py = dy;
-		visible = true;
+		have_prev = true;
 	}
 	return true;
 }
