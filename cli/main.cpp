@@ -16,9 +16,40 @@ static void sighandler(int sig)
 	signaled = true;
 }
 
+static int run(int argc, char *argv[]);
+
+/* nothing in blot is caught on the way here: a Blot::Exception (from
+ * the library) or another std::exception (e.g. a bad --regex) is a
+ * message and exit code 1, not std::terminate (#37) */
 int main(int argc, char *argv[])
 {
+	try {
+		return run(argc, argv);
+	} catch (const std::exception &e) {
+		const char *what = e.what();
+		spdlog::error("{}", what ? what : "unknown error");
+	} catch (...) {
+		spdlog::error("unknown error");
+	}
+	return 1;
+}
+
+static int run(int argc, char *argv[])
+{
 	Config config(argc, argv);
+
+	/* a plot fills the terminal, so it needs its size: from the tty, or
+	 * from COLUMNS and LINES when stdout isn't one.  Fail here, not after
+	 * reading all the input */
+	try {
+		Blot::Dimensions term;
+	} catch (const Blot::Exception &e) {
+		const char *what = e.what();
+		spdlog::error("cannot get the terminal size ({}); "
+			"set COLUMNS and LINES when stdout is not a terminal",
+			what ? what : "unknown error");
+		return 1;
+	}
 
 	spdlog::debug("output_type = {}", config.output_type_name());
 
@@ -122,4 +153,5 @@ int main(int argc, char *argv[])
 
 	plotter.plot();
 	std::puts("");
+	return 0;
 }
