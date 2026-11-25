@@ -3,6 +3,7 @@
 #pragma once
 
 #include <glib.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -194,54 +195,77 @@ static inline void blot_canvas_draw_point(blot_canvas *can, unsigned x, unsigned
 	blot_canvas_set(can, x, y, 1);
 }
 
+/* Draw a line between two cells, both included.
+ *
+ * Integer stepping: the major axis advances one cell per step and the
+ * minor axis is the ideal line rounded to the nearest cell, so there are
+ * no gaps, both ends are drawn, and a line from a cell to itself draws
+ * that cell.  The walk always starts at the end with the smaller x (the
+ * smaller y for a vertical line), so swapping the ends gives the same
+ * cells.  Cells outside the canvas are skipped.
+ *
+ * The arithmetic is unsigned so that it is defined for any pair of longs;
+ * the caller decides what to do with ends far outside the canvas. */
+static inline void blot_canvas_draw_line_cells(blot_canvas *can,
+					       long x0, long y0,
+					       long x1, long y1)
+{
+	if (x0 > x1 || (x0 == x1 && y0 > y1)) {
+		swap_t(long, x0, x1);
+		swap_t(long, y0, y1);
+	}
+
+	bool y_down = y1 < y0;
+	unsigned long dx = (unsigned long)x1 - (unsigned long)x0;
+	unsigned long dy = y_down ? (unsigned long)y0 - (unsigned long)y1
+				  : (unsigned long)y1 - (unsigned long)y0;
+
+	/* n steps along the major axis; the minor axis moves m in total */
+	bool x_major = dx >= dy;
+	unsigned long n = x_major ? dx : dy;
+	unsigned long m = x_major ? dy : dx;
+
+	/* at step i the minor offset is i*m/n = q + t/n with 0 <= t < n */
+	unsigned long q = 0, t = 0;
+
+	for (unsigned long i = 0; ; i++) {
+		/* round to nearest: up when t/n >= 1/2 */
+		unsigned long minor = q + (t && t >= n - t);
+		unsigned long major = i;
+
+		unsigned long ox = x_major ? major : minor;
+		unsigned long oy = x_major ? minor : major;
+
+		/* both are within [x0,x1] and [y0,y1], so they fit a long */
+		long x = (long)((unsigned long)x0 + ox);
+		long y = y_down ? (long)((unsigned long)y0 - oy)
+				: (long)((unsigned long)y0 + oy);
+
+		if (x >= 0 && y >= 0 && x < (long)can->dim.cols && y < (long)can->dim.rows)
+			blot_canvas_draw_point(can, (unsigned)x, (unsigned)y);
+
+		if (i == n)
+			break;
+
+		/* advance i*m/n by m/n, without overflow */
+		if (t >= n - m) {
+			t -= n - m;
+			q++;
+		} else {
+			t += m;
+		}
+	}
+}
+
+/* Draw a line between two points in canvas coordinates.  Each end is
+ * rounded to its nearest cell and the cells between are stepped as
+ * integers (see blot_canvas_draw_line_cells). */
 static inline void blot_canvas_draw_line(blot_canvas *can,
 					double x0, double y0,
 					double x1, double y1)
 {
-	double dx = x1 - x0;
-	double dy = y1 - y0;
-
-	double ax = abs_t(double,dx);
-	double ay = abs_t(double,dy);
-
-	g_assert_cmpuint(ax, >=, 0);
-	g_assert_cmpuint(ay, >=, 0);
-
-	if (ax<=1 && ay<=1) {
-		blot_canvas_draw_point(can, x0, y0);
-		return;
-	}
-
-	if (ax > ay) {
-		if (x0 < x1) {
-			double m = dy/dx;
-			double x, y;
-
-			for (x=x0, y=y0; x<=x1; x++, y+=m)
-				blot_canvas_draw_point(can, x, y);
-		} else {
-			double m = dy/dx;
-			double x, y;
-
-			for (x=x0, y=y0; x>=x1; x--, y-=m)
-				blot_canvas_draw_point(can, x, y);
-		}
-
-	} else /* ax < ay */ {
-		if (y0 < y1) {
-			double m = dx/dy;
-			double x, y;
-
-			for (x=x0, y=y0; y<=y1; y++, x+=m)
-				blot_canvas_draw_point(can, x, y);
-		} else {
-			double m = dx/dy;
-			double x, y;
-
-			for (x=x0, y=y0; y>=y1; y--, x-=m)
-				blot_canvas_draw_point(can, x, y);
-		}
-	}
+	blot_canvas_draw_line_cells(can, lround(x0), lround(y0),
+				    lround(x1), lround(y1));
 }
 
 static inline void blot_canvas_draw_rect(blot_canvas *can,

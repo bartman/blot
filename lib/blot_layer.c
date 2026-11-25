@@ -285,10 +285,12 @@ static bool blot_layer_line(blot_layer *lay, const blot_xy_limits *lim,
 		double dx = (double)(rx - lim->x_min) * per_col;
 		double dy = (double)(ry - lim->y_min) * per_row;
 
-		// plot it
-		if (likely (visible)) {
-			blot_canvas_draw_line(can, round(px), round(py), round(dx), round(dy));
-		}
+		// plot it: a segment from the previous point, or the first
+		// point on its own so that a one-point series is drawn too
+		if (likely (visible))
+			blot_canvas_draw_line(can, px, py, dx, dy);
+		else
+			blot_canvas_draw_line(can, dx, dy, dx, dy);
 
 		// remember current point for next line
 		px = dx;
