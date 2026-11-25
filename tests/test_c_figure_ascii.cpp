@@ -1,6 +1,7 @@
 /* #46: BLOT_RENDER_NO_UNICODE (blot --ascii) output is ASCII: every glyph
  * the screen and the canvas emit (axes, ticks, corner, plot marks and the
- * legend symbol), checked on the multibyte bytes a program writes. */
+ * legend symbol), and the labels (a '?' per column for a character past
+ * ASCII), checked on the multibyte bytes a program writes. */
 #include "blot_test.hpp"
 
 #include <clocale>
@@ -16,16 +17,19 @@ const gint32 XS[] = { 0, 3, 6, 9 };
 const gint32 Y_SC[] = { 1, 8, 3, 6 }, Y_LN[] = { 0, 4, 9, 2 }, Y_BAR[] = { 5, 2, 7, 4 };
 
 /* every plot type, each with a label (so a legend line), custom X labels,
- * both axes; the data stays alive for render() */
+ * both axes; the data stays alive for render().  The labels (UTF-8) have
+ * characters past ASCII: one column (U+00E9), two (CJK, an emoji) and none
+ * (a combining acute) */
 void all_types(Fig &f)
 {
-    static char *labels[] = { (char *)"jan", (char *)"feb", (char *)"mar", (char *)"apr" };
+    static char *labels[] = { (char *)"jan", (char *)"f\xc3\xa9v",
+                              (char *)"\xe6\x97\xa5\xe6\x9c\xac", (char *)"e\xcc\x81x" };
     f.size(60, 24);
     f.lim(0, 9, 0, 9);
     ASSERT_TRUE(blot_figure_set_x_axis_labels(f, 4, labels, NULL));
-    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 4, XS, Y_SC, 1, "scatter");
-    f.plot(BLOT_LINE, BLOT_DATA_INT32, 4, XS, Y_LN, 2, "line");
-    f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, XS, Y_BAR, 3, "bar");
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 4, XS, Y_SC, 1, "scatter \xc3\xa9");
+    f.plot(BLOT_LINE, BLOT_DATA_INT32, 4, XS, Y_LN, 2, "line \xe6\x97\xa5\xe6\x9c\xac");
+    f.plot(BLOT_BAR, BLOT_DATA_INT32, 4, XS, Y_BAR, 3, "bar e\xcc\x81\xf0\x9f\x98\x80");
 }
 
 /* the text as the bytes a program writes in the current locale (as the CLI
@@ -56,8 +60,9 @@ void expect_ascii(const Rendered &r, const char *what)
         }
     }
     /* one byte per character: nothing was dropped or expanded */
-    if (ok)
+    if (ok) {
         EXPECT_EQ(mb.size(), r.text.size()) << what;
+    }
     for (size_t i = 0; i < r.text.size(); i++) {
         if ((unsigned)r.text[i] >= 0x80) {
             ADD_FAILURE() << what << ": character " << i << " is U+" << std::hex
@@ -124,18 +129,25 @@ TEST(Ascii, no_unicode_glyphs)
     ASSERT_TRUE(r.ok) << r.message;
     ASSERT_EQ(r.lines.size(), 24u);
 
-    /* legend above and below: '#', then the label and the details */
+    /* legend above and below: '#', then the label and the details.  A
+     * character past ASCII is a '?' per column: U+00E9 one, CJK and the
+     * emoji two, the combining acute none */
     const Lines legend = {
-        L"#  scatter   \tavg=4.500 min=1.000 max=8.000 count=4",
-        L"#  line   \tavg=3.750 min=0.000 max=9.000 count=4",
-        L"#  bar   \tavg=4.500 min=2.000 max=7.000 count=4",
+        L"#  scatter ?   \tavg=4.500 min=1.000 max=8.000 count=4",
+        L"#  line ????   \tavg=3.750 min=0.000 max=9.000 count=4",
+        L"#  bar e??   \tavg=4.500 min=2.000 max=7.000 count=4",
     };
     EXPECT_LINES_EQ(Lines(r.lines.begin(), r.lines.begin() + 3), legend);
     EXPECT_LINES_EQ(Lines(r.lines.end() - 3, r.lines.end()), legend);
 
+    /* the custom X labels, the same way, each under its tick */
+    const std::wstring &xl = r.lines[r.lines.size() - 4];
+    EXPECT_EQ(xl.substr(r.mrg.left), L"jan          f?v          ????         ex           ")
+        << to_utf8(xl);
+
     /* the plot marks are '*', the axes '|', '-', '+' and '*' for a tick */
     std::wstring glyphs;
-    for (size_t i = 3; i < r.lines.size() - 3; i++)
+    for (size_t i = 3; i < r.lines.size() - 4; i++)
         for (wchar_t wc : r.lines[i])
             if (!iswalnum(wc) && wc != L' ' && wc != L'.' && glyphs.find(wc) == std::wstring::npos)
                 glyphs += wc;
@@ -152,6 +164,8 @@ TEST(Ascii, unicode_render_keeps_its_glyphs)
     Rendered r = render(f, BLOT_RENDER_NO_COLOR | LEGENDS);
     ASSERT_TRUE(r.ok) << r.message;
     ASSERT_FALSE(r.lines.empty());
-    EXPECT_EQ(r.lines.front().find(L"◘  scatter"), 0u) << to_utf8(r.lines.front());
+    EXPECT_EQ(r.lines.front().find(L"\u25d8  scatter \u00e9"), 0u) << to_utf8(r.lines.front());
+    EXPECT_EQ(r.lines.back().find(L"\u25d8  bar e\u0301\U0001f600"), 0u) << to_utf8(r.lines.back());
+    EXPECT_NE(r.text.find(L"\u65e5\u672c   "), std::wstring::npos) << to_utf8(r.text);
     EXPECT_NE(r.text.find(L'•'), std::wstring::npos) << to_utf8(r.text);
 }
