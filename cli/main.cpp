@@ -2,12 +2,16 @@
 #include <chrono>
 #include <thread>
 #include <ranges>
+#include <cstdio>
+#include <cstring>
+#include <cerrno>
 
 #include "config.hpp"
 #include "reader.hpp"
 #include "plotter.hpp"
 
 #include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 #include "fmt/format.h"
 
 static bool signaled = false;
@@ -24,6 +28,10 @@ static int run(int argc, char *argv[]);
 int main(int argc, char *argv[])
 {
 	try {
+		/* stdout is the plot: messages go to stderr, not into it, and
+		 * still show when stdout can't be written (#40) */
+		spdlog::set_default_logger(std::make_shared<spdlog::logger>("",
+			std::make_shared<spdlog::sinks::stderr_color_sink_mt>()));
 		return run(argc, argv);
 	} catch (const std::exception &e) {
 		const char *what = e.what();
@@ -153,5 +161,10 @@ static int run(int argc, char *argv[])
 
 	plotter.plot();
 	std::puts("");
+	/* the output is the plot: a write error is a failure (#40) */
+	if (std::fflush(stdout) != 0 || std::ferror(stdout)) {
+		spdlog::error("cannot write the plot: {}", std::strerror(errno));
+		return 1;
+	}
 	return 0;
 }

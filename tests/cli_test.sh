@@ -69,6 +69,97 @@ regex)
 	expect 1 line --read "$tmp/data" --regex '('
 	grep -q -i -E 'regex|regular expression|parenthes' "$tmp/out" || fail "no message about the regex"
 	;;
+repeat)
+	# the same plot, rendered many times to a file and through a pipe, is
+	# complete and the same every time, in any locale (#40).  In the C
+	# locale (no LANG, as in a docker container) printf("%ls") gave up at
+	# the first non-ASCII character and the plot was cut off mid-line.
+	# --ascii has one (the legend's symbol, #46); the default Unicode
+	# mode is non-ASCII throughout, so it keeps the test meaningful
+	n=${CLI_REPEAT:-100}
+	cols=80 lines=24
+	seq 1 20 | awk '{ print $1, $1*$1 }' > "$tmp/xy"
+	# the figure leaves two rows for the prompt, and blot ends the
+	# output with a newline after the last frame
+	frame=$((lines - 2))
+	# blot draws a frame every second as well as at the end (the -i
+	# interval can't be changed, #44), so the number of frames depends on
+	# the clock: compare only the last frame, which follows the last
+	# "ESC [2J" (clear screen)
+	last_frame() {
+		awk 'BEGIN { RS = "\033\\[2J" } { f = $0 } END { printf "%s", f }' "$1"
+	}
+	# the inherited locale: C or POSIX (blot uses UTF-8 there) or a
+	# UTF-8 one; another one writes some characters as '?' and warns
+	locs="C C.UTF-8"
+	case $(locale charmap 2>/dev/null) in
+	UTF-8|ANSI_X3.4-1968) locs="$locs inherited" ;;
+	*) echo "skipping the inherited locale: its charmap is '$(locale charmap 2>/dev/null)', not UTF-8" ;;
+	esac
+	for mode in --ascii --unicode; do
+		ref=
+		for loc in $locs; do
+			test "$loc" = inherited && loc= || true
+			for how in file pipe; do
+				echo "running $n times: blot $mode line --read xy -p 1,2 ($how, LC_ALL='$loc')"
+				i=0
+				while [ $i -lt $n ]; do
+					i=$((i + 1))
+					if [ $how = file ]; then
+						LC_ALL=$loc COLUMNS=$cols LINES=$lines "$blot" $mode line \
+							--read "$tmp/xy" -p 1,2 </dev/null > "$tmp/out" 2>"$tmp/err"
+						rc=$?
+					else
+						{ LC_ALL=$loc COLUMNS=$cols LINES=$lines "$blot" $mode line \
+							--read "$tmp/xy" -p 1,2 </dev/null 2>"$tmp/err"; \
+						  echo $? > "$tmp/rc"; } | cat > "$tmp/out"
+						rc=$(cat "$tmp/rc")
+					fi
+					cat "$tmp/err" >> "$tmp/out"
+					no_sanity
+					test "$rc" -eq 0 || fail "run $i: exit code $rc"
+					test -s "$tmp/err" && fail "run $i: stderr is not empty"
+					last_frame "$tmp/out" > "$tmp/frame"
+					if [ -z "$ref" ]; then
+						ref=$tmp/ref
+						cp "$tmp/frame" "$ref"
+						got=$(awk 'END { print NR }' "$ref")
+						test "$got" -eq $((frame + 1)) \
+							|| fail "$mode: the last frame has $((got - 1)) lines, expected $frame ($(wc -c < "$tmp/out") bytes)"
+						# the legend, the last line of the frame, is whole
+						tail -n 2 "$ref" | grep -q -F "$tmp/xy" \
+							|| fail "$mode: no legend line"
+						# the Unicode plot is written in UTF-8, not ASCII
+						if [ $mode = --unicode ]; then
+							LC_ALL=C grep -q '[^ -~[:cntrl:]]' "$ref" \
+								|| fail "$mode: no non-ASCII characters in the plot"
+							LC_ALL=C grep -q '?' "$ref" \
+								&& fail "$mode: characters written as '?'"
+						fi
+					fi
+					cmp -s "$ref" "$tmp/frame" \
+						|| fail "run $i ($mode, $how, LC_ALL='$loc'): the last frame ($(wc -c < "$tmp/frame") bytes) differs from the first run's ($(wc -c < "$ref") bytes)"
+				done
+			done
+		done
+	done
+	;;
+write_error)
+	# a write error is a message on stderr and exit code 1, not a
+	# silently lost plot (#40)
+	if [ ! -c /dev/full ]; then
+		echo "SKIP: no /dev/full"; exit 0
+	fi
+	printf '1 1\n2 4\n' > "$tmp/xy"
+	echo "running: blot --ascii line --read xy >/dev/full"
+	COLUMNS=80 LINES=24 "$blot" --ascii line --read "$tmp/xy" </dev/null \
+		>/dev/full 2>"$tmp/out"
+	rc=$?
+	echo "exit code: $rc"
+	no_sanity
+	test "$rc" -eq 1 || fail "exit code $rc, expected 1"
+	grep -q 'cannot write the plot' "$tmp/out" || fail "no message about the write error"
+	;;
 *)
 	echo "unknown case '$case'"; exit 2 ;;
 esac
