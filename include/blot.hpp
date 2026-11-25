@@ -22,23 +22,23 @@ public:
 	explicit Exception(GError *error) : m_error(error) {}
 	~Exception() { g_clear_error(&m_error); }
 
-	Exception(const Exception &other) {
-		if (other.m_error)
-			m_error = g_error_copy(other.m_error);
-	}
-	Exception(Exception &&other) noexcept {
-		m_error = std::exchange(other.m_error, nullptr);
-	}
+	/* a thrown object must be copyable: the copy gets its own GError */
+	Exception(const Exception &other)
+		: std::exception(other),
+		  m_error(other.m_error ? g_error_copy(other.m_error) : nullptr) {}
+	Exception(Exception &&other) noexcept
+		: std::exception(other),
+		  m_error(std::exchange(other.m_error, nullptr)) {}
 
 	Exception& operator=(const Exception &other) {
 		if (this != &other) {
 			g_clear_error(&m_error);
-			m_error = g_error_copy(other.m_error);
+			m_error = other.m_error ? g_error_copy(other.m_error) : nullptr;
 		}
 		return *this;
 	}
 
-	Exception& operator=(Exception &other) noexcept {
+	Exception& operator=(Exception &&other) noexcept {
 		if (this != &other) {
 			g_clear_error(&m_error);
 			m_error = std::exchange(other.m_error, nullptr);
@@ -115,11 +115,30 @@ public:
 
 // ------------------------------------------------------------------------
 
+/* owns the blot_screen: move-only, a moved-from Screen is empty */
 struct Screen final {
 	blot_screen *m_screen;
 public:
 	explicit Screen(blot_screen *screen) : m_screen(screen) { }
-	~Screen() { blot_screen_delete(m_screen); }
+	~Screen() {
+		if (m_screen)
+			blot_screen_delete(m_screen);
+	}
+
+	Screen(const Screen &) = delete;
+	Screen& operator=(const Screen &) = delete;
+
+	Screen(Screen &&other) noexcept
+		: m_screen(std::exchange(other.m_screen, nullptr)) { }
+
+	Screen& operator=(Screen &&other) noexcept {
+		if (this != &other) {
+			if (m_screen)
+				blot_screen_delete(m_screen);
+			m_screen = std::exchange(other.m_screen, nullptr);
+		}
+		return *this;
+	}
 
 	const wchar_t *get_text(size_t &size) {
 		GError *error = nullptr;
@@ -134,6 +153,7 @@ public:
 
 // ------------------------------------------------------------------------
 
+/* owns its layers: move-only, a moved-from Figure is a fresh, empty one */
 struct Figure final : public blot_figure {
 public:
 	explicit Figure() {
@@ -146,6 +166,31 @@ public:
 	~Figure() {
 		blot_figure_cleanup(this);
 	}
+
+	Figure(const Figure &) = delete;
+	Figure& operator=(const Figure &) = delete;
+
+	Figure(Figure &&other) noexcept : blot_figure(other) {
+		other.reset();
+	}
+
+	Figure& operator=(Figure &&other) noexcept {
+		if (this != &other) {
+			blot_figure_cleanup(this);
+			static_cast<blot_figure&>(*this) = other;
+			other.reset();
+		}
+		return *this;
+	}
+
+private:
+	/* forget the (moved) layers, back to what blot_figure_init() gives */
+	void reset() noexcept {
+		[[maybe_unused]] bool ok = blot_figure_init(this, nullptr);
+		assert(ok);
+	}
+
+public:
 
 	/* configure */
 
