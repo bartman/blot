@@ -91,7 +91,7 @@ const double F1_LIMITS[][3] = {
 };
 
 /* sizes of the F11/F20 sweep */
-const unsigned SWEEP_COLS[] = { 18, 19, 20, 21, 22, 23, 29, 30, 31, 39, 40, 41, 79, 80, 81,
+const unsigned SWEEP_COLS[] = { 20, 21, 22, 23, 29, 30, 31, 39, 40, 41, 79, 80, 81,
                                 100, 101, 255, 256, 257, 999, 1000 };
 const unsigned SWEEP_ROWS[] = { 12, 13, 14, 15, 16, 17, 23, 24, 25, 50, 99, 100, 101 };
 
@@ -358,8 +358,10 @@ TEST(Layout, screen_size_bounds)
         unsigned cols, rows;
         bool ok;
     } cases[] = {
-        { 9, 12, false }, { 12, 9, false }, { 1001, 10, false }, { 10, 1001, false },
-        { 10, 10, true }, { 1000, 1000, true },
+        /* the minimum is 20x12 (#17): the plot's 10x10 and the axes */
+        { 19, 12, false }, { 20, 11, false }, { 10, 10, false }, { 28, 10, false },
+        { 1001, 12, false }, { 20, 1001, false },
+        { 20, 12, true }, { 1000, 1000, true },
     };
     for (const auto &c : cases) {
         SCOPED_TRACE(testing::Message() << c.cols << "x" << c.rows);
@@ -378,18 +380,17 @@ TEST(Layout, screen_size_bounds)
 
 TEST(Layout, minimum_renderable_sizes)
 {
+    /* the setter rejects anything smaller than 20x12 (#17), and the
+     * minimum renders with either axis or none */
     const struct {
         unsigned cols, rows;
         blot_render_flags extra;
         bool ok;
     } cases[] = {
-        { 18, 12, BLOT_RENDER_NONE, true },
-        { 17, 12, BLOT_RENDER_NONE, false },  /* plot area under 10 columns */
-        { 18, 11, BLOT_RENDER_NONE, false },  /* plot area under 10 rows */
-        { 10, 10, BLOT_RENDER_NONE, false },
-        { 10, 10, BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS, true },
-        { 10, 12, BLOT_RENDER_NO_Y_AXIS, true },
-        { 18, 10, BLOT_RENDER_NO_X_AXIS, true },
+        { 20, 12, BLOT_RENDER_NONE, true },
+        { 20, 12, BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS, true },
+        { 20, 12, BLOT_RENDER_NO_Y_AXIS, true },
+        { 20, 12, BLOT_RENDER_NO_X_AXIS, true },
         { 1000, 1000, BLOT_RENDER_NONE, true },
     };
     for (const auto &c : cases) {
@@ -406,9 +407,11 @@ TEST(Layout, minimum_renderable_sizes)
         EXPECT_EQ(r.lines.size(), c.rows);
         for (unsigned i = 0; i < r.plot_rows(); i++)
             EXPECT_EQ(r.lines[r.mrg.top + i].size(), c.cols) << "plot row " << i;
-        if (c.cols == 18 && c.rows == 12) {
+        if (c.cols == 20 && c.rows == 12 && c.extra == BLOT_RENDER_NONE) {
             EXPECT_EQ(r.mrg.left, 8u);
             EXPECT_EQ(r.mrg.bottom, 2u);
+            EXPECT_EQ(r.plot_cols(), 12u);
+            EXPECT_EQ(r.plot_rows(), 10u);
         }
     }
 }
@@ -462,13 +465,13 @@ TEST(Layout, terminal_size_fallback)
         EXPECT_EQ(r.lines.size(), 22u);
 
         /* the 2-column border is not taken below the minimum size */
-        ASSERT_TRUE(blot_terminal_set_size({ 10, 10 }, &error));
-        r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS);
+        ASSERT_TRUE(blot_terminal_set_size({ 20, 12 }, &error));
+        r = render(f, F);
         ASSERT_TRUE(r.ok) << r.message;
-        EXPECT_EQ(r.dim.cols, 10u);
-        EXPECT_EQ(r.dim.rows, 10u);
+        EXPECT_EQ(r.dim.cols, 20u);
+        EXPECT_EQ(r.dim.rows, 12u);
 
-        const blot_dimensions bad[] = { { 9, 24 }, { 1001, 24 }, { 80, 9 }, { 80, 1001 } };
+        const blot_dimensions bad[] = { { 19, 24 }, { 1001, 24 }, { 80, 11 }, { 80, 1001 } };
         for (const auto &d : bad) {
             EXPECT_FALSE(blot_terminal_set_size(d, &error)) << d.cols << "x" << d.rows;
             ASSERT_TRUE(error != NULL);
@@ -587,8 +590,8 @@ TEST(Layout, terminal_environment_out_of_range_is_clamped)
         unsigned get_cols, get_rows;    /* blot_terminal_get_size() */
         unsigned exp_cols, exp_rows;    /* the screen, less the border */
     } cases[] = {
-        { "9", "24", 10, 24, 10, 22 },
-        { "1", "1", 10, 10, 10, 10 },
+        { "19", "24", 20, 24, 20, 22 },
+        { "1", "1", 20, 12, 20, 12 },
         { "1001", "24", 1000, 24, 998, 22 },
         { "80", "5000", 80, 1000, 78, 998 },
     };
@@ -617,8 +620,8 @@ TEST(Layout, terminal_environment_out_of_range_is_clamped)
 
 /* the terminal's own size, less the 2-cell border, within the minimum and
  * the maximum: COLUMNS/LINES at the edges of the range, and a tty that is
- * smaller or larger than blot can draw (B19, #11: 1x1 underflowed).  No
- * axes: the plot itself needs BLOT_MIN_COLS x BLOT_MIN_ROWS */
+ * smaller or larger than blot can draw (B19, #11: 1x1 underflowed).  The
+ * minimum renders with the axes too (#17) */
 TEST(Layout, terminal_size_is_kept_in_range)
 {
     const struct {
@@ -627,9 +630,9 @@ TEST(Layout, terminal_size_is_kept_in_range)
         unsigned exp_cols, exp_rows;
     } cases[] = {
         { "1000", "1000", 0, 0, 998, 998 },
-        { "10", "10", 0, 0, 10, 10 },
-        { NULL, NULL, 1, 1, 10, 10 },
-        { NULL, NULL, 0, 0, 10, 10 },
+        { "20", "12", 0, 0, 20, 12 },
+        { NULL, NULL, 1, 1, 20, 12 },
+        { NULL, NULL, 0, 0, 20, 12 },
         { NULL, NULL, 5000, 3000, 1000, 1000 },
         { NULL, NULL, 82, 26, 80, 24 },
     };
@@ -654,7 +657,7 @@ TEST(Layout, terminal_size_is_kept_in_range)
             Fig f;
             f.lim(0, 9, 0, 9);
             f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, DIAG_X, DIAG_Y);
-            Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS);
+            Rendered r = render(f, F);
             ASSERT_TRUE(r.ok) << r.message;
             EXPECT_EQ(r.dim.cols, c.exp_cols);
             EXPECT_EQ(r.dim.rows, c.exp_rows);
@@ -784,9 +787,6 @@ TEST(Layout, line_reaches_top_right_at_every_size)
  * axis and legend flags. */
 namespace {
 
-/* the smallest plot area (#17) */
-const unsigned MIN_PLOT = 10;
-
 const gint32 MS_X[] = { 0, 9 }, MS_Y0[] = { 0, 9 }, MS_Y1[] = { 9, 0 };
 
 /* two labelled layers; wide: Y labels that want more than half the screen */
@@ -822,12 +822,12 @@ void expect_renders_with_all_flags(blot_figure *f, unsigned cols, unsigned rows)
         Lines lines = strip_sgr(r.lines);
         for (size_t i = 0; i < lines.size(); i++)
             ASSERT_LE(lines[i].size(), cols) << "line " << i << " |" << to_utf8(lines[i]) << "|";
-        EXPECT_GE(r.plot_rows(), MIN_PLOT);
-        EXPECT_GE(r.plot_cols(), MIN_PLOT);
+        EXPECT_GE(r.plot_rows(), (unsigned)BLOT_MIN_PLOT_ROWS);
+        EXPECT_GE(r.plot_cols(), (unsigned)BLOT_MIN_PLOT_COLS);
 
         unsigned x_rows = (flags & BLOT_RENDER_NO_X_AXIS) ? 0 : 2;
         unsigned legends = !!(flags & BLOT_RENDER_LEGEND_ABOVE) + !!(flags & BLOT_RENDER_LEGEND_BELOW);
-        unsigned spare = rows - x_rows - MIN_PLOT;
+        unsigned spare = rows - x_rows - BLOT_MIN_PLOT_ROWS;
         unsigned marks = 0;
         for (const auto &l : lines)
             if (l.find((wchar_t)0x25D8) != std::wstring::npos)    /* ◘ */
