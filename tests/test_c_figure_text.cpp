@@ -255,6 +255,16 @@ TEST(Text, colour_support_disabled)
         Rendered r = render(f, BLOT_RENDER_NO_UNICODE);
         ASSERT_TRUE(r.ok) << r.message;
         EXPECT_FALSE(has_esc(r.text)) << to_utf8(r.lines[0]);
+
+        /* the legend's colour and reset too (#8); 2 more rows keep the
+         * 10-row plot area with one legend line above and one below */
+        f.size(28, 14);
+        Rendered l = render(f, BLOT_RENDER_NO_UNICODE | BLOT_RENDER_LEGEND_ABOVE | BLOT_RENDER_LEGEND_BELOW);
+        ASSERT_TRUE(l.ok) << l.message;
+        EXPECT_FALSE(has_esc(l.text)) << to_utf8(l.text);
+        ASSERT_EQ(l.lines.size(), 14u);
+        EXPECT_EQ(l.lines.front(), L"◘  pts");
+        EXPECT_EQ(l.lines.back(), L"◘  pts");
     });
 }
 
@@ -289,6 +299,18 @@ TEST(Text, legend_rows_and_placement)
     /* same plot height as above: the plot rows and axes are the same */
     EXPECT_LINES_EQ(Lines(b.lines.begin(), b.lines.begin() + 14),
                     Lines(a.lines.begin() + 2, a.lines.end()));
+
+    /* no X-axis: the legend below is the whole bottom margin */
+    Rendered c = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_LEGEND_BELOW);
+    ASSERT_TRUE(c.ok) << c.message;
+    ASSERT_EQ(c.lines.size(), 16u);
+    EXPECT_EQ(c.mrg.top, 0u);
+    EXPECT_EQ(c.mrg.bottom, 2u);
+    EXPECT_LINES_EQ(Lines(c.lines.end() - 2, c.lines.end()), legend);
+    for (size_t i = 0; i < 14; i++) {
+        EXPECT_FALSE(c.lines[i].empty()) << "line " << i << " is empty";
+        EXPECT_EQ(c.lines[i].find(L"+"), std::wstring::npos) << "line " << i << ": " << to_utf8(c.lines[i]);
+    }
 
     /* only unlabelled layers: the legend flags change nothing */
     Fig u;
