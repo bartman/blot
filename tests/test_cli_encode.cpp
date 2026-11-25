@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "plot_encode.hpp"
+#include "blot_text.h"
 
 #include "blot.h"
 
