@@ -189,9 +189,9 @@ TEST(Figure, add_plot_null_ys)
         FAIL() << "no exception";
     } catch (const Blot::Exception &e) {
         EXPECT_EQ(e.code(), EINVAL);
-        EXPECT_NE(std::string(e.what()).find("data_ys.empty()"), std::string::npos) << e.what();
+        EXPECT_NE(std::string(e.what()).find("ys_count != 0"), std::string::npos) << e.what();
     }
-    EXPECT_EQ(fig.layer_count, 0u);
+    EXPECT_EQ(fig.c_ptr()->layer_count, 0u);
 }
 
 TEST(Figure, add_plot_zero_count)
@@ -212,7 +212,7 @@ TEST(Figure, plot_bad_plot_type)
     const std::vector<int32_t> xs = {1, 2, 3};
     const std::vector<int32_t> ys = {4, 5, 6};
     fig.line(xs, ys, 2, "first");
-    ASSERT_EQ(fig.layer_count, 1u);
+    ASSERT_EQ(fig.c_ptr()->layer_count, 1u);
 
     try {
         fig.plot(BLOT_PLOT_TYPE_MAX, xs, ys, 1, "bad");
@@ -222,6 +222,6 @@ TEST(Figure, plot_bad_plot_type)
         EXPECT_NE(std::string(e.what()).find("plot_type 3 is not valid: Invalid argument"), std::string::npos) << e.what();
         EXPECT_EQ(std::string(e.what()).find("x_min"), std::string::npos) << e.what();
     }
-    EXPECT_EQ(fig.layer_count, 1u);
-    EXPECT_STREQ(fig.layers[0]->label, "first");
+    EXPECT_EQ(fig.c_ptr()->layer_count, 1u);
+    EXPECT_STREQ(fig.c_ptr()->layers[0]->label, "first");
 }
