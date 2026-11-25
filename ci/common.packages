@@ -9,8 +9,11 @@
 #   gcc g++ make cmake ninja-build   the build (make wraps cmake+ninja)
 #   pkgconf libglib2.0-dev           lib/: pkg_check_modules(glib-2.0)
 #   libgtest-dev                     tests/: find_package(GTest)
+#   libspdlog-dev libfmt-dev         cli/: find_package(spdlog, fmt), so
+#                                    CMake doesn't fetch them (#30)
 #   git ca-certificates              git describe in CMake (the version)
 gcc g++ make cmake ninja-build
 pkgconf libglib2.0-dev
 libgtest-dev
+libspdlog-dev libfmt-dev
 git ca-certificates
