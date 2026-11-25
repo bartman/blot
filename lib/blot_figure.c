@@ -1,6 +1,7 @@
 /* blot: figure represents the top level object */
 /* vim: set noet sw=8 ts=8 tw=120: */
 #include <string.h>
+#include <float.h>
 #include <math.h>
 #include "blot_figure.h"
 #include "blot_error.h"
@@ -23,16 +24,28 @@ bool blot_figure_init(blot_figure *fig, GError **error)
 	return true;
 }
 
+/* free the figure's copy of the X labels (#23) */
+static void blot_figure_free_x_labels(blot_figure *fig)
+{
+	for (size_t i=0; i<fig->xlabels.count; i++)
+		g_free(fig->xlabels.strings[i]);
+	g_free(fig->xlabels.strings);
+	fig->xlabels.count = 0;
+	fig->xlabels.strings = NULL;
+}
+
+/* frees what the figure owns and leaves it with none, so a second cleanup,
+ * a blot_figure_delete() or a blot_figure_init() after it frees nothing
+ * twice (#28); the configuration (size, limits, axis colour) stays */
 void blot_figure_cleanup(blot_figure *fig)
 {
-	if (fig->layers) {
-		for (int li=0; li<fig->layer_count; li++) {
-			blot_layer *lay = fig->layers[li];
-			blot_layer_delete(lay);
-		}
+	blot_figure_free_x_labels(fig);
 
-		g_free(fig->layers);
-	}
+	for (gsize li=0; li<fig->layer_count; li++)
+		blot_layer_delete(fig->layers[li]);
+	g_free(fig->layers);
+	fig->layers = NULL;
+	fig->layer_count = 0;
 }
 
 blot_figure * blot_figure_new(GError **error)
@@ -69,10 +82,11 @@ bool blot_figure_set_screen_size(blot_figure *fig,
 				 unsigned cols, unsigned rows, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
-	RETURN_EINVAL_IF(cols<BLOT_MIN_COLS, false, error);
-	RETURN_EINVAL_IF(rows<BLOT_MIN_ROWS, false, error);
-	RETURN_EINVAL_IF(cols>BLOT_MAX_COLS, false, error);
-	RETURN_EINVAL_IF(rows>BLOT_MAX_ROWS, false, error);
+	/* the minimum renders with every flag (blot_figure.h, #17) */
+	RETURN_ERRORx(cols<BLOT_MIN_COLS || cols>BLOT_MAX_COLS, false, error, EINVAL,
+		      "cols=%u is outside %u..%u", cols, BLOT_MIN_COLS, BLOT_MAX_COLS);
+	RETURN_ERRORx(rows<BLOT_MIN_ROWS || rows>BLOT_MAX_ROWS, false, error, EINVAL,
+		      "rows=%u is outside %u..%u", rows, BLOT_MIN_ROWS, BLOT_MAX_ROWS);
 
 	fig->screen_dimensions_set = true;
 	fig->dim.cols = cols;
@@ -85,8 +99,12 @@ bool blot_figure_set_x_limits(blot_figure *fig,
 			      double x_min, double x_max, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
+	RETURN_ERRORx(!isfinite(x_min) || !isfinite(x_max), false, error, EINVAL,
+		      "x limits must be finite");
 	RETURN_ERRORx(x_min >= x_max, false, error, EINVAL,
 		      "x_min >= x_max");
+	RETURN_ERRORx(!isfinite(x_max - x_min), false, error, ERANGE,
+		      "x limits are further apart than the largest double");
 
 	fig->x_limits_set = true;
 	fig->lim.x_min = x_min;
@@ -98,8 +116,12 @@ bool blot_figure_set_y_limits(blot_figure *fig,
 			      double y_min, double y_max, GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
+	RETURN_ERRORx(!isfinite(y_min) || !isfinite(y_max), false, error, EINVAL,
+		      "y limits must be finite");
 	RETURN_ERRORx(y_min >= y_max, false, error, EINVAL,
 		      "y_min >= y_max");
+	RETURN_ERRORx(!isfinite(y_max - y_min), false, error, ERANGE,
+		      "y limits are further apart than the largest double");
 
 	fig->y_limits_set = true;
 	fig->lim.y_min = y_min;
@@ -112,10 +134,19 @@ bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 {
 	RETURN_EFAULT_IF(fig==NULL, false, error);
 	RETURN_ERRORx((!!label_count) ^ (!!x_labels), false, error, EINVAL,
-		      "label_count=%u but x_labels=%p", label_count, x_labels);
+		      "label_count=%zu but x_labels=%p", label_count, (void *)x_labels);
 
+	/* copy first: x_labels may be the figure's own labels */
+	char **strings = NULL;
+	if (label_count) {
+		strings = g_new(char *, label_count);
+		for (size_t i=0; i<label_count; i++)
+			strings[i] = g_strdup(x_labels[i]);
+	}
+
+	blot_figure_free_x_labels(fig);
 	fig->xlabels.count = label_count;
-	fig->xlabels.strings = x_labels;
+	fig->xlabels.strings = strings;
 	return true;
 }
 
@@ -183,6 +214,43 @@ static blot_dimensions blot_figure_finalize_dimensions(const blot_figure *fig,
 	return dim;
 }
 
+/* Auto-ranged limits from the data's finite min and max: if there is a
+ * range, widen it by 0.1% on either side, if there is only one value,
+ * make the range 10% on either side.  The limits stay finite and less
+ * than DBL_MAX apart, as the axis needs (#6): the widened ends are kept
+ * within +-DBL_MAX, and if they are then still too far apart, the data's
+ * own min and max are the limits.  Data further apart than DBL_MAX has no
+ * axis: ERANGE. */
+static bool blot_figure_widen_limits(double *min, double *max, char axis, GError **error)
+{
+	double range = *max - *min;
+
+	RETURN_ERRORx(!isfinite(range), false, error, ERANGE,
+		      "%c data range %g..%g is wider than the largest double", axis, *min, *max);
+
+	double fudge = range ? range * 0.001 : (*min == 0 ? 0.1 : fabs(*min * 0.1));
+	double lo = fmax(*min - fudge, -DBL_MAX);
+	double hi = fmin(*max + fudge, DBL_MAX);
+
+	if (isfinite(hi - lo)) {
+		*min = lo;
+		*max = hi;
+	}
+	return true;
+}
+
+/* An auto-ranged axis: "no data" (ENOENT) if no layer has data or none
+ * has a finite value on this axis (its limits are NaN), else widened. */
+static bool blot_figure_auto_limits(bool have_data, double *min, double *max, char axis, GError **error)
+{
+	if (unlikely (!have_data || isnan(*min) || isnan(*max))) {
+		blot_set_error_unix(error, ENOENT,
+				    "could not determine %c limits automatically, since there is no data", axis);
+		return false;
+	}
+	return blot_figure_widen_limits(min, max, axis, error);
+}
+
 static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 						  GError **error)
 {
@@ -202,12 +270,14 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 		bool ok = blot_layer_get_lim(lay, &lay_lim, error);
 		RETURN_IF(!ok, (blot_xy_limits){});
 
+		/* a layer's limits are NaN on an axis where it has no finite
+		 * value; fmin()/fmax() skip them (#6) */
 		if (likely (something_set)) {
-			lim.x_min = min_t(double, lim.x_min, lay_lim.x_min);
-			lim.x_max = max_t(double, lim.x_max, lay_lim.x_max);
+			lim.x_min = fmin(lim.x_min, lay_lim.x_min);
+			lim.x_max = fmax(lim.x_max, lay_lim.x_max);
 
-			lim.y_min = min_t(double, lim.y_min, lay_lim.y_min);
-			lim.y_max = max_t(double, lim.y_max, lay_lim.y_max);
+			lim.y_min = fmin(lim.y_min, lay_lim.y_min);
+			lim.y_max = fmax(lim.y_max, lay_lim.y_max);
 
 		} else {
 			lim = lay_lim;
@@ -215,34 +285,25 @@ static blot_xy_limits blot_figure_finalize_limits(const blot_figure *fig,
 		}
 	}
 
-	if (unlikely (!something_set)) {
-		blot_set_error_unix(error, ENOENT,
-				    "could not determine limits automatically, since there is no data");
-		return lim;
-	}
-
-
-	/* if there is a range, widen it by 0.1% on either side,
-	 * if there is only one value, make the range 10% on either side */
-	double x_range = lim.x_max - lim.x_min;
-	double x_fudge = x_range ? x_range * 0.001 : (lim.x_min == 0 ? 0.1 : fabs(lim.x_min * 0.1));
-	lim.x_min -= x_fudge;
-	lim.x_max += x_fudge;
-
-	double y_range = lim.y_max - lim.y_min;
-	double y_fudge = y_range ? y_range * 0.001 : (lim.y_min == 0 ? 0.1 : fabs(lim.y_min * 0.1));
-	lim.y_min -= y_fudge;
-	lim.y_max += y_fudge;
-
-	/* an axis with user limits keeps them; the other one is
-	 * auto-ranged over all of the data (#7) */
+	/* An axis with user limits keeps them; the other one is
+	 * auto-ranged over all of the data (#7).  Only an auto-ranged axis
+	 * needs data: it fails if no layer has data, or none has a finite
+	 * value on it (NaN and inf are not drawn, so they don't make
+	 * limits).  An axis with user limits doesn't, so its data can be all
+	 * NaN, or wider than DBL_MAX: then nothing of it is drawn (#6). */
 	if (fig->x_limits_set) {
 		lim.x_min = fig->lim.x_min;
 		lim.x_max = fig->lim.x_max;
+	} else {
+		bool ok = blot_figure_auto_limits(something_set, &lim.x_min, &lim.x_max, 'x', error);
+		RETURN_IF(!ok, lim);
 	}
 	if (fig->y_limits_set) {
 		lim.y_min = fig->lim.y_min;
 		lim.y_max = fig->lim.y_max;
+	} else {
+		bool ok = blot_figure_auto_limits(something_set, &lim.y_min, &lim.y_max, 'y', error);
+		RETURN_IF(!ok, lim);
 	}
 
 	return lim;
@@ -259,6 +320,27 @@ static unsigned blot_figure_int_width(double v)
 	if (v < 0)
 		w ++;
 	return w;
+}
+
+/* the columns of the widest Y label with all the room it could want, on
+ * a Y-axis of len rows */
+static unsigned blot_figure_y_label_cols(unsigned len, const blot_xy_limits *lim)
+{
+	if (!len)
+		return 0;
+
+	blot_axis *axs = blot_axis_new(true, true, 0, len, lim->y_min, lim->y_max, NULL, NULL);
+	if (!axs)
+		return 0;
+
+	unsigned cols = 0;
+	for (unsigned i=0; i<len; i++) {
+		const blot_axis_tick *t = blot_axis_get_tick_at(axs, i, NULL);
+		if (t && t->label)
+			cols = max_t(unsigned, cols, strlen(t->label));
+	}
+	blot_axis_delete(axs);
+	return cols;
 }
 
 static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
@@ -315,12 +397,12 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 	unsigned below = (flags & BLOT_RENDER_LEGEND_BELOW) ? legend : 0;
 
 	/* a legend is cut, not the plot: each margin stays within half the
-	 * screen, and the plot keeps BLOT_MIN_ROWS rows when the screen has
+	 * screen, and the plot keeps BLOT_MIN_PLOT_ROWS rows when the screen has
 	 * them (two legends share the rows that are left, one at a time) */
 	above = min_t(unsigned, above, dim->rows / 2 - min_t(unsigned, mrg.top, dim->rows / 2));
 	below = min_t(unsigned, below, dim->rows / 2 - min_t(unsigned, mrg.bottom, dim->rows / 2));
 
-	unsigned used = mrg.top + mrg.bottom + BLOT_MIN_ROWS;
+	unsigned used = mrg.top + mrg.bottom + BLOT_MIN_PLOT_ROWS;
 	unsigned room = dim->rows > used ? dim->rows - used : 0;
 	while (above + below > room) {
 		if (below >= above)
@@ -331,6 +413,13 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 
 	mrg.top += above;
 	mrg.bottom += below;
+
+	/* a Y label may need more columns than the magnitude says, for the
+	 * digits that tell its tick from the next (1.4e-09, 0.0012: #10) */
+	if (!(flags & BLOT_RENDER_NO_Y_AXIS) && mrg.top + mrg.bottom < dim->rows) {
+		unsigned want = blot_figure_y_label_cols(dim->rows - mrg.top - mrg.bottom, lim) + 2;
+		mrg.left = max_t(unsigned, mrg.left, min_t(unsigned, want, dim->cols / 2));
+	}
 
 	return mrg;
 }
@@ -350,8 +439,9 @@ static blot_dimensions blot_figure_finalize_usable(const blot_figure *fig,
 	use.cols = dim->cols - mrg_cols;
 	use.rows = dim->rows - mrg_rows;
 
-	RETURN_EINVAL_IF(use.cols<BLOT_MIN_COLS, use, error);
-	RETURN_EINVAL_IF(use.rows<BLOT_MIN_ROWS, use, error);
+	/* the screen minimum (blot_figure.h) leaves this much with any flags */
+	RETURN_EINVAL_IF(use.cols<BLOT_MIN_PLOT_COLS, use, error);
+	RETURN_EINVAL_IF(use.rows<BLOT_MIN_PLOT_ROWS, use, error);
 
 	return use;
 }
@@ -433,11 +523,13 @@ static blot_screen * blot_figure_render_error(blot_figure *fig,
 	RETURN_IF(*error, NULL);
 
 	bool y_axs_visible = !(flags & BLOT_RENDER_NO_Y_AXIS);
-	y_axs = blot_axis_new(1, y_axs_visible,
+	/* the labels take the margin, less the blank and the axis */
+	y_axs = blot_axis_new_with_room(1, y_axs_visible,
 					fig->axis_color,
 					dim.rows - mrg.top - mrg.bottom,
 					lim.y_min, lim.y_max,
-					NULL, error);
+					NULL, mrg.left >= 2 ? mrg.left - 2 : 0,
+					error);
 	if (*error) __free_canvases_array(cans, fig->layer_count);
 	RETURN_IF(*error, NULL);
 

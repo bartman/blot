@@ -1,7 +1,15 @@
 #include <gtest/gtest.h>
+#include "blot_test.hpp"
+
+#include <cerrno>
+#include <cfloat>
+#include <cmath>
 
 #include "blot_axis.h"
 #include "blot_error.h"
+#include "blot_layer.h"
+
+#include <cfloat>
 
 TEST(Axis, alloc_new_delete)
 {
@@ -265,8 +273,207 @@ TEST(Axis, tick_value_matches_its_cell)
     }
 }
 
+/* --- a tick is in the cell of its value (#31) ---------------------------
+ *
+ * A tick sits in the cell that a data point at the tick's value is drawn
+ * in, and its value is within the limits, so that the point is drawn at
+ * all.  The cell truncated from the tick's screen offset could be one
+ * below: 1.48 + 12 * 2.96 is 36.99999999999999 on 74 rows over -1..1,
+ * so the 0 tick was in row 36 while y = 0 is drawn in row 37. */
+
+namespace {
+
+/* the cell along the axis that a scatter point at v is drawn in (the row
+ * from the bottom on a vertical axis), -1 when it isn't drawn */
+int drawn_cell(bool vertical, unsigned len, double min, double max, double v)
+{
+    const double xs[] = { vertical ? 0 : v }, ys[] = { vertical ? v : 0 };
+    blot_xy_limits lim = vertical ? blot_xy_limits{ -1, 1, min, max } : blot_xy_limits{ min, max, -1, 1 };
+    blot_dimensions dim = vertical ? blot_dimensions{ 3, len } : blot_dimensions{ len, 3 };
+    GError *e = NULL;
+    blot_layer *lay = blot_layer_new(BLOT_SCATTER, BLOT_DATA_DOUBLE, 1, xs, ys, 1, "p", &e);
+    EXPECT_TRUE(lay != NULL) << (e ? e->message : "");
+    g_clear_error(&e);
+    if (!lay)
+        return -1;
+    blot_test::Canvas can(blot_layer_render(lay, &lim, &dim, BLOT_RENDER_NO_UNICODE, &e));
+    blot_layer_delete(lay);
+    EXPECT_TRUE(can.can != NULL) << (e ? e->message : "");
+    g_clear_error(&e);
+    if (!can.can)
+        return -1;
+    blot_test::Cells cs = blot_test::cells(can);
+    if (cs.size() != 1)
+        return -1;
+    return vertical ? cs.begin()->second : cs.begin()->first;
+}
+
+/* the cell of v by the formula, floor((v - min) * len / (max - min)) and
+ * max in the last cell, independent of the library: a range so wide that
+ * the product overflows is first scaled by 2^-600, which is exact */
+unsigned formula_cell(double v, double min, double max, unsigned len)
+{
+    if (!std::isfinite((max - min) * len)) {
+        v = std::ldexp(v, -600);
+        min = std::ldexp(min, -600);
+        max = std::ldexp(max, -600);
+    }
+    return blot_test::expected_cell(v, min, max, len);
+}
+
+/* every tick of a is within min..max and in the cell of its value; true
+ * if it is (the failures are recorded) */
+bool ticks_in_their_cells(const Axis &a, bool vertical, unsigned len, double min, double max)
+{
+    int before = blot_test::result_parts();
+    for (const auto &t : a.ticks()) {
+        SCOPED_TRACE(testing::Message() << (vertical ? "V" : "H") << " len " << len << " [" << min << ","
+                                        << max << "] tick " << t.index << " value " << t.value);
+        EXPECT_TRUE(t.value >= min && t.value <= max) << "not within the limits";
+        EXPECT_EQ(t.index, formula_cell(t.value, min, max, len));
+        EXPECT_EQ((int)t.index, drawn_cell(vertical, len, min, max, t.value));
+    }
+    return blot_test::result_parts() == before;
+}
+
+} // namespace
+
+TEST(Axis, tick_in_cell_of_its_value_reproducer)
+{
+    for (double m : { 1.0, 0.5, DBL_MAX / 2 }) {
+        SCOPED_TRACE(testing::Message() << "-" << m << ".." << m);
+        Axis a(true, 74, -m, m);
+        ASSERT_TRUE(a.axs) << a.error;
+        /* the zero-aligned tick: y = 0 is drawn in row 37 */
+        const blot_axis_tick *zero = blot_axis_get_tick_at(a.axs, 37, NULL);
+        ASSERT_TRUE(zero != NULL) << "no tick in row 37";
+        EXPECT_EQ(zero->value, 0.0);
+        EXPECT_EQ(drawn_cell(true, 74, -m, m, 0), 37);
+        ticks_in_their_cells(a, true, 74, -m, m);
+    }
+}
+
+/* the zero alignment could make tick 0 an ulp below min:
+ * -8.9884656743115795e+307 for -DBL_MAX/2..DBL_MAX/2 on 60 columns, a
+ * value that isn't drawn */
+TEST(Axis, tick_values_within_the_limits)
+{
+    Axis a(false, 60, -DBL_MAX / 2, DBL_MAX / 2);
+    ASSERT_TRUE(a.axs) << a.error;
+    ticks_in_their_cells(a, false, 60, -DBL_MAX / 2, DBL_MAX / 2);
+}
+
+TEST(Axis, tick_in_cell_of_its_value_sweep)
+{
+    const double D = DBL_MAX;
+    std::vector<std::pair<double, double>> ranges;
+    for (const auto &rg : SWEEP_RANGES)
+        ranges.push_back({ rg[0], rg[1] });
+    /* zero aligned, tiny, huge */
+    for (const auto &rg : std::vector<std::pair<double, double>>{
+             { -1, 1 }, { -0.5, 0.5 }, { -50, 50 }, { -1.003, 2.003 }, { -0.1, 0.1 }, { -3, 1e-3 },
+             { -1e-9, 3e-9 }, { -2.5e-300, 1e-300 }, { 1e300, 1.5e300 }, { -D / 2, D / 2 }, { 0, D },
+             { -D, 0 }, { -1e308, 7e307 }, { 1e307, D }, { -D / 3, D / 7 } })
+        ranges.push_back(rg);
+    for (double min = -10; min < 0; min += 1.37)
+        for (double max = 0.5; max < 10; max += 2.61)
+            ranges.push_back({ min, max });
+
+    for (const auto &rg : ranges) {
+        for (unsigned len = 5; len <= 200; len++) {
+            for (bool vertical : { false, true }) {
+                Axis a(vertical, len, rg.first, rg.second);
+                ASSERT_TRUE(a.axs) << a.error;
+                if (!ticks_in_their_cells(a, vertical, len, rg.first, rg.second))
+                    goto next_range;
+            }
+        }
+    next_range:;
+    }
+}
+
+/* custom labels have no zero alignment, but their ticks are in the
+ * cells of their values too */
+TEST(Axis, custom_label_ticks_in_their_cells)
+{
+    std::vector<std::string> names;
+    for (unsigned i = 0; i < 250; i++) {
+        char name[16];
+        snprintf(name, sizeof(name), "l%u", i);
+        names.push_back(name);
+    }
+    std::vector<char *> ptrs;
+    for (auto &n : names)
+        ptrs.push_back(&n[0]);
+
+    for (size_t count : { 3, 7, 26, 74, 250 }) {
+        blot_strv labels = { count, ptrs.data() };
+        for (const auto &rg : std::vector<std::pair<double, double>>{ { 0, 1 }, { -1, 1 }, { -5, 5 }, { 0.1, 0.7 } }) {
+            for (unsigned len = 5; len <= 200; len++) {
+                for (bool vertical : { false, true }) {
+                    Axis a(vertical, len, rg.first, rg.second, &labels);
+                    ASSERT_TRUE(a.axs) << a.error;
+                    if (!ticks_in_their_cells(a, vertical, len, rg.first, rg.second))
+                        goto next_range;
+                }
+            }
+        next_range:;
+        }
+    }
+}
+
+/* A tick whose position is on the edge of a cell is in the cell above
+ * it, even when its value rounded to just below it (5/7 on 21 cells over
+ * 0..1 is 0.71428571428571419, in cell 14 by an ulp): its value is raised
+ * into that cell by the rounding error, so the ticks stay evenly spaced
+ * and a point on the tick's value is still drawn on the tick (#31). */
+TEST(Axis, ticks_on_cell_edges_evenly_spaced)
+{
+    {
+        Axis a(true, 21, 0, 1);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 0, 3, 6, 9, 12, 15, 18 },
+                                  { "0.000", "0.143", "0.286", "0.429", "0.571", "0.714", "0.857" }));
+        ticks_in_their_cells(a, true, 21, 0, 1);
+    }
+    {
+        /* zero-aligned: -1 + 1/37 is at 1, then every 3 */
+        Axis a(true, 111, -1, 2);
+        ASSERT_TRUE(a.axs) << a.error;
+        std::vector<unsigned> idx;
+        for (const auto &t : a.ticks())
+            idx.push_back(t.index);
+        std::vector<unsigned> want;
+        for (unsigned c = 1; c < 111; c += 3)
+            want.push_back(c);
+        EXPECT_EQ(idx, want);
+        ticks_in_their_cells(a, true, 111, -1, 2);
+    }
+    /* ticks a whole number of cells apart, no zero alignment */
+    for (const auto &rg : SWEEP_RANGES) {
+        if (rg[0] < 0 && 0 < rg[1])
+            continue;
+        for (unsigned len = 10; len <= 200; len++) {
+            for (bool vertical : { false, true }) {
+                Axis a(vertical, len, rg[0], rg[1]);
+                ASSERT_TRUE(a.axs) << a.error;
+                auto ticks = a.ticks();
+                if (ticks.size() < 2 || len % ticks.size())
+                    continue;
+                unsigned step = len / ticks.size();
+                for (unsigned i = 0; i < ticks.size(); i++)
+                    EXPECT_EQ(ticks[i].index, i * step) << (vertical ? "V" : "H") << " len " << len << " ["
+                                                        << rg[0] << "," << rg[1] << "] tick " << i;
+            }
+        }
+    }
+}
+
 /* the ticks of the A6 formula with the zero alignment, as blot_axis_new()
- * lays them out: {cell, value} */
+ * lays them out: {cell, value}.  The value is within the limits and the
+ * cell is its cell; or, when the screen offset is on the edge of the next
+ * cell, that one (the value is then raised into it by a rounding error,
+ * unless it is 0: #31) */
 static std::vector<std::pair<unsigned, double>> formula_ticks(unsigned len, unsigned n, double min, double max)
 {
     double d_jump = (max - min) / n, s_jump = (double)len / n, d_base = 0, s_base = 0;
@@ -277,8 +484,12 @@ static std::vector<std::pair<unsigned, double>> formula_ticks(unsigned len, unsi
         s_base = (t_shift - ti) * s_jump;
     }
     std::vector<std::pair<unsigned, double>> out;
-    for (unsigned i = 0; i < n; i++)
-        out.push_back({ (unsigned)(s_base + i * s_jump), d_base + i * d_jump + min });
+    for (unsigned i = 0; i < n; i++) {
+        double v = std::min(std::max(d_base + i * d_jump + min, min), max);
+        unsigned cell = blot_test::expected_cell(v, min, max, len);
+        double s = s_base + i * s_jump, edge = std::nearbyint(s);
+        out.push_back({ v != 0 && std::fabs(s - edge) < 1e-9 && cell + 1 == edge ? cell + 1 : cell, v });
+    }
     return out;
 }
 
@@ -295,6 +506,12 @@ TEST(Axis, tick_count_formula)
                 auto ticks = a.ticks();
                 SCOPED_TRACE(testing::Message() << (vertical ? "V" : "H") << " len " << len
                                                 << " [" << rg[0] << "," << rg[1] << "]");
+                if (!vertical && len < 24 && rg[0] == 0.001 && ticks.size() == 2) {
+                    /* #10: 0.00133 needs 6 columns of 5, and 0.001 for it
+                     * is 13 half-cells off: two ticks, 0.001 and 0.0015 */
+                    EXPECT_EQ(n, 3u);
+                    continue;
+                }
                 if (ticks.size() + 1 == n && !vertical && rg[0] < 0 && 0 < rg[1]) {
                     /* #9: the zero alignment pushed the last tick so close
                      * to the edge that no good text of its value fits;
@@ -303,7 +520,7 @@ TEST(Axis, tick_count_formula)
                     auto f = formula_ticks(len, n, rg[0], rg[1]);
                     for (unsigned i = 0; i + 1 < n; i++) {
                         EXPECT_EQ(ticks[i].index, f[i].first) << "tick " << i;
-                        EXPECT_EQ(ticks[i].value, f[i].second) << "tick " << i;
+                        EXPECT_NEAR(ticks[i].value, f[i].second, 1e-12 * (rg[1] - rg[0]) / len) << "tick " << i;
                     }
                     /* the dropped one was in the last tick spacing */
                     EXPECT_GE(f[n - 1].first + std::floor((double)len / n), len);
@@ -363,14 +580,129 @@ TEST(Axis, x_labels_are_distinct)
     EXPECT_EQ(a.labels(), zip({ 0, 10 }, { "-200100.0", "-150000.0" }));
 }
 
-// BUG B16: https://git.jukie.net/bart/blot/-/work_items/10
-TEST(Axis, DISABLED_labels_are_distinct)
+// B16, fixed in #10: https://git.jukie.net/bart/blot/-/work_items/10
+TEST(Axis, labels_are_distinct)
 {
     Axis a(true, 12, 1e-9, 3e-9);
     ASSERT_TRUE(a.axs) << a.error;
     std::set<std::string> seen;
     for (const auto &t : a.ticks())
         EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
+}
+
+/* #10: tiny ranges, exact.  The labels have the digits the tick spacing
+ * needs (they were all 0.000, or 0.001 for 0.0012 and 0.0014), and zero
+ * is not negative */
+TEST(Axis, tiny_range_labels_exact)
+{
+    {
+        Axis a(true, 12, 1e-9, 3e-9);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 0, 2, 4, 7, 9 }, { "1e-09", "1.4e-09", "1.8e-09", "2.2e-09", "2.6e-09" }));
+    }
+    {
+        Axis a(false, 50, 0.001, 0.002);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 0, 10, 20, 30, 40 }, { "0.001", "0.0012", "0.0014", "0.0016", "0.0018" }));
+    }
+    {
+        /* three ticks have 6 columns each: 0.00133 doesn't fit, and
+         * 0.001 is 13 half-cells off; two ticks */
+        Axis a(false, 20, 0.001, 0.002);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 0, 10 }, { "0.001", "0.0015" }));
+    }
+    {
+        Axis a(true, 12, -0.0005, 0.0005);
+        ASSERT_TRUE(a.axs) << a.error;
+        EXPECT_EQ(a.labels(), zip({ 1, 3, 6, 8, 10 }, { "-0.0004", "-0.0002", "0.000", "0.0002", "0.0004" }));
+    }
+}
+
+/* #10: every label of a vertical axis (with all of its 15 columns) names
+ * a value within half a cell of its tick; none is a negative zero */
+TEST(Axis, y_labels_within_half_a_cell_sweep)
+{
+    const double RANGES[][2] = {
+        { 1e-9, 3e-9 }, { -3e-9, -1e-9 }, { 0.001, 0.002 }, { -0.0005, 0.0005 }, { -0.01003, 0.02003 },
+        { -0.0019955, 0.0194945 }, { 0, 1 }, { -7.01, 3.01 }, { 1e9, 5.2e9 }, { -200100, -99900 },
+        { 1e6, 1e6 + 0.001 }, { -1e100, 1e100 }, { 1e-300, 3e-300 },
+    };
+    for (const auto &rg : RANGES) {
+        int parts = blot_test::result_parts();
+        for (unsigned len = 3; len <= 200 && blot_test::result_parts() == parts; len++) {
+            SCOPED_TRACE(testing::Message() << "V len " << len << " [" << rg[0] << "," << rg[1] << "]");
+            Axis a(true, len, rg[0], rg[1]);
+            ASSERT_TRUE(a.axs) << a.error;
+            double cell = (rg[1] - rg[0]) / len;
+            std::set<std::string> seen;
+            for (const auto &t : a.ticks()) {
+                char *end = NULL;
+                double v = strtod(t.label.c_str(), &end);
+                EXPECT_TRUE(!t.label.empty() && *end == 0) << "tick " << t.index << " label '" << t.label << "'";
+                EXPECT_LE(std::fabs(v - t.value), 0.5 * cell * (1 + 1e-9))
+                    << "tick " << t.index << " " << t.value << " label '" << t.label << "'";
+                EXPECT_FALSE(t.label[0] == '-' && v == 0) << "tick " << t.index << " label '" << t.label << "'";
+                EXPECT_LE(t.label.size(), 15u);
+                EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
+            }
+        }
+    }
+}
+
+/* #10: Y labels in a narrow margin (blot_axis_new_with_room): each fits
+ * the columns and names a value within half a cell of its tick, or no
+ * further off than its text with all 15 columns; else the ticks are
+ * fewer, down to one at the start of the axis, whose label is empty when
+ * even that has no such text */
+TEST(Axis, y_labels_in_room_sweep)
+{
+    const double RANGES[][2] = {
+        { 1e-9, 3e-9 }, { -3e-9, -1e-9 }, { 0.001, 0.002 }, { -0.0005, 0.0005 }, { -0.01003, 0.02003 },
+        { 0, 1 }, { -7.01, 3.01 }, { 1e9, 5.2e9 }, { -200100, -99900 }, { 0, 12345678901.0 },
+        { 1e6, 1e6 + 0.001 }, { -1e100, 1e100 }, { -1e15, 1e15 },
+    };
+    for (const auto &rg : RANGES) {
+        int parts = blot_test::result_parts();
+        for (unsigned cols = 0; cols <= 16; cols++) {
+            for (unsigned len = 3; len <= 60 && blot_test::result_parts() == parts; len++) {
+                SCOPED_TRACE(testing::Message() << "V len " << len << " cols " << cols << " [" << rg[0] << ","
+                                                << rg[1] << "]");
+                GError *e = NULL;
+                blot_axis *axs = blot_axis_new_with_room(true, true, 7, len, rg[0], rg[1], NULL, cols, &e);
+                ASSERT_TRUE(axs) << e->message;
+                double half_cell = 0.5 * (rg[1] - rg[0]) / len;
+                std::set<std::string> seen;
+                unsigned n = 0;
+                for (unsigned i = 0; i < len; i++) {
+                    const blot_axis_tick *t = blot_axis_get_tick_at(axs, i, NULL);
+                    if (!t)
+                        continue;
+                    n++;
+                    std::string label = t->label;
+                    EXPECT_LE(label.size(), std::min(cols, 15u)) << "label '" << label << "'";
+                    if (label.empty()) {
+                        /* only a lone tick at the start */
+                        EXPECT_EQ(i, 0u);
+                        continue;
+                    }
+                    char full[17];
+                    ASSERT_GE(blot_format_number_within(full, 16, t->value, half_cell), 0);
+                    double v = strtod(label.c_str(), NULL);
+                    double err = std::fabs(v - t->value), full_err = std::fabs(strtod(full, NULL) - t->value);
+                    EXPECT_LE(err, std::max(half_cell, full_err * (1 + 1e-9)))
+                        << "tick " << i << " " << t->value << " label '" << label << "' full '" << full << "'";
+                    EXPECT_FALSE(label[0] == '-' && v == 0) << "label '" << label << "'";
+                    EXPECT_TRUE(seen.insert(label).second) << "duplicate label " << label;
+                }
+                EXPECT_GE(n, 1u);
+                if (seen.empty()) {
+                    EXPECT_EQ(n, 1u);
+                }
+                blot_axis_delete(axs);
+            }
+        }
+    }
 }
 
 TEST(Axis, custom_labels_evenly_spaced)
@@ -424,38 +756,44 @@ TEST(Axis, x_labels_within_half_a_cell)
 /* #9 re-review M1b: when even the full text is more than half a cell
  * off (%.3f is the formatter's first choice), a shorter text may be no
  * further off: 0.01842 at 66 has 4 columns, 0.02 is 5 half-cells off and
- * the full 0.018 less than 3, so the tick is dropped */
+ * the full 0.018 less than 3, so the tick is dropped.  #10: the full text
+ * has the digits half a cell (0.0001535) needs: 0.0092 for 0.00921, not
+ * 0.009, 1.4 half-cells off (0.0123 for 0.01228, 0.0153 for 0.01535) */
 TEST(Axis, x_label_no_worse_than_full_text)
 {
     Axis a(false, 70, -0.0019955, 0.0194945);
     ASSERT_TRUE(a.axs) << a.error;
-    EXPECT_EQ(a.labels(), zip({ 6, 16, 26, 36, 46, 56 }, { "0.000", "0.003", "0.006", "0.009", "0.012", "0.015" }));
+    EXPECT_EQ(a.labels(), zip({ 6, 16, 26, 36, 46, 56 }, { "0.000", "0.003", "0.006", "0.0092", "0.0123", "0.0153" }));
 }
 
 /* #9: every X number label names a value within half a cell of its tick,
  * or, when even the formatter's text with all the room is further off,
  * no further than that; and it is in reach of the tick's own cell.  Also
- * the ranges where %.3f is coarser than a cell. */
+ * the ranges where %.3f is coarser than a cell.  #10: with the digits the
+ * tick spacing needs, the full text is within half a cell in all of
+ * these, so each label is too; none is a negative zero */
 TEST(Axis, x_labels_no_worse_than_needed_sweep)
 {
     const double RANGES[][2] = {
         { -0.01003, 0.02003 }, { -0.0019955, 0.0194945 }, { 0.001, 0.002 }, { -7.01, 3.01 },
         { -1.003, 2.003 }, { 1e9, 5.2e9 }, { -200100, -99900 }, { -1e100, 1e100 },
+        { 1e-9, 3e-9 }, { -0.0005, 0.0005 }, { 1e6, 1e6 + 0.001 },
     };
     for (const auto &rg : RANGES) {
-        for (unsigned len = 10; len <= 200; len++) {
+        int parts = blot_test::result_parts();
+        for (unsigned len = 10; len <= 200 && blot_test::result_parts() == parts; len++) {
             SCOPED_TRACE(testing::Message() << "H len " << len << " [" << rg[0] << "," << rg[1] << "]");
             Axis a(false, len, rg[0], rg[1]);
             ASSERT_TRUE(a.axs) << a.error;
             double cell = (rg[1] - rg[0]) / len;
+            std::set<std::string> seen;
             for (const auto &t : a.ticks()) {
-                char full[17];
-                ASSERT_GE(blot_format_number(full, sizeof(full), t.value), 0);
-                double err = std::fabs(strtod(t.label.c_str(), NULL) - t.value);
-                double full_err = std::fabs(strtod(full, NULL) - t.value);
-                EXPECT_LE(err, std::max(0.5 * cell, full_err * (1 + 1e-9)))
-                    << "tick " << t.index << " " << t.value << " label '" << t.label << "' full '" << full << "'";
+                double v = strtod(t.label.c_str(), NULL);
+                EXPECT_LE(std::fabs(v - t.value), 0.5 * cell * (1 + 1e-9))
+                    << "tick " << t.index << " " << t.value << " label '" << t.label << "'";
+                EXPECT_FALSE(t.label[0] == '-' && v == 0) << "tick " << t.index << " label '" << t.label << "'";
                 EXPECT_LE(t.label.size(), 16u);
+                EXPECT_TRUE(seen.insert(t.label).second) << "duplicate label " << t.label;
             }
         }
     }
@@ -526,18 +864,45 @@ TEST(Axis, large_axis_label_storage)
     }
 }
 
-// BUG B6, B7: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Axis, DISABLED_non_finite_limits_rejected)
+/* B6, B7 (#6): NaN or inf limits, or limits further apart than the
+ * largest double (max - min is inf), would give NaN or inf tick values */
+TEST(Axis, non_finite_limits_rejected)
 {
-    const double lim[][2] = { { NAN, 1 }, { 0, NAN }, { 0, INFINITY }, { -INFINITY, 0 } };
+    const double lim[][2] = { { NAN, 1 }, { 0, NAN }, { 0, INFINITY }, { -INFINITY, 0 },
+                              { NAN, NAN }, { -INFINITY, INFINITY }, { -DBL_MAX, DBL_MAX } };
     for (const auto &l : lim) {
         SCOPED_TRACE(testing::Message() << "[" << l[0] << "," << l[1] << "]");
         GError *error = NULL;
         blot_axis *axs = blot_axis_new(true, true, 7, 20, l[0], l[1], NULL, &error);
         EXPECT_TRUE(axs == NULL);
-        EXPECT_TRUE(error != NULL);
+        ASSERT_TRUE(error != NULL);
+        /* the setters' errors: EINVAL for NaN or inf, ERANGE for too wide */
+        bool finite = std::isfinite(l[0]) && std::isfinite(l[1]);
+        EXPECT_EQ(error->code, finite ? ERANGE : EINVAL) << error->message;
         g_clear_error(&error);
         blot_axis_delete(axs);
+    }
+}
+
+/* #6: the widest ranges the axis takes have finite tick values and no
+ * "nan" or "inf" label */
+TEST(Axis, widest_ranges_have_finite_labels)
+{
+    const double lim[][2] = { { 0, DBL_MAX }, { -DBL_MAX, 0 }, { -DBL_MAX / 2, DBL_MAX / 2 },
+                              { DBL_MAX / 2, DBL_MAX }, { -1e308, 7e307 } };
+    for (bool vertical : { true, false }) {
+        for (const auto &l : lim) {
+            SCOPED_TRACE(testing::Message() << vertical << " [" << l[0] << "," << l[1] << "]");
+            Axis a(vertical, 60, l[0], l[1]);
+            ASSERT_TRUE(a.axs) << a.error;
+            std::vector<Tick> ticks = a.ticks();
+            EXPECT_FALSE(ticks.empty());
+            for (const Tick &t : ticks) {
+                EXPECT_TRUE(std::isfinite(t.value)) << t.value;
+                EXPECT_EQ(t.label.find("nan"), std::string::npos) << t.label;
+                EXPECT_EQ(t.label.find("inf"), std::string::npos) << t.label;
+            }
+        }
     }
 }
 

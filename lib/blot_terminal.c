@@ -11,13 +11,11 @@ static blot_dimensions blot_fixed_dims = {};
 
 bool blot_terminal_set_size(blot_dimensions dims, GError **error)
 {
-	RETURN_ERRORx(dims.cols>BLOT_MAX_COLS || dims.cols<BLOT_MIN_COLS,
-	       false, error, ERANGE,
-	       "invalid columns=%d specified", dims.cols);
-
-	RETURN_ERRORx(dims.rows>BLOT_MAX_ROWS || dims.rows<BLOT_MIN_ROWS,
-	       false, error, ERANGE,
-	       "invalid rows=%d specified", dims.rows);
+	/* the same range as blot_figure_set_screen_size() (blot_figure.h, #17) */
+	RETURN_ERRORx(dims.cols<BLOT_MIN_COLS || dims.cols>BLOT_MAX_COLS, false, error, EINVAL,
+		      "cols=%u is outside %u..%u", dims.cols, BLOT_MIN_COLS, BLOT_MAX_COLS);
+	RETURN_ERRORx(dims.rows<BLOT_MIN_ROWS || dims.rows>BLOT_MAX_ROWS, false, error, EINVAL,
+		      "rows=%u is outside %u..%u", dims.rows, BLOT_MIN_ROWS, BLOT_MAX_ROWS);
 
 	blot_fixed_dims = dims;
 	return true;
