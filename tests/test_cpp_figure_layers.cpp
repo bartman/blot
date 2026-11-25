@@ -80,7 +80,7 @@ Lines legend_of(Blot::Figure &fig)
 	EXPECT_TRUE(r.ok) << r.message;
 	Lines out;
 	for (const auto &l : blot_test::strip_sgr(r.lines))
-		if (l.find(L'\u25d8') != std::wstring::npos)	/* ◘ */
+		if (l.find(L'#') != std::wstring::npos)	/* the NO_UNICODE legend symbol (#46) */
 			out.push_back(blot_test::rtrim(l));
 	return out;
 }
@@ -219,7 +219,7 @@ TEST(CppFigureLayers, lvalue_destroyed_before_render)
 		}
 		scribble();
 		EXPECT_CELLS_EQ(cells_of(fig), SC_CELLS);
-		EXPECT_EQ(legend_of(fig), Lines({ L"◘  a label longer than the small string buffer" }));
+		EXPECT_EQ(legend_of(fig), Lines({ L"#  a label longer than the small string buffer" }));
 	});
 }
 
@@ -235,7 +235,7 @@ TEST(CppFigureLayers, lvalue_changed_after_plot)
 	ys.assign(ys.size(), 7);
 	label[0] = 'X';
 	EXPECT_CELLS_EQ(cells_of(fig), SC_CELLS);
-	EXPECT_EQ(legend_of(fig), Lines({ L"◘  pts" }));
+	EXPECT_EQ(legend_of(fig), Lines({ L"#  pts" }));
 }
 
 TEST(CppFigureLayers, rvalue_moved_in_lvalue_copied)
@@ -265,7 +265,7 @@ TEST(CppFigureLayers, failed_plot_adds_nothing)
 		EXPECT_THROW(fig.line(std::vector<double>(), 3, "empty"), Blot::Exception);
 		EXPECT_EQ(fig.c_ptr()->layer_count, 1u);
 		EXPECT_CELLS_EQ(cells_of(fig), SC_CELLS);
-		EXPECT_EQ(legend_of(fig), Lines({ L"◘  pts" }));
+		EXPECT_EQ(legend_of(fig), Lines({ L"#  pts" }));
 	});
 }
 
@@ -295,8 +295,8 @@ TEST(CppFigureLayers, label_from_temporary_c_str)
 		fig.line(SC_X, SC_Y, 2, std::string("short").c_str());
 		scribble();
 		EXPECT_EQ(legend_of(fig), Lines({
-			L"◘  a label longer than the small string buffer",
-			L"◘  short",
+			L"#  a label longer than the small string buffer",
+			L"#  short",
 		}));
 	});
 }
@@ -309,7 +309,7 @@ TEST(CppFigureLayers, label_of_span_layer_is_copied)
 		fig.plot(BLOT_SCATTER, std::span<const int>(SC_X), std::span<const int>(SC_Y), 1,
 			 std::string("a label longer than the small string buffer").c_str());
 		scribble();
-		EXPECT_EQ(legend_of(fig), Lines({ L"◘  a label longer than the small string buffer" }));
+		EXPECT_EQ(legend_of(fig), Lines({ L"#  a label longer than the small string buffer" }));
 	});
 }
 
@@ -336,7 +336,7 @@ TEST(CppFigureLayers, move_construct_keeps_data)
 		scribble();
 		EXPECT_EQ(a.c_ptr()->layer_count, 0u);
 		EXPECT_CELLS_EQ(cells_of(b), SC_CELLS);
-		EXPECT_EQ(legend_of(b), Lines({ L"◘  pts" }));
+		EXPECT_EQ(legend_of(b), Lines({ L"#  pts" }));
 	});
 }
 
@@ -354,7 +354,7 @@ TEST(CppFigureLayers, move_assign_keeps_data)
 		scribble();
 		EXPECT_EQ(a.c_ptr()->layer_count, 0u);
 		EXPECT_CELLS_EQ(cells_of(b), SC_CELLS);
-		EXPECT_EQ(legend_of(b), Lines({ L"◘  pts" }));
+		EXPECT_EQ(legend_of(b), Lines({ L"#  pts" }));
 
 		/* the moved-from figure plots data of its own */
 		fix_a(a);
@@ -381,7 +381,7 @@ TEST(CppFigureLayers, figures_in_a_growing_vector)
 		for (size_t i = 0; i < figs.size(); i++) {
 			SCOPED_TRACE(i);
 			EXPECT_CELLS_EQ(cells_of(figs[i]), i % 2 ? SC_Y_CELLS : SC_CELLS);
-			EXPECT_EQ(legend_of(figs[i]), Lines({ L"◘  " + std::to_wstring(i) }));
+			EXPECT_EQ(legend_of(figs[i]), Lines({ L"#  " + std::to_wstring(i) }));
 		}
 	});
 }
@@ -424,9 +424,9 @@ void labels_from_strings()
 		fig.bar(SC_Y, 3, std::string_view("view"));
 		scribble();
 		EXPECT_EQ(legend_of(fig), Lines({
-			L"◘  a label longer than the small string buffer",
-			L"◘  short",
-			L"◘  view",
+			L"#  a label longer than the small string buffer",
+			L"#  short",
+			L"#  view",
 		}));
 	} else {
 		ADD_FAILURE() << "a std::string label doesn't compile";

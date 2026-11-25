@@ -1227,7 +1227,7 @@ void expect_renders_with_all_flags(blot_figure *f, unsigned cols, unsigned rows)
         unsigned spare = rows - x_rows - BLOT_MIN_PLOT_ROWS;
         unsigned marks = 0;
         for (const auto &l : lines)
-            if (l.find((wchar_t)0x25D8) != std::wstring::npos)    /* ◘ */
+            if (l.find(L'#') != std::wstring::npos)    /* the NO_UNICODE legend symbol (#46) */
                 marks++;
         EXPECT_EQ(marks, std::min(2 * legends, spare));
         if (::testing::Test::HasFailure())

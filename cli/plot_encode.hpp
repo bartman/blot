@@ -5,14 +5,15 @@
 #include <cwchar>
 #include <string>
 
-/* the display width the library laid a character out with: wcwidth()
- * in the current locale, and 1 where that can't tell (-1), as
- * blot_legend_putc() in lib/blot_screen.c does.  (#18, !36, adds a
- * locale-independent width table to the library; this should use it
- * then) */
+#include "blot_text.h"
+
+/* the display width the library laid a character out with:
+ * blot_text_wcwidth(), the same in every locale (#18), so the '?'s match
+ * the layout in the C locale and in legacy 8-bit ones too; 1 where it
+ * can't tell (-1), as blot_legend_next_col() in lib/blot_screen.c does */
 inline int plot_char_width(wchar_t wc)
 {
-	int w = wcwidth(wc);
+	int w = blot_text_wcwidth(wc);
 	return w >= 0 ? w : 1;
 }
 

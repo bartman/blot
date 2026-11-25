@@ -192,9 +192,13 @@ public:
 
 		double t_add = timing ? blot_double_time() : 0;
 
-		blot_render_flags flags
-			= BLOT_RENDER_LEGEND_BELOW
-			| BLOT_RENDER_CLEAR;
+		blot_render_flags flags = BLOT_RENDER_LEGEND_BELOW;
+
+		/* colour and the screen clear: see Config (#44) */
+		if (m_config.clear())
+			flags = flags | BLOT_RENDER_CLEAR;
+		if (!m_config.color())
+			flags = flags | BLOT_RENDER_NO_COLOR;
 
 		switch (m_config.output_type()) {
 			case Config::ASCII:

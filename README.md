@@ -66,9 +66,11 @@ See the online help for a full list of features...
 ```sh
 SYNOPSIS
     blot [-h] [-V]
-    blot [-v] [--debug] [--timing] [-i <sec>] [-A|-U|-B] ((scatter|line|bar)
-         ([-R <file>] | [-F <file>] | [-P <file>] | [-X <cmd>] | [-W <cmd>])
-         [-p <y-pos|x-pos,y-pos>] [-r <regex>] [-l <count>] [-c <color>] [-i <sec>])...
+    blot [-v] [--debug] [--timing] [-i <sec>] [--color= <when>]...
+         [--no-color]... [-A|-U|-B] ((scatter|line|bar) ([-R <file>] | [-F
+         <file>] | [-P <file>] | [-X <cmd>] | [-W <cmd>]) [-p
+         <y-pos|x-pos,y-pos>] [-r <regex>] [-l <count>] [-c <color>] [-i
+         <sec>])...
 
 OPTIONS
     -h, --help                  This help
@@ -78,7 +80,14 @@ OPTIONS
         -v, --verbose           Enable verbose output
         --debug                 Enable debug output
         --timing                Show timing statitiscs
-        -i, --interval <sec>    Display interval in seconds
+        -i, --interval <sec>    Display interval in seconds while the input
+                                lasts (default 1)
+
+        --color= <when>         Colour: auto (on a terminal, the default),
+                                always (also clears the screen for each frame)
+                                or never
+
+        --no-color...           No colour, same as --color=never
 
     Output:
         -A, --ascii             ASCII output
