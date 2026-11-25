@@ -735,6 +735,11 @@ TEST(Axis, null_custom_labels_have_no_text)
     Axis b(false, 30, -5, 5, &nv);
     ASSERT_TRUE(b.axs) << b.error;
     EXPECT_EQ(b.labels(), zip({ 0, 10, 20 }, { "", "", "" }));
+
+    /* the same on a vertical axis */
+    Axis c(true, 12, 0, 4, &lv);
+    ASSERT_TRUE(c.axs) << c.error;
+    EXPECT_EQ(c.labels(), zip({ 0, 2, 4, 7, 9 }, { "", "b", "", "d", "" }));
 }
 
 TEST(Axis, more_custom_labels_than_cells)
