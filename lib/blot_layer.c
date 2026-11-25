@@ -152,8 +152,8 @@ struct blot_canvas * blot_layer_render(blot_layer *lay,
 				       GError **error)
 {
 	RETURN_EFAULT_IF(lay==NULL, NULL, error);
-	RETURN_EINVAL_IF(lay->plot_type>BLOT_PLOT_TYPE_MAX, NULL, error);
-	RETURN_EINVAL_IF(lay->data_type>BLOT_DATA_TYPE_MAX, NULL, error);
+	RETURN_EINVAL_IF(lay->plot_type>=BLOT_PLOT_TYPE_MAX, NULL, error);
+	RETURN_EINVAL_IF(lay->data_type>=BLOT_DATA_TYPE_MAX, NULL, error);
 
 	blot_canvas *can = blot_canvas_new(dim->cols, dim->rows, flags, lay->color, error);
 	RETURN_IF(!can, NULL);

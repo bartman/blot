@@ -1,0 +1,10 @@
+# The extra packages of the deb13-clang CI image (see ci/images and the
+# top of .gitlab-ci.yml), on top of common.packages: clang and its
+# sanitizer runtimes for the sanitize-deb13 job (#15, ci/sanitize.sh).
+# They are kept out of common.packages because make prefers clang when
+# it is installed, and the build-* jobs build with gcc.
+#
+#   clang             the compiler (Debian's default version)
+#   libclang-rt-dev   compiler-rt: the ASan/UBSan runtimes
+#   llvm              llvm-symbolizer, for file:line in the reports
+clang libclang-rt-dev llvm
