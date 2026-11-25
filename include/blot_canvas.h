@@ -277,7 +277,12 @@ static inline unsigned long blot_canvas_line_near(double a, double a0, double a1
 		return 0;
 	if (d >= (double)m)
 		return m;
-	return (unsigned long)lround(d);
+	/* a tie goes to the upper cell, floor(b + 0.5), as a value on a cell
+	 * edge does on the axes; walking down that is the nearer cell */
+	long k = lround(d);
+	if (b_dir < 0 && (double)k - d == 0.5)
+		k--;
+	return (unsigned long)k;
 }
 
 /* Draw a line between two points in canvas coordinates.
@@ -286,7 +291,8 @@ static inline unsigned long blot_canvas_line_near(double a, double a0, double a1
  * - Between them the walk takes one cell per step along the major axis
  *   (the one with more cells between the two end cells); on the minor
  *   axis it takes the cell nearest to the true segment at that major
- *   cell (rounded half towards the far end).
+ *   cell; a tie goes to the upper cell (the larger x or y), as a value on
+ *   a cell edge does on the axes.
  * - A cell never moves more than one cell on the minor axis from the
  *   previous one and always stays within reach of the far end, so the
  *   line has no gaps.  This only matters for segments whose true slope is

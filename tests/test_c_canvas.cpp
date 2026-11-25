@@ -432,7 +432,9 @@ namespace {
 
 /* The line walk of #4 (!6), before #5: it visits every cell from one end
  * to the other and drops those off the canvas.  Only for ends where that
- * is fast.  This is the reference the clipped walk must match. */
+ * is fast.  This is the reference the clipped walk must match.  The one
+ * change since #4 is the tie rule (#5): an interior tie goes to the upper
+ * cell, not towards the far end. */
 Cells unclipped_line_cells(unsigned w, unsigned h, double x0, double y0, double x1, double y1)
 {
     Cells out;
@@ -483,6 +485,9 @@ Cells unclipped_line_cells(unsigned w, unsigned h, double x0, double y0, double 
                 want = m;
             else
                 want = (unsigned long)lround(d);
+            /* #5: a tie goes to the upper cell, also walking down */
+            if (b_dir < 0 && d > 0 && d < (double)m && (double)want - d == 0.5)
+                want--;
 
             unsigned long lo = off ? off - 1 : 0;
             unsigned long hi = off < m ? off + 1 : m;
@@ -641,4 +646,25 @@ TEST(Canvas, line_diagonal_rounding_matches_full_walk)
                     unclipped_line_cells(33, 12, -29, -48.5, 24.4, 4.9));
     EXPECT_CELLS_EQ(line_cells(33, 12, 24.4, 4.9, -29, -48.5),
                     unclipped_line_cells(33, 12, -29, -48.5, 24.4, 4.9));
+}
+
+TEST(Canvas, line_interior_tie_goes_to_upper_cell)
+{
+    /* y = 3 - x/2 crosses y = 2.5 and y = 1.5 at the centres of columns 1
+     * and 3: those ties go to the upper row, as a value on a cell edge
+     * does on the axes (G18 in #14), whichever end the walk starts from */
+    Cells down = { { 0, 3 }, { 1, 3 }, { 2, 2 }, { 3, 2 }, { 4, 1 } };
+    EXPECT_CELLS_EQ(line_cells(6, 6, 0, 3, 4, 1), down);
+    EXPECT_CELLS_EQ(line_cells(6, 6, 4, 1, 0, 3), down);
+
+    /* y = 1 + x/2: upwards the upper row was already the far one */
+    Cells up = { { 0, 1 }, { 1, 2 }, { 2, 2 }, { 3, 3 }, { 4, 3 } };
+    EXPECT_CELLS_EQ(line_cells(6, 6, 0, 1, 4, 3), up);
+    EXPECT_CELLS_EQ(line_cells(6, 6, 4, 3, 0, 1), up);
+
+    /* steep: x = 3 - y/2, ties at the centres of rows 1 and 3 go to the
+     * larger column (the walk goes up in y, so x is the minor axis) */
+    Cells steep = { { 3, 0 }, { 3, 1 }, { 2, 2 }, { 2, 3 }, { 1, 4 } };
+    EXPECT_CELLS_EQ(line_cells(6, 6, 3, 0, 1, 4), steep);
+    EXPECT_CELLS_EQ(line_cells(6, 6, 1, 4, 3, 0), steep);
 }
