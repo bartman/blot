@@ -70,13 +70,24 @@ BLOT_API bool blot_figure_set_x_limits(blot_figure *fig,
 BLOT_API bool blot_figure_set_y_limits(blot_figure *fig,
 				     double y_min, double y_max, GError **);
 
+/* BLOT_LABEL_TEXT: legend labels (data_label) and custom X labels are
+ * UTF-8 in every locale, the C locale too (#18); they are not read in the
+ * locale's own encoding.  Each byte that isn't valid UTF-8 (a Latin-1 'é'
+ * from an ISO-8859-1 locale, say) is shown as one '?', and so is a control
+ * character or a code point that isn't a printable character.  Their width
+ * is counted as a UTF-8 terminal shows them: 2 columns for East Asian wide
+ * and fullwidth characters and emoji, 0 for combining marks (at most 4
+ * after each character are kept), in every locale.  The screen text is
+ * UCS-4 wchar_t whatever the locale. */
+
 /* The figure keeps a copy of the array and of the strings (NULL entries
  * stay NULL); the caller may free or reuse its own after the call.  A new
  * set replaces (and frees) the old copy, label_count=0 with x_labels=NULL
  * clears it, and blot_figure_cleanup() frees it.  An invalid call (a count
  * without an array, or an array without a count) fails with EINVAL and
  * leaves the current labels unchanged.  The strings are not
- * modified: x_labels is not const only to keep the C API unchanged. */
+ * modified: x_labels is not const only to keep the C API unchanged.
+ * Labels are UTF-8 text in every locale (BLOT_LABEL_TEXT below). */
 BLOT_API bool blot_figure_set_x_axis_labels(blot_figure *fig, size_t label_count,
 					  char **x_labels, GError **);
 
@@ -90,7 +101,8 @@ BLOT_API struct blot_screen * blot_figure_render(blot_figure *fig,
 
 /* The layer keeps the data_xs and data_ys pointers and the data_label
  * pointer, not copies: the data and the label must stay valid, and
- * unchanged, until the last blot_figure_render() of this figure. */
+ * unchanged, until the last blot_figure_render() of this figure.  The
+ * label is UTF-8 text in every locale (BLOT_LABEL_TEXT below). */
 BLOT_API bool blot_figure_plot(blot_figure *fig,
 		      blot_plot_type plot_type, blot_data_type data_type,
 		      size_t data_count, const void *data_xs, const void *data_ys,

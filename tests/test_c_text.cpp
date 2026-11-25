@@ -83,6 +83,26 @@ TEST(TextWidth, c_locale_uses_builtin)
     });
 }
 
+/* the table is glibc 2.41's: with that glibc, the built-in table and
+ * C.UTF-8 wcwidth() are the same on every code point, the unprintable
+ * ones (-1) too */
+TEST(TextWidth, builtin_equals_glibc_2_41_everywhere)
+{
+    if (strcmp(gnu_get_libc_version(), "2.41"))
+        GTEST_SKIP() << "the table is from glibc 2.41, this is " << gnu_get_libc_version();
+    RUN_ISOLATED(60, {
+        SET_LOCALE("C.UTF-8");
+        unsigned bad = 0;
+        for (wchar_t wc = 0xa0; wc <= 0x10ffff; wc++) {
+            int w = (wc >= 0xd800 && wc <= 0xdfff) ? -1 : wcwidth(wc);
+            if (blot_text_builtin_wcwidth(wc) != w && bad++ < 5)
+                ADD_FAILURE() << "U+" << std::hex << (unsigned)wc << " wcwidth " << std::dec << w
+                              << ", built-in " << blot_text_builtin_wcwidth(wc);
+        }
+        EXPECT_EQ(bad, 0u);
+    });
+}
+
 TEST(TextWidth, examples_any_locale)
 {
     for (const char *loc : { "C", "C.UTF-8" }) {
@@ -94,6 +114,8 @@ TEST(TextWidth, examples_any_locale)
                 { 0x0301, 0 }, { 0x200b, 0 },
                 { 0x65e5, 2 }, { 0x30c6, 2 }, { 0xac00, 2 }, { 0xd55c, 2 }, { 0xff21, 2 }, { 0x3000, 2 },
                 { 0x1f600, 2 }, { 0x1f680, 2 }, { 0x20000, 2 },
+                /* unassigned, noncharacters (#18 review Low-1) */
+                { 0x0378, -1 }, { 0x0a44, -1 }, { 0x09fe, 0 } /* Bengali sandhi mark, next to unassigned U+09FF */, { 0xfffe, -1 }, { 0x40000, -1 },
                 { 0x00, -1 }, { L'\t', -1 }, { L'\n', -1 }, { 0x1b, -1 }, { 0x7f, -1 }, { 0x9b, -1 },
             };
             for (const auto &e : EX)
@@ -158,9 +180,55 @@ TEST(TextWidth, prefix_any_locale)
             /* a combining mark stays with its letter */
             EXPECT_EQ(blot_text_prefix("e\xcc\x81" "e\xcc\x81", 1, &w), 3u);
             EXPECT_EQ(w, 1u);
+            /* marks past BLOT_TEXT_MAX_MARKS are dropped: a label of
+             * them fits whole, not cut */
+            std::string many = "e";
+            for (int i = 0; i < 10; i++)
+                many += "\xcc\x81";
+            EXPECT_EQ(blot_text_prefix(many.c_str(), 1, &w), many.size());
+            EXPECT_EQ(w, 1u);
+            many += "x";
+            EXPECT_EQ(blot_text_prefix(many.c_str(), 1, &w), 1u + 2 * BLOT_TEXT_MAX_MARKS);
+            EXPECT_EQ(w, 1u);
             /* an invalid byte is a '?', one column */
             EXPECT_EQ(blot_text_prefix("\xff\xff\xff", 2, &w), 2u);
             EXPECT_EQ(w, 2u);
+        });
+    }
+}
+
+/* the reader keeps at most BLOT_TEXT_MAX_MARKS zero-width marks after a
+ * character, and at the start (#18 review Low-2) */
+TEST(TextWidth, reader_caps_marks_any_locale)
+{
+    for (const char *loc : { "C", "C.UTF-8" }) {
+        SCOPED_TRACE(loc);
+        RUN_ISOLATED(10, {
+            SET_LOCALE(loc);
+            auto shown = [](const std::string &s, bool keep_tab) {
+                struct blot_text_reader r;
+                std::wstring out;
+                std::vector<unsigned> widths;
+                wchar_t wc;
+                unsigned w;
+                blot_text_reader_init(&r, s.c_str(), keep_tab);
+                while (blot_text_read(&r, &wc, &w)) {
+                    out += wc;
+                    widths.push_back(w);
+                }
+                return std::make_pair(out, widths);
+            };
+            std::string marks6;
+            for (int i = 0; i < 6; i++)
+                marks6 += "\xcc\x81";
+            auto r = shown(marks6 + "a" + marks6 + "\xe6\x97\xa5" + marks6 + "\t" + marks6, true);
+            const std::wstring m4 = L"\u0301\u0301\u0301\u0301";
+            EXPECT_EQ(r.first, m4 + L"a" + m4 + L"\u65e5" + m4 + L"\t" + m4);
+            EXPECT_EQ(r.second, (std::vector<unsigned>{ 0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0 }));
+            /* a tab not kept is a '?', one column */
+            r = shown("a\tb", false);
+            EXPECT_EQ(r.first, L"a?b");
+            EXPECT_EQ(r.second, (std::vector<unsigned>{ 1, 1, 1 }));
         });
     }
 }

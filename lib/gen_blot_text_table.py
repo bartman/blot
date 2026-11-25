@@ -8,8 +8,11 @@
 # agrees with a UTF-8 locale by construction: the ranges of characters
 # that take no column (combining marks, format characters, conjoining
 # Hangul vowels and finals) and those that take two (East Asian Wide and
-# Fullwidth, emoji).  Everything else takes one.  A range runs on across
-# code points glibc doesn't know (wcwidth -1), which keeps the table small.
+# Fullwidth, emoji).  Everything else takes one, but for the code points
+# glibc doesn't know (wcwidth -1: unassigned, noncharacters), which blot
+# shows as '?' as it does in a UTF-8 locale.  blot looks those up first, so
+# a wide range may run on across them, which keeps the table small; a
+# zero-width range never does.
 import ctypes
 
 LC_ALL = 6
@@ -31,7 +34,9 @@ def width(c):
     return wcwidth(c)
 
 
-def ranges(target):
+def ranges(target, bridge):
+    """the runs of code points of width target; with bridge, a run goes on
+    across code points glibc doesn't know (wcwidth -1)"""
     out = []
     cur = None
     for c in range(0xA0, 0x110000):
@@ -42,7 +47,7 @@ def ranges(target):
             else:
                 cur = [c, c]
                 out.append(cur)
-        elif w != -1:
+        elif w != -1 or not bridge:
             cur = None
     return out
 
@@ -61,8 +66,12 @@ print(" * not edit */")
 print("/* vim: set noet sw=8 ts=8 tw=120: */")
 print("#pragma once")
 print()
+print("/* code points that aren't printable characters: unassigned,")
+print(" * noncharacters (blot shows a '?') */")
+emit("blot_text_unknown", ranges(-1, False))
+print()
 print("/* characters that take no column */")
-emit("blot_text_zero", ranges(0))
+emit("blot_text_zero", ranges(0, False))
 print()
 print("/* characters that take two columns */")
-emit("blot_text_wide", ranges(2))
+emit("blot_text_wide", ranges(2, True))
