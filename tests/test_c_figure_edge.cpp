@@ -126,13 +126,57 @@ void expect_marks_on_ticks(blot_plot_type type)
 
 } // namespace
 
-// BUG: https://git.jukie.net/bart/blot/-/work_items/14
-// a line maps y with round(v * (rows-1) / range), the Y axis with
-// floor(v * rows / range); a point on a tick value lands one row off its
-// tick (y 0..1, 40x16: 0.2 on row 3, its tick on row 2)
-TEST(Edge, DISABLED_point_on_tick_value_lands_on_tick_line)
+/* #14: a line used to map y with round(v * (rows-1) / range), the Y axis
+ * floor(v * rows / range); a point on a tick value landed one row off its
+ * tick (y 0..1, 40x16: 0.2 on row 3, its tick on row 2) */
+TEST(Edge, point_on_tick_value_lands_on_tick_line)
 {
     expect_marks_on_ticks(BLOT_LINE);
+}
+
+/* #14, the same on X: for every X tick, a mark at the tick's value is in
+ * the tick's column.  The limits don't cross 0, so tick i of n has the
+ * value lo + i * ((hi - lo) / n), as blot_axis_new() computes it (the
+ * labels are rounded, and narrow ones cut, so they are not parsed) */
+TEST(Edge, point_on_x_tick_value_lands_on_tick_column)
+{
+    const double xlims[][2] = { { 0, 1 }, { 0, 9 }, { -250, -200 } };
+    for (blot_plot_type type : { BLOT_LINE, BLOT_SCATTER }) {
+        for (const auto &xl : xlims) {
+            for (unsigned width : { 40u, 60u, 80u }) {
+                Rendered axes;
+                {
+                    const double xs[] = { xl[0], xl[1] }, ys[] = { 0, 1 };
+                    Fig f(width, 16);
+                    f.lim(xl[0], xl[1], 0, 1);
+                    f.plot(BLOT_LINE, BLOT_DATA_DOUBLE, 2, xs, ys);
+                    axes = render(f, F);
+                    ASSERT_TRUE(axes.ok) << axes.message;
+                }
+                auto ticks = x_ticks(axes);
+                unsigned n = ticks.size();
+                ASSERT_GE(n, 3u);
+                for (unsigned ti = 1; ti < n; ti++) {
+                    double v = xl[0] + ti * ((xl[1] - xl[0]) / n);
+                    SCOPED_TRACE(testing::Message() << "x " << xl[0] << ".." << xl[1] << " width " << width
+                                                    << " tick " << ti << " of " << n << " value " << v
+                                                    << " plot " << type);
+                    const double xs[] = { v, v }, ys[] = { 0.25, 0.75 };
+                    Fig f(width, 16);
+                    f.lim(xl[0], xl[1], 0, 1);
+                    f.plot(type, BLOT_DATA_DOUBLE, 2, xs, ys);
+                    Rendered r = render(f, F);
+                    ASSERT_TRUE(r.ok) << r.message;
+                    Cells m = plot_cells(r);
+                    ASSERT_FALSE(m.empty());
+                    std::set<unsigned> cols;
+                    for (const auto &c : m)
+                        cols.insert(c.first);
+                    EXPECT_EQ(cols, std::set<unsigned>({ ticks[ti].first })) << cells_str(m);
+                }
+            }
+        }
+    }
 }
 
 TEST(Edge, point_on_tick_value_lands_on_tick_scatter_bar)
@@ -527,8 +571,8 @@ TEST(Edge, int64_extremes_line)
     EXPECT_NE(std::find(labels.begin(), labels.end(), "0.000"), labels.end());
 }
 
-// BUG B14: https://git.jukie.net/bart/blot/-/work_items/9
-TEST(Edge, DISABLED_int64_extremes_scatter_narrow)
+// #9 (B14): the render failed
+TEST(Edge, int64_extremes_scatter_narrow)
 {
     Rendered r = render_one(40, 14, BLOT_SCATTER, BLOT_DATA_INT64, 3, I64, I64);
     EXPECT_TRUE(r.ok) << r.message;
