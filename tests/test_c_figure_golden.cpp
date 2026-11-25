@@ -528,8 +528,7 @@ TEST(Golden, bar_with_custom_x_labels)
     });
 }
 
-// BUG B1: https://git.jukie.net/bart/blot/-/work_items/3
-TEST(Golden, DISABLED_bar_with_custom_x_labels_auto_limits)
+TEST(Golden, bar_with_custom_x_labels_auto_limits)
 {
     /* auto limits (Y 0.997..4.003): bar i sits under label i at full slot
      * width, as on master; its top follows the Y axis mapping, so it

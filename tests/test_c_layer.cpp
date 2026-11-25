@@ -1108,8 +1108,7 @@ TEST(Layer, DISABLED_bar_negative_starts_at_zero)
                     rect(2, 3, 2, 5) + rect(6, 7, 5, 8));
 }
 
-// BUG B8: https://git.jukie.net/bart/blot/-/work_items/5
-TEST(Layer, DISABLED_bar_below_limit_terminates)
+TEST(Layer, bar_below_limit_terminates)
 {
     RUN_ISOLATED(5, {
         const gint32 xs[] = { 1, 2 }, ys[] = { -5, 5 };
@@ -1139,8 +1138,7 @@ TEST(Layer, DISABLED_line_infinite_value_terminates)
     });
 }
 
-// BUG B6: https://git.jukie.net/bart/blot/-/work_items/6
-TEST(Layer, DISABLED_nan_points_not_drawn)
+TEST(Layer, nan_points_not_drawn)
 {
     const double xs[] = { 0.5, NAN, 5 }, ys[] = { NAN, 0.5, 5 };
     EXPECT_CELLS_EQ(layer_cells(BLOT_SCATTER, BLOT_DATA_DOUBLE, 3, xs, ys), Cells({ {5,5} }));
