@@ -139,8 +139,10 @@ static bool blot_legend_putc(struct blot_legend_line *ll, wchar_t wc,
 	if (wc == L'\t') {
 		next = (ll->col / 8 + 1) * 8;
 	} else {
+		/* combining marks and the like take no column; a
+		 * character the locale can't measure takes one */
 		int w = wcwidth(wc);
-		next = ll->col + (w > 0 ? (unsigned)w : 1);
+		next = ll->col + (w >= 0 ? (unsigned)w : 1);
 	}
 
 	if (next > ll->cols) {
@@ -166,7 +168,8 @@ static bool blot_legend_putws(struct blot_legend_line *ll, const wchar_t *ws,
 
 /* the label: multibyte text in the current locale.  A control character
  * (a newline, an escape...) or a byte that isn't valid text becomes '?',
- * so the label stays on its one line and can't send escape sequences */
+ * so the label stays on its one line and can't send escape sequences.  A
+ * tab is kept: it goes to its tab stop, as before */
 static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
 			      GError **error)
 {
@@ -189,7 +192,7 @@ static bool blot_legend_label(struct blot_legend_line *ll, const char *label,
 		label += n;
 		left -= n;
 
-		if (iswcntrl(wc) || !iswprint(wc))
+		if (wc != L'\t' && (iswcntrl(wc) || !iswprint(wc)))
 			wc = L'?';
 		if (!blot_legend_putc(ll, wc, error))
 			return false;

@@ -2,6 +2,7 @@
  * lines without trimming; in the expected text "\e" stands for ESC. */
 #include "blot_test.hpp"
 
+#include <clocale>
 #include <cwchar>
 
 using namespace blot_test;
@@ -488,7 +489,8 @@ TEST(Text, legend_details_cut_to_width)
 }
 
 /* #11 (note 34955): a newline in a label added a line, and an escape
- * sequence in one went to the terminal; control characters become '?' */
+ * sequence in one went to the terminal; control characters become '?'.
+ * A tab is kept (see legend_label_tab_kept) */
 TEST(Text, legend_control_characters_replaced)
 {
     for (auto legend : { BLOT_RENDER_LEGEND_ABOVE, BLOT_RENDER_LEGEND_BELOW }) {
@@ -501,7 +503,7 @@ TEST(Text, legend_control_characters_replaced)
         EXPECT_FALSE(has_esc(r.text)) << to_utf8(r.text);
         ASSERT_EQ(r.lines.size(), 14u);
         const std::wstring &l = legend == BLOT_RENDER_LEGEND_ABOVE ? r.lines.front() : r.lines.back();
-        EXPECT_EQ(l, L"◘  a?b?[31mc?d?e?") << to_utf8(l);
+        EXPECT_EQ(l, L"◘  a?b?[31mc\td?e?") << to_utf8(l);
     }
 }
 
@@ -558,4 +560,129 @@ TEST(Text, tall_legend_is_cut)
     EXPECT_EQ(r.plot_rows(), (unsigned)BLOT_MIN_ROWS);
     EXPECT_EQ(r.mrg.top, 3u);
     EXPECT_EQ(r.mrg.bottom, 4u);
+}
+
+/* #11 review: a tab in a label is kept, as before, and goes to its tab
+ * stop; one whose tab stop is past the screen edge ends the line */
+TEST(Text, legend_label_tab_kept)
+{
+    Fig f(40, 13);
+    f.lim(0, 9, 0, 9);
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "a\tb");
+    Rendered r = render(f, F | BLOT_RENDER_LEGEND_ABOVE);
+    expect_lines_fit(r, 40, 13);
+    ASSERT_FALSE(r.lines.empty());
+    EXPECT_EQ(r.lines.front(), L"◘  a\tb") << to_utf8(r.lines.front());
+
+    Fig g(10, 12);
+    g.lim(0, 9, 0, 9);
+    g.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, "abcdefg\tz");
+    Rendered n = render(g, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
+    expect_lines_fit(n, 10, 12);
+    ASSERT_FALSE(n.lines.empty());
+    EXPECT_EQ(n.lines.front(), L"◘  abcdefg") << to_utf8(n.lines.front());
+}
+
+namespace {
+
+/* the columns a line takes in the current locale (wcwidth), escapes and
+ * tabs as in display_width() */
+unsigned display_width_locale(const std::wstring &line)
+{
+    unsigned col = 0;
+    for (wchar_t wc : strip_sgr(line)) {
+        if (wc == L'\t') {
+            col = (col / 8 + 1) * 8;
+        } else {
+            int w = wcwidth(wc);
+            col += w >= 0 ? (unsigned)w : 1;
+        }
+    }
+    return col;
+}
+
+/* the legend line of one labelled layer, rendered in C.UTF-8 on a screen
+ * of cols x 12 without axes (the caller is an isolated child) */
+std::wstring utf8_legend_line(const char *label, unsigned cols)
+{
+    Fig f(cols, 12);
+    f.lim(0, 9, 0, 9);
+    f.plot(BLOT_SCATTER, BLOT_DATA_INT32, 3, LEG_X, LEG_Y, 1, label);
+    Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS | BLOT_RENDER_LEGEND_ABOVE);
+    EXPECT_TRUE(r.ok) << r.message;
+    EXPECT_EQ(r.lines.size(), 12u);
+    if (r.lines.empty())
+        return L"";
+    for (const auto &l : r.lines)
+        EXPECT_LE(display_width_locale(l), cols) << "|" << to_utf8(l) << "|";
+    return r.lines.front();
+}
+
+/* C.UTF-8 is built into glibc 2.35+ and shipped by Debian's libc-bin: a
+ * missing locale is a failure, not a skip */
+#define SET_UTF8_LOCALE() \
+    ASSERT_TRUE(setlocale(LC_ALL, "C.UTF-8") != NULL) << "the C.UTF-8 locale is missing"
+
+} // namespace
+
+/* #11 review M1: the legend in a UTF-8 locale.  Valid multibyte text is
+ * kept, wide characters take 2 columns and a combining mark none, C1
+ * controls become '?', and an invalid byte becomes one '?' */
+TEST(Text, legend_utf8_label_kept)
+{
+    RUN_ISOLATED(10, {
+        SET_UTF8_LOCALE();
+        EXPECT_EQ(utf8_legend_line("caf\xc3\xa9", 40), L"◘  caf\u00e9");
+    });
+}
+
+TEST(Text, legend_utf8_wide_characters_cut)
+{
+    RUN_ISOLATED(10, {
+        SET_UTF8_LOCALE();
+        /* "◘  " is 3 columns, each CJK character 2: the 4th would end in
+         * column 11 of 10 */
+        std::wstring l = utf8_legend_line("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad", 10);
+        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e") << to_utf8(l);
+        EXPECT_EQ(display_width_locale(l), 9u);
+        /* 11 columns: the 4th fits exactly */
+        l = utf8_legend_line("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xe3\x83\x86\xe3\x82\xad", 11);
+        EXPECT_EQ(l, L"◘  \u65e5\u672c\u8a9e\u30c6") << to_utf8(l);
+    });
+}
+
+TEST(Text, legend_utf8_combining_mark_takes_no_column)
+{
+    RUN_ISOLATED(10, {
+        SET_UTF8_LOCALE();
+        /* 7 x "e" + U+0301: 7 columns, the whole label fits in 10 */
+        std::string label;
+        std::wstring expected = L"◘  ";
+        for (int i = 0; i < 7; i++) {
+            label += "e\xcc\x81";
+            expected += L"e\u0301";
+        }
+        std::wstring l = utf8_legend_line(label.c_str(), 10);
+        EXPECT_EQ(l, expected) << to_utf8(l);
+        EXPECT_EQ(display_width_locale(l), 10u);
+    });
+}
+
+TEST(Text, legend_utf8_c1_control_replaced)
+{
+    RUN_ISOLATED(10, {
+        SET_UTF8_LOCALE();
+        /* U+009B is CSI, an escape sequence on some terminals */
+        std::wstring l = utf8_legend_line("\xc2\x9b" "31m", 40);
+        EXPECT_EQ(l, L"◘  ?31m") << to_utf8(l);
+    });
+}
+
+TEST(Text, legend_utf8_invalid_byte_is_one_question_mark)
+{
+    RUN_ISOLATED(10, {
+        SET_UTF8_LOCALE();
+        std::wstring l = utf8_legend_line("caf\xc3\xa9 \xff ok", 40);
+        EXPECT_EQ(l, L"◘  caf\u00e9 ? ok") << to_utf8(l);
+    });
 }
