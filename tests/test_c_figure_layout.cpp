@@ -3,6 +3,8 @@
 #include "blot_test.hpp"
 
 #include <cstdlib>
+#include <pty.h>
+#include <sys/ioctl.h>
 
 using namespace blot_test;
 
@@ -453,8 +455,8 @@ TEST(Layout, terminal_size_unknown_is_an_error)
     });
 }
 
-// BUG B19: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Layout, DISABLED_terminal_environment_out_of_range)
+// B19, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Layout, terminal_environment_out_of_range)
 {
     /* the size is cached on first use: one child per case */
     const char *cases[][2] = { { "1", "1" }, { "5000", "24" } };
@@ -477,8 +479,8 @@ TEST(Layout, DISABLED_terminal_environment_out_of_range)
     }
 }
 
-// BUG B10: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Layout, DISABLED_render_accepts_null_error)
+// B10, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Layout, render_accepts_null_error)
 {
     RUN_ISOLATED(10, {
         Fig f;
@@ -486,6 +488,139 @@ TEST(Layout, DISABLED_render_accepts_null_error)
         blot_screen *scr = blot_figure_render(f, F, NULL);
         EXPECT_TRUE(scr != NULL);
         blot_screen_delete(scr);
+    });
+}
+
+/* B19 (#11): COLUMNS and LINES that aren't a number (or 0, or too large
+ * for an unsigned) are ignored, and the size comes from the tty, here
+ * /dev/null, which has none */
+TEST(Layout, terminal_environment_invalid_is_ignored)
+{
+    const char *cases[][2] = {
+        { "0", "24" }, { "80", "0" }, { "abc", "24" }, { "80x", "24" }, { "4294967306", "24" },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "COLUMNS=" << c[0] << " LINES=" << c[1]);
+        RUN_ISOLATED(10, {
+            setenv("COLUMNS", c[0], 1);
+            setenv("LINES", c[1], 1);
+            ASSERT_TRUE(freopen("/dev/null", "w", stdout) != NULL);
+            blot_dimensions dim = {};
+            GError *error = NULL;
+            EXPECT_FALSE(blot_terminal_get_size(&dim, &error));
+            ASSERT_TRUE(error != NULL);
+            EXPECT_EQ(error->code, ENOTTY) << error->message;
+            g_clear_error(&error);
+
+            Fig f;
+            f.lim(0, 9, 0, 9);
+            f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, DIAG_X, DIAG_Y);
+            Rendered r = render(f, F);
+            EXPECT_FALSE(r.ok);
+            EXPECT_EQ(r.code, ENOTTY) << r.message;
+        });
+    }
+}
+
+/* B19 (#11 review L2): COLUMNS and LINES outside the range
+ * blot_terminal_set_size() accepts are clamped into it before they are
+ * used and cached, as the tty size is; no tty is needed */
+TEST(Layout, terminal_environment_out_of_range_is_clamped)
+{
+    const struct {
+        const char *cols, *rows;
+        unsigned get_cols, get_rows;    /* blot_terminal_get_size() */
+        unsigned exp_cols, exp_rows;    /* the screen, less the border */
+    } cases[] = {
+        { "9", "24", 10, 24, 10, 22 },
+        { "1", "1", 10, 10, 10, 10 },
+        { "1001", "24", 1000, 24, 998, 22 },
+        { "80", "5000", 80, 1000, 78, 998 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "COLUMNS=" << c.cols << " LINES=" << c.rows);
+        RUN_ISOLATED(10, {
+            setenv("COLUMNS", c.cols, 1);
+            setenv("LINES", c.rows, 1);
+            ASSERT_TRUE(freopen("/dev/null", "w", stdout) != NULL);
+            blot_dimensions dim = {};
+            EXPECT_TRUE(blot_terminal_get_size(&dim, NULL));
+            EXPECT_EQ(dim.cols, c.get_cols);
+            EXPECT_EQ(dim.rows, c.get_rows);
+
+            Fig f;
+            f.lim(0, 9, 0, 9);
+            f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, DIAG_X, DIAG_Y);
+            Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS);
+            ASSERT_TRUE(r.ok) << r.message;
+            EXPECT_EQ(r.dim.cols, c.exp_cols);
+            EXPECT_EQ(r.dim.rows, c.exp_rows);
+            EXPECT_EQ(r.lines.size(), c.exp_rows);
+        });
+    }
+}
+
+/* the terminal's own size, less the 2-cell border, within the minimum and
+ * the maximum: COLUMNS/LINES at the edges of the range, and a tty that is
+ * smaller or larger than blot can draw (B19, #11: 1x1 underflowed).  No
+ * axes: the plot itself needs BLOT_MIN_COLS x BLOT_MIN_ROWS */
+TEST(Layout, terminal_size_is_kept_in_range)
+{
+    const struct {
+        const char *cols, *rows;
+        unsigned short tty_cols, tty_rows;
+        unsigned exp_cols, exp_rows;
+    } cases[] = {
+        { "1000", "1000", 0, 0, 998, 998 },
+        { "10", "10", 0, 0, 10, 10 },
+        { NULL, NULL, 1, 1, 10, 10 },
+        { NULL, NULL, 0, 0, 10, 10 },
+        { NULL, NULL, 5000, 3000, 1000, 1000 },
+        { NULL, NULL, 82, 26, 80, 24 },
+    };
+    for (const auto &c : cases) {
+        SCOPED_TRACE(testing::Message() << "COLUMNS=" << (c.cols ? c.cols : "-") << " LINES="
+                     << (c.rows ? c.rows : "-") << " tty=" << c.tty_cols << "x" << c.tty_rows);
+        RUN_ISOLATED(10, {
+            if (c.cols) {
+                setenv("COLUMNS", c.cols, 1);
+                setenv("LINES", c.rows, 1);
+                ASSERT_TRUE(freopen("/dev/null", "w", stdout) != NULL);
+            } else {
+                unsetenv("COLUMNS");
+                unsetenv("LINES");
+                int master = -1, slave = -1;
+                struct winsize ws = {};
+                ws.ws_col = c.tty_cols;
+                ws.ws_row = c.tty_rows;
+                ASSERT_EQ(openpty(&master, &slave, NULL, NULL, &ws), 0);
+                ASSERT_EQ(dup2(slave, STDOUT_FILENO), STDOUT_FILENO);
+            }
+            Fig f;
+            f.lim(0, 9, 0, 9);
+            f.plot(BLOT_LINE, BLOT_DATA_INT32, 2, DIAG_X, DIAG_Y);
+            Rendered r = render(f, F | BLOT_RENDER_NO_X_AXIS | BLOT_RENDER_NO_Y_AXIS);
+            ASSERT_TRUE(r.ok) << r.message;
+            EXPECT_EQ(r.dim.cols, c.exp_cols);
+            EXPECT_EQ(r.dim.rows, c.exp_rows);
+            EXPECT_EQ(r.lines.size(), c.exp_rows);
+        });
+    }
+}
+
+/* #11 review L1: an error the caller has already set is kept, not freed
+ * and replaced (glib warns about it, as g_propagate_error() does) */
+TEST(Layout, render_keeps_callers_error)
+{
+    RUN_ISOLATED(10, {
+        Fig f(28, 12);      /* no layers: the render fails */
+        GError *pre = g_error_new_literal(g_quark_from_static_string("test"), 42, "pre-set");
+        GError *error = pre;
+        EXPECT_TRUE(blot_figure_render(f, F, &error) == NULL);
+        ASSERT_TRUE(error == pre);
+        EXPECT_EQ(error->code, 42);
+        EXPECT_STREQ(error->message, "pre-set");
+        g_clear_error(&error);
     });
 }
 

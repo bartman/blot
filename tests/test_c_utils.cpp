@@ -258,12 +258,30 @@ TEST(Utils, env_to_uint_valid)
     unsetenv(ENV);
 }
 
-// BUG B20: https://git.jukie.net/bart/blot/-/work_items/11
-TEST(Utils, DISABLED_env_to_uint_garbage)
+// B20, fixed in #11: https://git.jukie.net/bart/blot/-/work_items/11
+TEST(Utils, env_to_uint_garbage)
 {
     for (const char *text : { "abc", "99999999999", "4294967296" }) {
         setenv(ENV, text, 1);
         EXPECT_EQ(blot_env_to_uint(ENV, 77), 77u) << text;
+    }
+    unsetenv(ENV);
+}
+
+/* not in the design's list (#11): what else is garbage, and the edges of
+ * the unsigned range */
+TEST(Utils, env_to_uint_trailing_garbage_and_range)
+{
+    const struct {
+        const char *text;
+        unsigned expected;
+    } cases[] = {
+        { "12abc", 77 }, { "0x", 77 }, { "+5", 77 }, { "  ", 77 }, { "- 1", 77 },
+        { "12 ", 12 }, { "4294967295", 4294967295u }, { "0", 0 },
+    };
+    for (const auto &c : cases) {
+        setenv(ENV, c.text, 1);
+        EXPECT_EQ(blot_env_to_uint(ENV, 77), c.expected) << "\"" << c.text << "\"";
     }
     unsetenv(ENV);
 }

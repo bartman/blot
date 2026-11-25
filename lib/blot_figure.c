@@ -171,12 +171,14 @@ static blot_dimensions blot_figure_finalize_dimensions(const blot_figure *fig,
 		return (blot_dimensions){};
 	}
 
-	/* use the entire terminal screen, w/o the border */
-	dim.cols = max_t(unsigned, dim.cols-2, BLOT_MIN_COLS);
-	dim.rows = max_t(unsigned, dim.rows-2, BLOT_MIN_ROWS);
+	/* use the entire terminal screen, w/o the border; a terminal smaller
+	 * than that gets the minimum size, a larger one the maximum (the
+	 * size comes from the environment or the tty, unchecked) */
+	dim.cols = dim.cols > 2 ? dim.cols - 2 : 0;
+	dim.rows = dim.rows > 2 ? dim.rows - 2 : 0;
 
-	RETURN_EINVAL_IF(dim.cols<BLOT_MIN_COLS, dim, error);
-	RETURN_EINVAL_IF(dim.rows<BLOT_MIN_ROWS, dim, error);
+	dim.cols = min_t(unsigned, max_t(unsigned, dim.cols, BLOT_MIN_COLS), BLOT_MAX_COLS);
+	dim.rows = min_t(unsigned, max_t(unsigned, dim.rows, BLOT_MIN_ROWS), BLOT_MAX_ROWS);
 
 	return dim;
 }
@@ -289,11 +291,6 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 		mrg.left += 4;
 	}
 
-	if (flags & BLOT_RENDER_LEGEND_ABOVE)
-		mrg.top += fig->layer_count;
-	if (flags & BLOT_RENDER_LEGEND_BELOW)
-		mrg.top += fig->layer_count;
-
 #if 0
 	/* don't use the top or right edge */
 	mrg.right += 1;
@@ -305,6 +302,35 @@ static blot_margins blot_figure_finalize_margins(const blot_figure *fig,
 	mrg.bottom = min_t(unsigned, mrg.bottom, dim->rows / 2);
 	mrg.right = min_t(unsigned, mrg.right, dim->cols / 2);
 	mrg.top = min_t(unsigned, mrg.top, dim->rows / 2);
+
+	/* one row per labelled layer, above or below the plot (and below
+	 * the X-axis); the screen writes the legend in exactly these rows */
+	unsigned legend = 0;
+	for (gsize li=0; li<fig->layer_count; li++) {
+		const blot_layer *lay = fig->layers[li];
+		if (lay->label && *lay->label)
+			legend ++;
+	}
+	unsigned above = (flags & BLOT_RENDER_LEGEND_ABOVE) ? legend : 0;
+	unsigned below = (flags & BLOT_RENDER_LEGEND_BELOW) ? legend : 0;
+
+	/* a legend is cut, not the plot: each margin stays within half the
+	 * screen, and the plot keeps BLOT_MIN_ROWS rows when the screen has
+	 * them (two legends share the rows that are left, one at a time) */
+	above = min_t(unsigned, above, dim->rows / 2 - min_t(unsigned, mrg.top, dim->rows / 2));
+	below = min_t(unsigned, below, dim->rows / 2 - min_t(unsigned, mrg.bottom, dim->rows / 2));
+
+	unsigned used = mrg.top + mrg.bottom + BLOT_MIN_ROWS;
+	unsigned room = dim->rows > used ? dim->rows - used : 0;
+	while (above + below > room) {
+		if (below >= above)
+			below --;
+		else
+			above --;
+	}
+
+	mrg.top += above;
+	mrg.bottom += below;
 
 	return mrg;
 }
@@ -340,8 +366,11 @@ static void __free_canvases_array(blot_canvas **cans, unsigned count)
 	}
 }
 
-blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
-				 GError **error)
+/* error is never NULL here: the steps below report through it, and
+ * blot_figure_render() gives it one of its own when the caller doesn't */
+static blot_screen * blot_figure_render_error(blot_figure *fig,
+					      blot_render_flags flags,
+					      GError **error)
 {
 	RETURN_EFAULT_IF(fig==NULL, NULL, error);
 	RETURN_EINVAL_IF(fig->layer_count==0, NULL, error);
@@ -436,3 +465,15 @@ blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
 	return scr;
 }
 
+blot_screen * blot_figure_render(blot_figure *fig, blot_render_flags flags,
+				 GError **error)
+{
+	GError *local = NULL;
+
+	blot_screen *scr = blot_figure_render_error(fig, flags, &local);
+	/* frees local when error is NULL; never replaces an error the
+	 * caller already has */
+	if (local)
+		g_propagate_error(error, local);
+	return scr;
+}
