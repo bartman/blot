@@ -212,6 +212,8 @@ static inline bool blot_layer_cell(double v, double min, double max, unsigned le
 		return false;
 
 	double pos = blot_layer_pos(v, min, max, len);
+	if (isnan(pos))		/* an infinite range */
+		return false;
 
 	*cell = pos < len ? (unsigned)floor(pos) : len - 1;
 	return true;
