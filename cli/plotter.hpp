@@ -2,6 +2,7 @@
 
 #include "blot.hpp"
 #include "config.hpp"
+#include "plot_encode.hpp"
 
 #include "blot.hpp"
 #include "spdlog/spdlog.h"
@@ -60,27 +61,13 @@ inline void plot_locale()
 /* write the rendered text to f in the locale's encoding, all of it.
  * printf("%ls") gave up at the first character the locale can't encode
  * and returned -1, unchecked: the plot was cut off mid-line, at a spot
- * that depends on glibc's version and stdout's buffering (#40).  A
- * character the locale can't encode is written as '?', one column like
- * the plot's characters.  Throws on a write error */
+ * that depends on glibc's version and stdout's buffering (#40).  See
+ * plot_encode() for a character the locale can't encode.  Throws on a
+ * write error */
 inline void plot_write(FILE *f, const wchar_t *txt, size_t len)
 {
-	std::string out;
-	out.reserve(len * MB_CUR_MAX);
-
-	char mb[MB_LEN_MAX];
-	mbstate_t state{};
-	bool replaced = false;
-	for (size_t i = 0; i < len && txt[i]; i++) {
-		size_t n = wcrtomb(mb, txt[i], &state);
-		if (n == (size_t)-1) {
-			state = mbstate_t{};
-			mb[0] = '?';
-			n = 1;
-			replaced = true;
-		}
-		out.append(mb, n);
-	}
+	bool replaced;
+	std::string out = plot_encode(txt, len, &replaced);
 
 	if (replaced && !plot_warned_once())
 		spdlog::warn("the locale ({}) can't encode some of "

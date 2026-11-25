@@ -24,6 +24,9 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
+# the CLI's plot encoder (#40) is a header in cli/
+target_include_directories(test_cli_encode PRIVATE ${PROJECT_SOURCE_DIR}/cli)
+
 # RUN_ISOLATED bodies that fail on purpose (#26): built, not a test of its
 # own; test_isolated runs it and checks what the parent shows
 add_executable(isolated_failing isolated_failing.cpp)
