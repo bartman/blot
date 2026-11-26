@@ -60,6 +60,11 @@ TEST(TextWidth, builtin_agrees_with_utf8_locale)
                 EXPECT_EQ(blot_text_wcwidth(wc), w);
                 if (changed_in_unicode_16(wc) && strverscmp(gnu_get_libc_version(), "2.40") < 0)
                     continue;
+                /* a glibc newer than the table's (2.41) knows characters
+                 * assigned since, which the table has as unassigned (-1):
+                 * e.g. glibc 2.43 (Ubuntu 26.04) has U+1F6D8 at width 2 */
+                if (blot_text_builtin_wcwidth(wc) < 0 && strverscmp(gnu_get_libc_version(), "2.41") > 0)
+                    continue;
                 if (blot_text_builtin_wcwidth(wc) != w && bad++ < 5)
                     ADD_FAILURE() << b.name << ": U+" << std::hex << (unsigned)wc << " wcwidth " << std::dec
                                   << w << ", built-in " << blot_text_builtin_wcwidth(wc);
