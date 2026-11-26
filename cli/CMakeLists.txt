@@ -15,11 +15,38 @@ ELSE()
     MESSAGE(STATUS "cli: clipp: vendored (third_party/clipp)")
 ENDIF()
 
+# A system spdlog is only used when it compiles with this compiler:
+# Ubuntu 26.04's fmt 10.1 + spdlog 1.15.3 don't with its clang 21 (a
+# consteval error in spdlog/logger.h), so there the cli falls back to
+# FetchContent like a machine without them.  The probe is a separate
+# project (cmake/spdlog-probe), so its find_package targets stay out of
+# this build; it also fails, harmlessly, when spdlog isn't installed.
+try_compile(BLOT_SYSTEM_SPDLOG_OK
+    ${CMAKE_CURRENT_BINARY_DIR}/spdlog-probe
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/spdlog-probe
+    blot_spdlog_probe
+    CMAKE_FLAGS
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}
+        -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
+    OUTPUT_VARIABLE BLOT_SPDLOG_PROBE_OUTPUT
+)
+
 # spdlog first: a system spdlog built with SPDLOG_FMT_EXTERNAL (Debian's)
 # finds its fmt itself, and the fmt the cli uses must be that one
-find_package(spdlog QUIET)
-IF (spdlog_FOUND)
-    find_package(fmt QUIET)
+IF (BLOT_SYSTEM_SPDLOG_OK)
+    find_package(spdlog QUIET)
+    IF (spdlog_FOUND)
+        find_package(fmt QUIET)
+    ENDIF()
+ELSE()
+    # no find_package here: its imported spdlog::spdlog / fmt::fmt would
+    # clash with the targets FetchContent defines below
+    MESSAGE(STATUS "cli: no usable system spdlog for ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION} (not installed, or it doesn't compile; see the probe in cli/cmake/spdlog-probe)")
+    SET(spdlog_FOUND FALSE)
+    SET(fmt_FOUND FALSE)
 ENDIF()
 
 INCLUDE(FetchContent)
